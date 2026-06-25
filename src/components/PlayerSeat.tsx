@@ -113,7 +113,7 @@ export function PlayerSeat({
             className="icon-button"
             type="button"
             disabled={readOnly}
-            title="Record cash-out"
+            title="Record final chips"
             onClick={() => onCashOut(player)}
           >
             <BadgeDollarSign size={16} />

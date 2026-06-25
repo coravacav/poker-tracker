@@ -24,10 +24,10 @@ type TransactionFormProps = {
 };
 
 const transactionLabels: Record<TransactionType, string> = {
-  bank_buy_in: "Bank buy-in",
-  bank_cash_out: "Bank cash-out",
+  bank_buy_in: "Chip buy-in",
+  bank_cash_out: "Chip cash-out",
   player_transfer: "Player transfer",
-  manual_bank_adjustment: "Manual bank adjustment"
+  manual_bank_adjustment: "Chip adjustment"
 };
 
 export function TransactionForm({
@@ -190,14 +190,14 @@ export function TransactionForm({
 
           {type === "manual_bank_adjustment" && (
             <label>
-              <span>Bank direction</span>
+              <span>Chip direction</span>
               <select
                 disabled={readOnly}
                 value={bankDirection}
                 onChange={(event) => setBankDirection(event.currentTarget.value as BankDirection)}
               >
-                <option value="incoming">Incoming</option>
-                <option value="outgoing">Outgoing</option>
+                <option value="incoming">Issued</option>
+                <option value="outgoing">Returned</option>
               </select>
             </label>
           )}

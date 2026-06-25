@@ -142,7 +142,7 @@ export function PokerTable({
 
   function quickCashOut(player: Player) {
     const rawAmount = window.prompt(
-      `Cash-out amount for ${player.name}`,
+      `Final chip value for ${player.name}`,
       centsToInputValue(summaryByPlayerId.get(player.id)?.bankCashOutsCents ?? 0)
     );
     if (rawAmount === null) {
@@ -160,7 +160,7 @@ export function PokerTable({
       createdAt: new Date().toISOString(),
       amountCents,
       fromPlayerId: player.id,
-      note: "Quick cash-out"
+      note: "Quick chip count"
     });
   }
 

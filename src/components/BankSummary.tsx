@@ -1,4 +1,4 @@
-import { Landmark, TriangleAlert } from "lucide-react";
+import { CircleDollarSign, TriangleAlert } from "lucide-react";
 import { formatCurrency } from "../domain/money";
 import type { BankSummary } from "../domain/pokerTypes";
 
@@ -15,23 +15,23 @@ export function BankSummaryPanel({
     <section className="panel bank-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Cash box</p>
-          <h2>Bank</h2>
+          <p className="eyebrow">Available chips</p>
+          <h2>Chip Pool</h2>
         </div>
-        <Landmark size={21} />
+        <CircleDollarSign size={21} />
       </div>
 
       <dl className="metric-grid">
         <div>
-          <dt>Incoming</dt>
+          <dt>Issued</dt>
           <dd>{formatCurrency(bankSummary.incomingCents)}</dd>
         </div>
         <div>
-          <dt>Outgoing</dt>
+          <dt>Returned</dt>
           <dd>{formatCurrency(bankSummary.outgoingCents)}</dd>
         </div>
         <div className="metric-wide">
-          <dt>Balance</dt>
+          <dt>In play</dt>
           <dd>{formatCurrency(bankSummary.balanceCents)}</dd>
         </div>
       </dl>
@@ -42,7 +42,7 @@ export function BankSummaryPanel({
           Ledger imbalance: {formatCurrency(imbalanceCents)}
         </div>
       ) : (
-        <div className="notice notice-ok">Ledger balances exactly.</div>
+        <div className="notice notice-ok">Chip ledger balances exactly.</div>
       )}
     </section>
   );

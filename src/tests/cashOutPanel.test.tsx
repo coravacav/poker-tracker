@@ -19,7 +19,7 @@ const summaries: PlayerLedgerSummary[] = [
 ];
 
 describe("CashOutPanel", () => {
-  it("allows typing into the cash-out field", () => {
+  it("allows typing into the final chips field", () => {
     render(
       <CashOutPanel
         onAddTransaction={vi.fn()}
@@ -30,14 +30,14 @@ describe("CashOutPanel", () => {
       />
     );
 
-    const input = screen.getByLabelText("Cash-out");
+    const input = screen.getByLabelText("Final chips");
 
     fireEvent.change(input, { target: { value: "5" } });
 
     expect(input).toHaveValue("5");
   });
 
-  it("clears the default cash-out amount on focus", () => {
+  it("clears the default final chips amount on focus", () => {
     render(
       <CashOutPanel
         onAddTransaction={vi.fn()}
@@ -48,7 +48,7 @@ describe("CashOutPanel", () => {
       />
     );
 
-    const input = screen.getByLabelText("Cash-out");
+    const input = screen.getByLabelText("Final chips");
 
     fireEvent.focus(input);
 

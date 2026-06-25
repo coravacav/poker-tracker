@@ -18,9 +18,9 @@ type TransactionTableProps = {
 
 const typeLabels: Record<TransactionType, string> = {
   bank_buy_in: "Buy-in",
-  bank_cash_out: "Cash-out",
+  bank_cash_out: "Chip count",
   player_transfer: "Transfer",
-  manual_bank_adjustment: "Bank adjustment"
+  manual_bank_adjustment: "Chip adjustment"
 };
 
 const categoryLabels: Record<TransactionCategory, string> = {
@@ -36,7 +36,7 @@ export function TransactionTable({
 }: TransactionTableProps) {
   function playerName(playerId: string | undefined): string {
     if (!playerId) {
-      return "Bank";
+      return "Chip Pool";
     }
 
     return players.find((player) => player.id === playerId)?.name ?? "Unknown player";
@@ -44,23 +44,7 @@ export function TransactionTable({
 
   function fromLabel(transaction: Transaction): string {
     if (transaction.type === "bank_buy_in") {
-      return playerName(transaction.toPlayerId);
-    }
-
-    if (transaction.type === "bank_cash_out") {
-      return "Bank";
-    }
-
-    if (transaction.type === "manual_bank_adjustment") {
-      return transaction.bankDirection === "outgoing" ? "Bank" : "External";
-    }
-
-    return playerName(transaction.fromPlayerId);
-  }
-
-  function toLabel(transaction: Transaction): string {
-    if (transaction.type === "bank_buy_in") {
-      return "Bank";
+      return "Chip Pool";
     }
 
     if (transaction.type === "bank_cash_out") {
@@ -68,7 +52,23 @@ export function TransactionTable({
     }
 
     if (transaction.type === "manual_bank_adjustment") {
-      return transaction.bankDirection === "outgoing" ? "External" : "Bank";
+      return transaction.bankDirection === "outgoing" ? playerName(undefined) : "External";
+    }
+
+    return playerName(transaction.fromPlayerId);
+  }
+
+  function toLabel(transaction: Transaction): string {
+    if (transaction.type === "bank_buy_in") {
+      return playerName(transaction.toPlayerId);
+    }
+
+    if (transaction.type === "bank_cash_out") {
+      return "Chip Pool";
+    }
+
+    if (transaction.type === "manual_bank_adjustment") {
+      return transaction.bankDirection === "outgoing" ? "External" : playerName(undefined);
     }
 
     return playerName(transaction.toPlayerId);

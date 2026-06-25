@@ -2,7 +2,6 @@ import { ArrowRight, Scale } from "lucide-react";
 import { formatCurrency } from "../domain/money";
 import type { BankSummary, Player, PlayerLedgerSummary } from "../domain/pokerTypes";
 import {
-  buildBankSettlement,
   buildMinimizedSettlement,
   playerNameById
 } from "../domain/settlement";
@@ -20,7 +19,6 @@ export function SettlementPanel({
   players,
   summaries
 }: SettlementPanelProps) {
-  const bankLines = buildBankSettlement(summaries).filter((line) => line.amountCents > 0);
   const minimizedPayments = buildMinimizedSettlement(summaries);
   const sortedSummaries = [...summaries]
     .filter((summary) => players.some((player) => player.id === summary.playerId))
@@ -60,27 +58,7 @@ export function SettlementPanel({
         </div>
 
         <div>
-          <h3>Bank View</h3>
-          <div className="settlement-list">
-            {bankLines.length === 0 ? (
-              <p className="muted">Everyone is even with the bank.</p>
-            ) : (
-              bankLines.map((line) => (
-                <div className="settlement-line" key={line.playerId}>
-                  <span>
-                    {line.direction === "bank_pays_player"
-                      ? `Bank pays ${playerNameById(players, line.playerId)}`
-                      : `${playerNameById(players, line.playerId)} pays bank`}
-                  </span>
-                  <strong>{formatCurrency(line.amountCents)}</strong>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div>
-          <h3>Minimized Payments</h3>
+          <h3>Player Payments</h3>
           <div className="settlement-list">
             {minimizedPayments.length === 0 ? (
               <p className="muted">No player-to-player payments needed.</p>
@@ -102,7 +80,7 @@ export function SettlementPanel({
       </div>
 
       <div className="settlement-footer">
-        <span>Bank balance {formatCurrency(bankSummary.balanceCents)}</span>
+        <span>Net chips in play {formatCurrency(bankSummary.balanceCents)}</span>
         <span>Imbalance {formatCurrency(imbalanceCents)}</span>
       </div>
     </section>

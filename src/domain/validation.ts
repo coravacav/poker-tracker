@@ -20,7 +20,7 @@ export function validateTransaction(
   }
 
   if (transaction.type === "bank_buy_in" && !transaction.toPlayerId) {
-    return "Choose the player receiving the buy-in.";
+    return "Choose the player receiving chips.";
   }
 
   if (
@@ -28,11 +28,11 @@ export function validateTransaction(
     transaction.toPlayerId &&
     !playerIds.has(transaction.toPlayerId)
   ) {
-    return "The buy-in player does not exist.";
+    return "The chip buy-in player does not exist.";
   }
 
   if (transaction.type === "bank_cash_out" && !transaction.fromPlayerId) {
-    return "Choose the player cashing out.";
+    return "Choose the player returning chips.";
   }
 
   if (
@@ -40,7 +40,7 @@ export function validateTransaction(
     transaction.fromPlayerId &&
     !playerIds.has(transaction.fromPlayerId)
   ) {
-    return "The cash-out player does not exist.";
+    return "The chip cash-out player does not exist.";
   }
 
   if (transaction.type === "player_transfer") {
@@ -62,7 +62,7 @@ export function validateTransaction(
     transaction.bankDirection !== "incoming" &&
     transaction.bankDirection !== "outgoing"
   ) {
-    return "Choose whether the bank adjustment is incoming or outgoing.";
+    return "Choose whether the chip adjustment is issued or returned.";
   }
 
   if (

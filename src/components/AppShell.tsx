@@ -34,7 +34,7 @@ export function AppShell({
           {table}
         </section>
 
-        <aside className="side-zone" aria-label="Players and bank">
+        <aside className="side-zone" aria-label="Players and chip pool">
           {bank}
           {players}
         </aside>

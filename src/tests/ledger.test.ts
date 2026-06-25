@@ -12,7 +12,7 @@ const players: Player[] = [
 ];
 
 describe("ledger", () => {
-  it("tracks bank buy-ins, cash-outs, player transfers, and voids", () => {
+  it("tracks chip buy-ins, chip returns, player transfers, and voids", () => {
     const transactions: Transaction[] = [
       {
         id: "t1",
@@ -63,7 +63,7 @@ describe("ledger", () => {
     expect(calculateLedgerImbalanceCents(summaries, bank)).toBe(0);
   });
 
-  it("keeps manual bank adjustments visible as imbalance", () => {
+  it("keeps manual chip adjustments visible as imbalance", () => {
     const transactions: Transaction[] = [
       {
         id: "adjustment",

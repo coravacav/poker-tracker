@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PlayerLedgerSummary } from "../domain/pokerTypes";
 import {
-  buildBankSettlement,
   buildMinimizedSettlement,
   filterSettlementSummariesForDisplay
 } from "../domain/settlement";
@@ -40,26 +39,6 @@ describe("settlement", () => {
       { fromPlayerId: "alex", toPlayerId: "casey", amountCents: 2500 },
       { fromPlayerId: "alex", toPlayerId: "drew", amountCents: 500 },
       { fromPlayerId: "blair", toPlayerId: "drew", amountCents: 1000 }
-    ]);
-  });
-
-  it("builds bank settlement directions", () => {
-    expect(buildBankSettlement([summary("a", -500), summary("b", 700), summary("c", 0)])).toEqual([
-      {
-        playerId: "a",
-        direction: "player_pays_bank",
-        amountCents: 500
-      },
-      {
-        playerId: "b",
-        direction: "bank_pays_player",
-        amountCents: 700
-      },
-      {
-        playerId: "c",
-        direction: "settled",
-        amountCents: 0
-      }
     ]);
   });
 

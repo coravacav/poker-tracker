@@ -58,7 +58,7 @@ export function CashOutPanel({
     const amountCents = parseMoneyToCents(rawAmount);
 
     if (amountCents === null) {
-      setError(`Enter a valid cash-out amount for ${player.name}.`);
+      setError(`Enter a valid final chip value for ${player.name}.`);
       return;
     }
 
@@ -69,7 +69,7 @@ export function CashOutPanel({
         createdAt: new Date().toISOString(),
         amountCents,
         fromPlayerId: player.id,
-        note: "End-of-night cash-out"
+        note: "End-of-night chip count"
       })
     ) {
       setCashOutInputs((current) => ({
@@ -85,7 +85,7 @@ export function CashOutPanel({
       <div className="panel-heading">
         <div>
           <p className="eyebrow">End of night</p>
-          <h2>Cash Out</h2>
+          <h2>Chip Counts</h2>
         </div>
         <BadgeDollarSign size={20} />
       </div>
@@ -93,10 +93,10 @@ export function CashOutPanel({
       {missingCashOuts.length > 0 ? (
         <div className="notice notice-warning">
           <TriangleAlert size={16} />
-          Missing cash-outs: {missingCashOuts.map((player) => player.name).join(", ")}
+          Missing chip counts: {missingCashOuts.map((player) => player.name).join(", ")}
         </div>
       ) : (
-        <div className="notice notice-ok">No active player cash-outs are missing.</div>
+        <div className="notice notice-ok">No active player chip counts are missing.</div>
       )}
 
       <div className="cashout-grid">
@@ -130,7 +130,7 @@ export function CashOutPanel({
                 </div>
               </dl>
               <label>
-                <span>Cash-out</span>
+                <span>Final chips</span>
                 <input
                   disabled={readOnly}
                   inputMode="decimal"

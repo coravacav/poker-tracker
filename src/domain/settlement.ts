@@ -4,40 +4,6 @@ import type {
   SettlementPayment
 } from "./pokerTypes";
 
-export type BankSettlementLine = {
-  playerId: string;
-  direction: "bank_pays_player" | "player_pays_bank" | "settled";
-  amountCents: number;
-};
-
-export function buildBankSettlement(
-  summaries: PlayerLedgerSummary[]
-): BankSettlementLine[] {
-  return summaries.map((summary) => {
-    if (summary.netCents > 0) {
-      return {
-        playerId: summary.playerId,
-        direction: "bank_pays_player",
-        amountCents: summary.netCents
-      };
-    }
-
-    if (summary.netCents < 0) {
-      return {
-        playerId: summary.playerId,
-        direction: "player_pays_bank",
-        amountCents: Math.abs(summary.netCents)
-      };
-    }
-
-    return {
-      playerId: summary.playerId,
-      direction: "settled",
-      amountCents: 0
-    };
-  });
-}
-
 export function buildMinimizedSettlement(
   summaries: PlayerLedgerSummary[]
 ): SettlementPayment[] {
