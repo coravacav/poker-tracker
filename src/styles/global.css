@@ -897,8 +897,35 @@ dd {
   gap: 12px;
 }
 
-.settlement-layout h3 {
+.settlement-layout > div > h3 {
   margin-bottom: 8px;
+}
+
+.settlement-section-heading {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-bottom: 8px;
+}
+
+.settlement-section-heading h3 {
+  margin: 0;
+}
+
+.settlement-section-heading p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.settlement-section-heading .text-button {
+  min-height: 34px;
+  padding: 6px 9px;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .settlement-list {
@@ -922,8 +949,29 @@ dd {
   justify-content: flex-start;
 }
 
+.payment-line input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+  accent-color: var(--green);
+  flex: 0 0 auto;
+}
+
 .payment-line strong {
   margin-left: auto;
+}
+
+.payment-line.is-settled {
+  color: var(--muted);
+  background: var(--green-soft);
+}
+
+.payment-line.is-settled span {
+  text-decoration: line-through;
+}
+
+.payment-line.is-settled strong {
+  color: var(--green);
 }
 
 .settlement-footer {
