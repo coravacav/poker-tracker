@@ -8,7 +8,7 @@ import {
   useSensors
 } from "@dnd-kit/core";
 import { X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Dispatch } from "react";
 import { centsToInputValue, formatCurrency, parseMoneyToCents } from "../domain/money";
 import type {
@@ -67,6 +67,7 @@ const SHAPES: Array<{ shape: TableShape; label: string }> = [
   { shape: "oval", label: "Oval" },
   { shape: "round", label: "Round" }
 ];
+const CARD_REARRANGE_ANIMATION_MS = 240;
 
 function positionFor(slot: TableSeatSlot): CSSProperties {
   return {
@@ -85,6 +86,7 @@ type SeatSlotProps = {
   onBuyIn: (player: Player) => void;
   onCashOut: (player: Player) => void;
   onEdit: (player: Player) => void;
+  onSeatElementChange: (playerId: PlayerId, element: HTMLElement | null) => void;
   onStartTransfer: (fromPlayer: Player) => void;
 };
 
@@ -98,6 +100,7 @@ function SeatSlot({
   onBuyIn,
   onCashOut,
   onEdit,
+  onSeatElementChange,
   onStartTransfer
 }: SeatSlotProps) {
   const drop = useDroppable({
@@ -120,6 +123,7 @@ function SeatSlot({
           onBuyIn={onBuyIn}
           onCashOut={onCashOut}
           onEdit={onEdit}
+          onSeatElementChange={onSeatElementChange}
           onStartTransfer={onStartTransfer}
         />
       ) : (
@@ -213,6 +217,9 @@ export function PokerTable({
   const [activeDragType, setActiveDragType] = useState<
     "seat" | "bucket" | "table-seat" | null
   >(null);
+  const playerSeatElementsRef = useRef(new Map<PlayerId, HTMLElement>());
+  const previousPlayerRectsRef = useRef(new Map<PlayerId, DOMRect>());
+  const cardAnimationsRef = useRef(new Map<PlayerId, Animation>());
 
   const seatSlots = useMemo(
     () => getSeatSlots(tableShape, tableSeatPlacements),
@@ -231,6 +238,90 @@ export function PokerTable({
       new Map(activePlayers.map((player) => [player.seatIndex, player] as const)),
     [activePlayers]
   );
+
+  const setPlayerSeatElement = useCallback(
+    (playerId: PlayerId, element: HTMLElement | null) => {
+      if (element) {
+        playerSeatElementsRef.current.set(playerId, element);
+        return;
+      }
+
+      playerSeatElementsRef.current.delete(playerId);
+    },
+    []
+  );
+
+  function snapshotPlayerSeatRects() {
+    previousPlayerRectsRef.current = new Map(
+      Array.from(playerSeatElementsRef.current.entries()).map(([playerId, element]) => [
+        playerId,
+        element.getBoundingClientRect()
+      ])
+    );
+  }
+
+  useLayoutEffect(() => {
+    const previousRects = previousPlayerRectsRef.current;
+
+    if (previousRects.size === 0) {
+      return;
+    }
+
+    previousPlayerRectsRef.current = new Map();
+
+    const reduceMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduceMotion) {
+      return;
+    }
+
+    for (const player of activePlayers) {
+      const element = playerSeatElementsRef.current.get(player.id);
+      const previousRect = previousRects.get(player.id);
+
+      if (!element || !previousRect || typeof element.animate !== "function") {
+        continue;
+      }
+
+      const currentRect = element.getBoundingClientRect();
+      const deltaX = previousRect.left - currentRect.left;
+      const deltaY = previousRect.top - currentRect.top;
+
+      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) {
+        continue;
+      }
+
+      cardAnimationsRef.current.get(player.id)?.cancel();
+      element.classList.add("is-rearranging");
+
+      const animation = element.animate(
+        [
+          { transform: `translate(${deltaX}px, ${deltaY}px)` },
+          { transform: "translate(0, 0)" }
+        ],
+        {
+          duration: CARD_REARRANGE_ANIMATION_MS,
+          easing: "cubic-bezier(0.2, 0.8, 0.2, 1)"
+        }
+      );
+
+      cardAnimationsRef.current.set(player.id, animation);
+
+      const clearAnimation = () => {
+        if (cardAnimationsRef.current.get(player.id) !== animation) {
+          return;
+        }
+
+        cardAnimationsRef.current.delete(player.id);
+        element.classList.remove("is-rearranging");
+      };
+
+      animation.addEventListener("finish", clearAnimation);
+      animation.addEventListener("cancel", clearAnimation);
+    }
+  }, [activePlayers]);
 
   function playerName(playerId: PlayerId): string {
     return activePlayers.find((player) => player.id === playerId)?.name ?? "Unknown player";
@@ -307,6 +398,13 @@ export function PokerTable({
     }
 
     if (dragType === "seat") {
+      const movingPlayer = activePlayers.find((player) => player.id === draggedId);
+
+      if (!movingPlayer || movingPlayer.seatIndex === targetSeatIndex) {
+        return;
+      }
+
+      snapshotPlayerSeatRects();
       dispatch({
         type: "move_player_to_seat",
         playerId: draggedId,
@@ -517,6 +615,7 @@ export function PokerTable({
                 onBuyIn={quickBuyIn}
                 onCashOut={quickCashOut}
                 onEdit={editPlayerName}
+                onSeatElementChange={setPlayerSeatElement}
                 onStartTransfer={(fromPlayer) => openTransfer(fromPlayer.id)}
               />
             );

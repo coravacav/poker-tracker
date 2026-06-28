@@ -17,6 +17,11 @@ describe("App", () => {
       "true"
     );
     expect(screen.getByRole("button", { name: "Settle" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("navigation", { name: "Poker tracker modes" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent)
+    ).toEqual(["Edit layout", "Setup", "Play", "Settle"]);
 
     expect(screen.getByRole("heading", { name: "Table Layout" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit layout" })).toBeInTheDocument();

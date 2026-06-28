@@ -38,22 +38,11 @@ export function AppShell({
           <p className="eyebrow">Local ledger</p>
           <h1>Poker Tracker</h1>
         </div>
-        <nav className="mode-tabs" aria-label="Poker tracker modes">
-          {modeLabels.map((option) => (
-            <button
-              key={option.mode}
-              type="button"
-              className={mode === option.mode ? "is-active" : ""}
-              aria-pressed={mode === option.mode}
-              onClick={() => onModeChange(option.mode)}
-            >
-              {option.label}
-            </button>
-          ))}
+        <nav className="app-nav" aria-label="Poker tracker modes">
           {mode === "play" ? (
             <button
               type="button"
-              className={layoutEditing ? "is-active" : ""}
+              className={`layout-edit-nav-button ${layoutEditing ? "is-active" : ""}`}
               aria-pressed={layoutEditing}
               disabled={layoutEditingDisabled}
               onClick={() => onLayoutEditingChange(!layoutEditing)}
@@ -61,6 +50,19 @@ export function AppShell({
               Edit layout
             </button>
           ) : null}
+          <div className="mode-tabs">
+            {modeLabels.map((option) => (
+              <button
+                key={option.mode}
+                type="button"
+                className={mode === option.mode ? "is-active" : ""}
+                aria-pressed={mode === option.mode}
+                onClick={() => onModeChange(option.mode)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </nav>
       </header>
 

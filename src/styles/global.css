@@ -143,6 +143,36 @@ td {
   backdrop-filter: blur(10px);
 }
 
+.app-nav {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.layout-edit-nav-button {
+  min-width: 116px;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: var(--ink);
+  background: var(--surface);
+  font-weight: 800;
+}
+
+.layout-edit-nav-button.is-active {
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.layout-edit-nav-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .mode-tabs {
   display: inline-flex;
   gap: 4px;
@@ -533,6 +563,10 @@ label span {
   position: absolute;
   width: clamp(128px, 13vw, 156px);
   transform: translate(-50%, -50%);
+  transition:
+    left 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    top 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: left, top;
   z-index: 2;
 }
 
@@ -574,6 +608,13 @@ label span {
   padding: 7px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 12px 26px rgba(1, 32, 21, 0.22);
+  will-change: transform;
+}
+
+.player-seat.is-rearranging {
+  position: relative;
+  z-index: 5;
+  pointer-events: none;
 }
 
 .seat-slot.is-over .player-seat,
@@ -1302,15 +1343,33 @@ dd {
 }
 
 @media (max-width: 560px) {
+  .app-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
   .app-main {
     padding: 10px;
   }
 
+  .app-nav {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .layout-edit-nav-button {
+    min-width: 0;
+  }
+
   .mode-tabs {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    flex: 1;
+    min-width: 0;
   }
 
   .mode-tabs button {
+    flex: 1;
+    min-width: 0;
     padding-inline: 8px;
   }
 
@@ -1338,5 +1397,11 @@ dd {
   th,
   td {
     padding: 8px 7px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat-slot {
+    transition: none;
   }
 }

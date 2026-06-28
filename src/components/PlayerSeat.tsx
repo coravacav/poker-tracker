@@ -1,5 +1,6 @@
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
+import { useCallback } from "react";
 import {
   ArrowRightLeft,
   BadgeDollarSign,
@@ -19,6 +20,7 @@ type PlayerSeatProps = {
   onBuyIn: (player: Player) => void;
   onCashOut: (player: Player) => void;
   onEdit: (player: Player) => void;
+  onSeatElementChange?: (playerId: Player["id"], element: HTMLElement | null) => void;
   onStartTransfer: (fromPlayer: Player) => void;
 };
 
@@ -30,6 +32,7 @@ export function PlayerSeat({
   onBuyIn,
   onCashOut,
   onEdit,
+  onSeatElementChange,
   onStartTransfer
 }: PlayerSeatProps) {
   const seatDrag = useDraggable({
@@ -43,10 +46,17 @@ export function PlayerSeat({
 
   const netCents = summary?.netCents ?? 0;
   const netClass = netCents > 0 ? "positive" : netCents < 0 ? "negative" : "neutral";
+  const setSeatNodeRef = useCallback(
+    (element: HTMLElement | null) => {
+      seatDrag.setNodeRef(element);
+      onSeatElementChange?.(player.id, element);
+    },
+    [onSeatElementChange, player.id, seatDrag.setNodeRef]
+  );
 
   return (
     <article
-      ref={seatDrag.setNodeRef}
+      ref={setSeatNodeRef}
       className="player-seat"
       style={{
         transform: CSS.Translate.toString(seatDrag.transform)
