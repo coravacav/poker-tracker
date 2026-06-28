@@ -209,6 +209,14 @@ td {
   min-height: 0;
 }
 
+.play-table-area > .notice {
+  grid-row: 1;
+}
+
+.play-table-area > .poker-table-panel {
+  grid-row: 2;
+}
+
 .play-rail {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
@@ -529,10 +537,10 @@ label span {
 .seat-actions {
   display: flex;
   align-items: center;
-  gap: 5px;
 }
 
 .seat-topline {
+  gap: 5px;
   justify-content: space-between;
   color: var(--muted);
   font-size: 0.72rem;
@@ -540,11 +548,20 @@ label span {
   text-transform: uppercase;
 }
 
-.seat-topline .icon-button,
-.seat-actions .icon-button {
+.seat-actions {
+  gap: 4px;
+}
+
+.seat-topline .icon-button {
   width: 34px;
   min-width: 34px;
   min-height: 34px;
+}
+
+.seat-actions .icon-button {
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
 }
 
 .player-seat h3 {
