@@ -37,7 +37,7 @@ export function PlayerSeat({
 }: PlayerSeatProps) {
   const seatDrag = useDraggable({
     id: layoutEditing ? `table-seat:${player.seatIndex}` : `seat:${player.id}`,
-    disabled: readOnly
+    disabled: readOnly || !layoutEditing
   });
   const bucketDrag = useDraggable({
     id: `bucket:${player.id}`,
@@ -63,17 +63,19 @@ export function PlayerSeat({
       }}
     >
       <div className="seat-topline">
-        <button
-          className="icon-button drag-handle"
-          type="button"
-          disabled={readOnly}
-          title={layoutEditing ? "Drag to move physical seat" : "Drag to move player"}
-          ref={seatDrag.setActivatorNodeRef}
-          {...seatDrag.attributes}
-          {...seatDrag.listeners}
-        >
-          <Move size={15} />
-        </button>
+        {layoutEditing ? (
+          <button
+            className="icon-button drag-handle"
+            type="button"
+            disabled={readOnly}
+            title="Drag to move physical seat"
+            ref={seatDrag.setActivatorNodeRef}
+            {...seatDrag.attributes}
+            {...seatDrag.listeners}
+          >
+            <Move size={15} />
+          </button>
+        ) : null}
         <span>Seat {player.seatIndex + 1}</span>
         <button
           className="icon-button"

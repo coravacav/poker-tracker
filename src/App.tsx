@@ -155,7 +155,7 @@ export function App() {
                 imbalanceCents={imbalanceCents}
                 variant="compact"
               />
-              <IconKey />
+              <IconKey layoutEditing={layoutEditing} />
               <button
                 className="primary-button rail-action"
                 type="button"

@@ -16,7 +16,15 @@ const items = [
   { label: "Drag transfer", icon: CircleDollarSign }
 ];
 
-export function IconKey() {
+type IconKeyProps = {
+  layoutEditing: boolean;
+};
+
+export function IconKey({ layoutEditing }: IconKeyProps) {
+  const visibleItems = layoutEditing
+    ? items
+    : items.filter((item) => item.label !== "Move seat");
+
   return (
     <section className="panel icon-key" aria-label="Card icon key">
       <div className="panel-heading compact-heading">
@@ -26,7 +34,7 @@ export function IconKey() {
         </div>
       </div>
       <dl>
-        {items.map(({ label, icon: Icon }) => (
+        {visibleItems.map(({ label, icon: Icon }) => (
           <div key={label}>
             <dt>
               <Icon size={16} aria-hidden="true" />

@@ -28,11 +28,12 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Rectangle" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Oval" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Round" })).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Drag to move physical seat")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Drag to move player")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Chip Pool" })).toBeInTheDocument();
 
     const iconKey = screen.getByLabelText("Card icon key");
     for (const label of [
-      "Move seat",
       "Rename",
       "Buy-in",
       "Transfer",
@@ -41,6 +42,7 @@ describe("App", () => {
     ]) {
       expect(within(iconKey).getByText(label)).toBeInTheDocument();
     }
+    expect(within(iconKey).queryByText("Move seat")).not.toBeInTheDocument();
 
     expect(screen.queryByRole("heading", { name: "Add Transaction" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Transaction Audit" })).not.toBeInTheDocument();
@@ -68,6 +70,9 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit layout" }));
 
+    expect(screen.getAllByTitle("Drag to move physical seat").length).toBeGreaterThan(0);
+    expect(within(screen.getByLabelText("Card icon key")).getByText("Move seat"))
+      .toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Rectangle" })).toHaveAttribute(
       "aria-pressed",
       "true"
