@@ -2,7 +2,7 @@ import { Plus, ShieldCheck, ShieldOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Dispatch } from "react";
 import { centsToInputValue, parseMoneyToCents } from "../domain/money";
-import type { GameState, TableSeatLayout } from "../domain/pokerTypes";
+import type { GameState } from "../domain/pokerTypes";
 import type { GameAction } from "../state/gameReducer";
 import { ExportImportControls } from "./ExportImportControls";
 
@@ -80,7 +80,6 @@ export function TableSetupPanel({
           <span>Players</span>
           <input
             min={1}
-            max={12}
             type="number"
             value={activePlayerCount}
             onChange={(event) => {
@@ -93,40 +92,6 @@ export function TableSetupPanel({
             }}
           />
         </label>
-
-        <label className="compact-field layout-field">
-          <span>Layout</span>
-          <select
-            value={state.settings.tableSeatLayout ?? "top_bottom"}
-            onChange={(event) =>
-              dispatch({
-                type: "set_table_seat_layout",
-                layout: event.currentTarget.value as TableSeatLayout
-              })
-            }
-          >
-            <option value="top_bottom">Oval - top/bottom</option>
-            <option value="left_right">Oval - left/right</option>
-            <option value="rectangle">Rectangle</option>
-            <option value="round">Round</option>
-          </select>
-        </label>
-
-        {state.settings.tableSeatLayout === "rectangle" ? (
-          <label className="compact-toggle">
-            <input
-              type="checkbox"
-              checked={state.settings.tableIncludeCornerSeats ?? true}
-              onChange={(event) =>
-                dispatch({
-                  type: "set_table_include_corner_seats",
-                  includeCornerSeats: event.currentTarget.checked
-                })
-              }
-            />
-            <span>Corners</span>
-          </label>
-        ) : null}
 
         <button
           className="text-button"

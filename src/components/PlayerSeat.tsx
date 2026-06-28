@@ -12,6 +12,7 @@ import { describeSignedMoney } from "../domain/money";
 import type { Player, PlayerLedgerSummary } from "../domain/pokerTypes";
 
 type PlayerSeatProps = {
+  layoutEditing?: boolean;
   player: Player;
   readOnly: boolean;
   summary?: PlayerLedgerSummary;
@@ -22,6 +23,7 @@ type PlayerSeatProps = {
 };
 
 export function PlayerSeat({
+  layoutEditing = false,
   player,
   readOnly,
   summary,
@@ -31,12 +33,12 @@ export function PlayerSeat({
   onStartTransfer
 }: PlayerSeatProps) {
   const seatDrag = useDraggable({
-    id: `seat:${player.id}`,
+    id: layoutEditing ? `table-seat:${player.seatIndex}` : `seat:${player.id}`,
     disabled: readOnly
   });
   const bucketDrag = useDraggable({
     id: `bucket:${player.id}`,
-    disabled: readOnly
+    disabled: readOnly || layoutEditing
   });
 
   const netCents = summary?.netCents ?? 0;
@@ -55,7 +57,7 @@ export function PlayerSeat({
           className="icon-button drag-handle"
           type="button"
           disabled={readOnly}
-          title="Drag to move seat"
+          title={layoutEditing ? "Drag to move physical seat" : "Drag to move player"}
           ref={seatDrag.setActivatorNodeRef}
           {...seatDrag.attributes}
           {...seatDrag.listeners}
@@ -66,7 +68,7 @@ export function PlayerSeat({
         <button
           className="icon-button"
           type="button"
-          disabled={readOnly}
+          disabled={readOnly || layoutEditing}
           title="Rename player"
           onClick={() => onEdit(player)}
         >
@@ -81,7 +83,7 @@ export function PlayerSeat({
         <button
           className="icon-button"
           type="button"
-          disabled={readOnly}
+          disabled={readOnly || layoutEditing}
           title="Record default buy-in"
           onClick={() => onBuyIn(player)}
         >
@@ -90,7 +92,7 @@ export function PlayerSeat({
         <button
           className="icon-button"
           type="button"
-          disabled={readOnly}
+          disabled={readOnly || layoutEditing}
           title="Start player transfer"
           onClick={() => onStartTransfer(player)}
         >
@@ -99,7 +101,7 @@ export function PlayerSeat({
         <button
           className="icon-button"
           type="button"
-          disabled={readOnly}
+          disabled={readOnly || layoutEditing}
           title="Record final chips"
           onClick={() => onCashOut(player)}
         >

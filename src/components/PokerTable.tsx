@@ -15,11 +15,17 @@ import type {
   Player,
   PlayerId,
   PlayerLedgerSummary,
-  TableSeatLayout,
+  SeatRail,
+  TableSeatPlacement,
+  TableShape,
   TransactionCategory,
   Transaction
 } from "../domain/pokerTypes";
-import { getSeatSlots, type TableSeatSlot } from "../domain/tableLayout";
+import {
+  getSeatSlots,
+  getTableLayoutMetrics,
+  type TableSeatSlot
+} from "../domain/tableLayout";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
 import { PlayerSeat } from "./PlayerSeat";
@@ -31,8 +37,8 @@ type PokerTableProps = {
   dispatch: Dispatch<GameAction>;
   onAddTransaction: (transaction: Transaction) => boolean;
   readOnly: boolean;
-  seatLayout: TableSeatLayout;
-  tableIncludeCornerSeats: boolean;
+  tableSeatPlacements: TableSeatPlacement[];
+  tableShape: TableShape;
   summaryByPlayerId: Map<PlayerId, PlayerLedgerSummary>;
 };
 
@@ -54,6 +60,13 @@ type RenameDraft = {
   nameInput: string;
 };
 
+const RAILS: SeatRail[] = ["top", "right", "bottom", "left"];
+const SHAPES: Array<{ shape: TableShape; label: string }> = [
+  { shape: "rectangle", label: "Rectangle" },
+  { shape: "oval", label: "Oval" },
+  { shape: "round", label: "Round" }
+];
+
 function positionFor(slot: TableSeatSlot): CSSProperties {
   return {
     left: `${slot.leftPercent}%`,
@@ -62,6 +75,7 @@ function positionFor(slot: TableSeatSlot): CSSProperties {
 }
 
 type SeatSlotProps = {
+  layoutEditing: boolean;
   isSeatDragging: boolean;
   player?: Player;
   readOnly: boolean;
@@ -74,6 +88,7 @@ type SeatSlotProps = {
 };
 
 function SeatSlot({
+  layoutEditing,
   isSeatDragging,
   player,
   readOnly,
@@ -86,7 +101,7 @@ function SeatSlot({
 }: SeatSlotProps) {
   const drop = useDroppable({
     id: `seat-slot:${slot.seatIndex}`,
-    disabled: readOnly
+    disabled: readOnly || layoutEditing
   });
 
   return (
@@ -97,6 +112,7 @@ function SeatSlot({
     >
       {player ? (
         <PlayerSeat
+          layoutEditing={layoutEditing}
           player={player}
           readOnly={readOnly}
           summary={summary}
@@ -118,14 +134,67 @@ function SeatSlot({
   );
 }
 
+type InsertionTarget = {
+  id: string;
+  rail: SeatRail;
+  order: number;
+  leftPercent: number;
+  topPercent: number;
+};
+
+type LayoutInsertionTargetProps = {
+  target: InsertionTarget;
+};
+
+function LayoutInsertionTarget({ target }: LayoutInsertionTargetProps) {
+  const drop = useDroppable({ id: target.id });
+
+  return (
+    <button
+      ref={drop.setNodeRef}
+      className={`layout-drop-target layout-drop-${target.rail} ${
+        drop.isOver ? "is-over" : ""
+      }`}
+      style={{
+        left: `${target.leftPercent}%`,
+        top: `${target.topPercent}%`
+      }}
+      type="button"
+      aria-label={`Move seat to ${target.rail} position ${target.order + 1}`}
+    />
+  );
+}
+
+function buildInsertionTargets(
+  tableShape: TableShape,
+  placements: TableSeatPlacement[]
+): InsertionTarget[] {
+  return RAILS.flatMap((rail) => {
+    const count = placements.filter((placement) => placement.rail === rail).length;
+    const targetPlacements = Array.from({ length: count + 1 }, (_, order) => ({
+      seatIndex: -1 - order,
+      rail,
+      order
+    }));
+
+    return getSeatSlots(tableShape, targetPlacements).map((slot) => ({
+      id: `layout-target:${rail}:${slot.order}`,
+      rail,
+      order: slot.order,
+      leftPercent: slot.leftPercent,
+      topPercent: slot.topPercent
+    }));
+  });
+}
+
 export function PokerTable({
   activePlayers,
   defaultBuyInCents,
   dispatch,
   onAddTransaction,
   readOnly,
-  seatLayout,
-  tableIncludeCornerSeats,
+  tableSeatPlacements,
+  tableShape,
   summaryByPlayerId
 }: PokerTableProps) {
   const sensors = useSensors(
@@ -139,16 +208,22 @@ export function PokerTable({
   const [cashOutError, setCashOutError] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
-  const [activeDragType, setActiveDragType] = useState<"seat" | "bucket" | null>(
-    null
-  );
+  const [layoutEditing, setLayoutEditing] = useState(false);
+  const [activeDragType, setActiveDragType] = useState<
+    "seat" | "bucket" | "table-seat" | null
+  >(null);
 
   const seatSlots = useMemo(
-    () =>
-      getSeatSlots(seatLayout, activePlayers.length, {
-        includeCornerSeats: tableIncludeCornerSeats
-      }),
-    [activePlayers.length, seatLayout, tableIncludeCornerSeats]
+    () => getSeatSlots(tableShape, tableSeatPlacements),
+    [tableSeatPlacements, tableShape]
+  );
+  const layoutMetrics = useMemo(
+    () => getTableLayoutMetrics(tableSeatPlacements),
+    [tableSeatPlacements]
+  );
+  const insertionTargets = useMemo(
+    () => buildInsertionTargets(tableShape, tableSeatPlacements),
+    [tableSeatPlacements, tableShape]
   );
   const playerBySeatIndex = useMemo(
     () =>
@@ -178,8 +253,12 @@ export function PokerTable({
 
   function handleDragStart(event: DragStartEvent) {
     const activeId = String(event.active.id);
-    const [, dragType] = activeId.match(/^(seat|bucket):(.+)$/) ?? [];
-    setActiveDragType(dragType === "seat" || dragType === "bucket" ? dragType : null);
+    const [, dragType] = activeId.match(/^(seat|bucket|table-seat):(.+)$/) ?? [];
+    setActiveDragType(
+      dragType === "seat" || dragType === "bucket" || dragType === "table-seat"
+        ? dragType
+        : null
+    );
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -191,28 +270,51 @@ export function PokerTable({
 
     const activeId = String(event.active.id);
     const overId = String(event.over.id);
+    const [, dragType, draggedId] = activeId.match(/^(seat|bucket|table-seat):(.+)$/) ?? [];
+
+    if (dragType === "table-seat") {
+      if (!layoutEditing || !overId.startsWith("layout-target:")) {
+        return;
+      }
+
+      const [, rail, order] = overId.match(/^layout-target:(top|right|bottom|left):(\d+)$/) ?? [];
+      const seatIndex = Number.parseInt(draggedId, 10);
+      const targetOrder = Number.parseInt(order, 10);
+
+      if (!rail || Number.isNaN(seatIndex) || Number.isNaN(targetOrder)) {
+        return;
+      }
+
+      dispatch({
+        type: "move_table_seat",
+        seatIndex,
+        rail: rail as SeatRail,
+        order: targetOrder
+      });
+      return;
+    }
+
     if (!overId.startsWith("seat-slot:")) {
       return;
     }
 
-    const [, dragType, draggedPlayerId] = activeId.match(/^(seat|bucket):(.+)$/) ?? [];
     const targetSeatIndex = Number.parseInt(overId.replace("seat-slot:", ""), 10);
     const targetPlayer = playerBySeatIndex.get(targetSeatIndex);
 
-    if (!dragType || !draggedPlayerId || Number.isNaN(targetSeatIndex)) {
+    if (!dragType || !draggedId || Number.isNaN(targetSeatIndex)) {
       return;
     }
 
     if (dragType === "seat") {
       dispatch({
         type: "move_player_to_seat",
-        playerId: draggedPlayerId,
+        playerId: draggedId,
         seatIndex: targetSeatIndex
       });
     }
 
-    if (dragType === "bucket" && targetPlayer && draggedPlayerId !== targetPlayer.id) {
-      openTransfer(draggedPlayerId, targetPlayer.id);
+    if (dragType === "bucket" && targetPlayer && draggedId !== targetPlayer.id) {
+      openTransfer(draggedId, targetPlayer.id);
     }
   }
 
@@ -333,14 +435,15 @@ export function PokerTable({
     ? summaryByPlayerId.get(transferDraft.toPlayerId)?.netCents ?? 0
     : 0;
   const tableShapeClass =
-    seatLayout === "rectangle"
+    tableShape === "rectangle"
       ? "layout-rectangle"
-      : seatLayout === "round"
+      : tableShape === "round"
         ? "layout-round"
         : "layout-oval";
   const tableClassName = [
     "poker-table",
     tableShapeClass,
+    layoutEditing ? "is-layout-editing" : "",
     activeDragType === "seat" ? "is-seat-dragging" : ""
   ]
     .filter(Boolean)
@@ -353,9 +456,33 @@ export function PokerTable({
           <p className="eyebrow">Drag seats to rearrange</p>
           <h2>Table Layout</h2>
         </div>
-        <span className="default-buy-in">
-          Default buy-in {formatCurrency(defaultBuyInCents)}
-        </span>
+        <div className="table-toolbar-controls">
+          <div className="shape-segments" aria-label="Table shape">
+            {SHAPES.map(({ shape, label }) => (
+              <button
+                key={shape}
+                type="button"
+                aria-pressed={tableShape === shape}
+                disabled={readOnly}
+                onClick={() => dispatch({ type: "set_table_shape", shape })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            className="text-button"
+            type="button"
+            aria-pressed={layoutEditing}
+            disabled={readOnly}
+            onClick={() => setLayoutEditing(!layoutEditing)}
+          >
+            Edit layout
+          </button>
+          <span className="default-buy-in">
+            Default buy-in {formatCurrency(defaultBuyInCents)}
+          </span>
+        </div>
       </div>
 
       <DndContext
@@ -364,17 +491,30 @@ export function PokerTable({
         onDragCancel={() => setActiveDragType(null)}
         onDragEnd={handleDragEnd}
       >
-        <div className={tableClassName} aria-label="Poker seating">
+        <div
+          className={tableClassName}
+          aria-label="Poker seating"
+          style={{
+            minWidth: `${layoutMetrics.minWidthPx}px`,
+            minHeight: `${layoutMetrics.minHeightPx}px`
+          }}
+        >
           <div className="felt-center">
             <span>{activePlayers.length}</span>
             <small>players</small>
           </div>
+          {layoutEditing
+            ? insertionTargets.map((target) => (
+                <LayoutInsertionTarget key={target.id} target={target} />
+              ))
+            : null}
           {seatSlots.map((slot) => {
             const player = playerBySeatIndex.get(slot.seatIndex);
 
             return (
               <SeatSlot
                 key={slot.seatIndex}
+                layoutEditing={layoutEditing}
                 isSeatDragging={activeDragType === "seat"}
                 player={player}
                 readOnly={readOnly}

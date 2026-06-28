@@ -137,8 +137,8 @@ export function App() {
                 dispatch={dispatch}
                 onAddTransaction={addTransaction}
                 readOnly={readOnly}
-                seatLayout={state.settings.tableSeatLayout ?? "top_bottom"}
-                tableIncludeCornerSeats={state.settings.tableIncludeCornerSeats ?? true}
+                tableSeatPlacements={state.settings.tableSeatPlacements}
+                tableShape={state.settings.tableShape}
                 summaryByPlayerId={summaryByPlayerId}
               />
             </section>

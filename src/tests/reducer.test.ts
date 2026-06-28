@@ -3,6 +3,21 @@ import { gameReducer } from "../state/gameReducer";
 import { createDefaultGameState } from "../state/seedGame";
 
 describe("gameReducer", () => {
+  it("defaults new games to rectangle dynamic table settings", () => {
+    const state = createDefaultGameState();
+
+    expect(state.schemaVersion).toBe(2);
+    expect(state.settings.tableShape).toBe("rectangle");
+    expect(state.settings.tableSeatPlacements).toEqual([
+      { seatIndex: 0, rail: "top", order: 0 },
+      { seatIndex: 1, rail: "top", order: 1 },
+      { seatIndex: 2, rail: "top", order: 2 },
+      { seatIndex: 3, rail: "bottom", order: 0 },
+      { seatIndex: 4, rail: "bottom", order: 1 },
+      { seatIndex: 5, rail: "bottom", order: 2 }
+    ]);
+  });
+
   it("adds, renames, and reorders players", () => {
     let state = createDefaultGameState();
     state = gameReducer(state, { type: "add_player", name: "Sam" });
@@ -121,7 +136,7 @@ describe("gameReducer", () => {
     expect(state.players.find((candidate) => candidate.id === player.id)?.isActive).toBe(true);
   });
 
-  it("moves a player to an empty physical seat slot", () => {
+  it("ignores player moves to non-existent physical seat slots", () => {
     let state = createDefaultGameState();
     const player = state.players[0];
 
@@ -131,8 +146,7 @@ describe("gameReducer", () => {
       seatIndex: 7
     });
 
-    expect(state.players.find((candidate) => candidate.id === player.id)?.seatIndex).toBe(7);
-    expect(state.players.some((candidate) => candidate.seatIndex === 0)).toBe(false);
+    expect(state.players.find((candidate) => candidate.id === player.id)?.seatIndex).toBe(0);
   });
 
   it("swaps players when moving onto an occupied seat slot", () => {
@@ -149,29 +163,51 @@ describe("gameReducer", () => {
     expect(state.players.find((player) => player.id === secondPlayer.id)?.seatIndex).toBe(0);
   });
 
-  it("adds a player into the lowest empty physical seat slot", () => {
+  it("adds a player into the lowest unused physical seat slot", () => {
     let state = createDefaultGameState();
-    const player = state.players[0];
-
-    state = gameReducer(state, {
-      type: "move_player_to_seat",
-      playerId: player.id,
-      seatIndex: 7
-    });
     state = gameReducer(state, { type: "add_player", name: "Sam" });
 
     const addedPlayer = state.players[state.players.length - 1];
-    expect(addedPlayer.seatIndex).toBe(0);
+    expect(addedPlayer.seatIndex).toBe(6);
+    expect(state.settings.tableSeatPlacements.some((placement) => placement.seatIndex === 6))
+      .toBe(true);
   });
 
-  it("does not add more than twelve active players", () => {
+  it("adds active players beyond twelve", () => {
     let state = createDefaultGameState();
 
     for (let index = 0; index < 8; index += 1) {
       state = gameReducer(state, { type: "add_player" });
     }
 
-    expect(state.players.filter((player) => player.isActive)).toHaveLength(12);
+    expect(state.players.filter((player) => player.isActive)).toHaveLength(14);
+    expect(state.settings.tableSeatPlacements).toHaveLength(14);
+  });
+
+  it("sets player count beyond twelve", () => {
+    let state = createDefaultGameState();
+
+    state = gameReducer(state, { type: "set_player_count", count: 16 });
+
+    expect(state.players.filter((player) => player.isActive)).toHaveLength(16);
+    expect(state.settings.tableSeatPlacements).toHaveLength(16);
+  });
+
+  it("moves physical table seats between rails", () => {
+    let state = createDefaultGameState();
+
+    state = gameReducer(state, {
+      type: "move_table_seat",
+      seatIndex: 1,
+      rail: "right",
+      order: 0
+    });
+
+    expect(state.settings.tableSeatPlacements).toContainEqual({
+      seatIndex: 1,
+      rail: "right",
+      order: 0
+    });
   });
 
   it("preserves valid physical seat indexes when reducing player count", () => {
@@ -198,19 +234,20 @@ describe("gameReducer", () => {
     expect(state.players.find((player) => player.id === protectedPlayer.id)?.seatIndex).toBe(5);
   });
 
-  it("defaults missing corner-seat import settings to enabled", () => {
+  it("migrates v1 imports to v2 shape and dynamic placements", () => {
     const state = createDefaultGameState();
     const importedState = {
-      ...state,
+      schemaVersion: 1,
       players: state.players.map((player, index) => ({
         ...player,
         seatIndex: index === 0 ? 7 : player.seatIndex
       })),
+      transactions: state.transactions,
       settings: {
         gameName: state.settings.gameName,
         currencyCode: state.settings.currencyCode,
         defaultBuyInCents: state.settings.defaultBuyInCents,
-        tableSeatLayout: state.settings.tableSeatLayout,
+        tableSeatLayout: "round",
         createdAt: state.settings.createdAt
       }
     };
@@ -220,7 +257,9 @@ describe("gameReducer", () => {
       state: importedState as any
     });
 
-    expect(nextState.settings.tableIncludeCornerSeats).toBe(true);
+    expect(nextState.schemaVersion).toBe(2);
+    expect(nextState.settings.tableShape).toBe("round");
+    expect(nextState.settings.tableSeatPlacements).toHaveLength(6);
   });
 
   it("flips a player transfer by voiding the original and adding the reversed copy", () => {

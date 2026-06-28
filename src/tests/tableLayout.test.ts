@@ -1,100 +1,85 @@
 import { describe, expect, it } from "vitest";
+import type { TableSeatPlacement } from "../domain/pokerTypes";
 import {
-  getAutoSeatSlotCount,
-  getSeatPositionPercent,
-  getSeatSlots
+  createDefaultSeatPlacements,
+  getSeatSlots,
+  moveSeatPlacement,
+  normalizeSeatPlacements
 } from "../domain/tableLayout";
 
 describe("tableLayout", () => {
-  it("calculates the next even auto seat count with one extra slot", () => {
-    expect(Array.from({ length: 12 }, (_, index) => getAutoSeatSlotCount(index + 1)))
-      .toEqual([2, 4, 4, 6, 6, 8, 8, 10, 10, 12, 12, 12]);
-  });
+  it("defaults six rectangle seats to a top/bottom-heavy arrangement", () => {
+    const placements = createDefaultSeatPlacements(6, "rectangle");
 
-  it("places six-slot top/bottom layout as two top, one right, two bottom, one left", () => {
-    const positions = getSeatSlots("top_bottom", 5, {
-      includeCornerSeats: true
-    });
-
-    expect(positions[0].topPercent).toBeLessThan(25);
-    expect(positions[1].topPercent).toBeLessThan(25);
-    expect(positions[2].leftPercent).toBeGreaterThan(85);
-    expect(positions[2].topPercent).toBeCloseTo(50);
-    expect(positions[3].topPercent).toBeGreaterThan(75);
-    expect(positions[4].topPercent).toBeGreaterThan(75);
-    expect(positions[5].leftPercent).toBeLessThan(15);
-    expect(positions[5].topPercent).toBeCloseTo(50);
-  });
-
-  it("keeps the left/right layout as one top, two right, one bottom, two left", () => {
-    const positions = getSeatSlots("left_right", 5, {
-      includeCornerSeats: true
-    });
-
-    expect(positions[0].topPercent).toBeLessThan(15);
-    expect(positions[1].leftPercent).toBeGreaterThan(80);
-    expect(positions[2].leftPercent).toBeGreaterThan(80);
-    expect(positions[3].topPercent).toBeGreaterThan(85);
-    expect(positions[4].leftPercent).toBeLessThan(20);
-    expect(positions[5].leftPercent).toBeLessThan(20);
-  });
-
-  it("generates rectangle corner slots when corners are enabled", () => {
-    const positions = getSeatSlots("rectangle", 2, {
-      includeCornerSeats: true
-    });
-
-    expect(positions).toEqual([
-      expect.objectContaining({ leftPercent: 9, topPercent: 13 }),
-      expect.objectContaining({ leftPercent: 91, topPercent: 13 }),
-      expect.objectContaining({ leftPercent: 91, topPercent: 87 }),
-      expect.objectContaining({ leftPercent: 9, topPercent: 87 })
+    expect(placements).toEqual([
+      { seatIndex: 0, rail: "top", order: 0 },
+      { seatIndex: 1, rail: "top", order: 1 },
+      { seatIndex: 2, rail: "top", order: 2 },
+      { seatIndex: 3, rail: "bottom", order: 0 },
+      { seatIndex: 4, rail: "bottom", order: 1 },
+      { seatIndex: 5, rail: "bottom", order: 2 }
     ]);
   });
 
-  it("generates rectangle corners and side centers for eight slots", () => {
-    const positions = getSeatSlots("rectangle", 7, {
-      includeCornerSeats: true
-    });
+  it("generates layouts beyond twelve seats", () => {
+    expect(createDefaultSeatPlacements(20, "rectangle")).toHaveLength(20);
+  });
 
-    expect(positions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ leftPercent: 9, topPercent: 13 }),
-        expect.objectContaining({ leftPercent: 91, topPercent: 13 }),
-        expect.objectContaining({ leftPercent: 91, topPercent: 87 }),
-        expect.objectContaining({ leftPercent: 9, topPercent: 87 }),
-        expect.objectContaining({ leftPercent: 91, topPercent: 50 }),
-        expect.objectContaining({ leftPercent: 9, topPercent: 50 })
-      ])
+  it("orders rectangle rails in their physical directions", () => {
+    const placements = createDefaultSeatPlacements(6, "rectangle");
+    const slots = getSeatSlots("rectangle", placements);
+    const topSlots = slots.filter((slot) => slot.rail === "top");
+    const bottomSlots = slots.filter((slot) => slot.rail === "bottom");
+
+    expect(topSlots[0].leftPercent).toBeLessThan(topSlots[1].leftPercent);
+    expect(topSlots[1].leftPercent).toBeLessThan(topSlots[2].leftPercent);
+    expect(bottomSlots[0].leftPercent).toBeGreaterThan(bottomSlots[1].leftPercent);
+    expect(bottomSlots[1].leftPercent).toBeGreaterThan(bottomSlots[2].leftPercent);
+  });
+
+  it("places oval rails as arcs around the felt", () => {
+    const placements: TableSeatPlacement[] = [
+      { seatIndex: 0, rail: "top", order: 0 },
+      { seatIndex: 1, rail: "right", order: 0 },
+      { seatIndex: 2, rail: "bottom", order: 0 },
+      { seatIndex: 3, rail: "left", order: 0 }
+    ];
+    const slots = getSeatSlots("oval", placements);
+
+    expect(slots[0].topPercent).toBeLessThan(20);
+    expect(slots[1].leftPercent).toBeGreaterThan(85);
+    expect(slots[2].topPercent).toBeGreaterThan(80);
+    expect(slots[3].leftPercent).toBeLessThan(15);
+  });
+
+  it("uses an equal x/y radius for round arcs", () => {
+    const [slot] = getSeatSlots("round", [{ seatIndex: 0, rail: "right", order: 0 }]);
+    const radius = Math.hypot(slot.leftPercent - 50, slot.topPercent - 50);
+
+    expect(radius).toBeCloseTo(37);
+  });
+
+  it("moves a physical seat between rails while preserving its seat index", () => {
+    const placements = createDefaultSeatPlacements(4, "rectangle");
+    const moved = moveSeatPlacement(placements, 1, "right", 0);
+
+    expect(moved).toContainEqual({ seatIndex: 1, rail: "right", order: 0 });
+    expect(moved.find((placement) => placement.seatIndex === 1)?.seatIndex).toBe(1);
+  });
+
+  it("normalizes duplicate and missing placements", () => {
+    const normalized = normalizeSeatPlacements(
+      [
+        { seatIndex: 0, rail: "top", order: 0 },
+        { seatIndex: 0, rail: "bottom", order: 0 },
+        { seatIndex: 8, rail: "left", order: 0 }
+      ],
+      [0, 1, 2],
+      "rectangle"
     );
-  });
 
-  it("keeps rectangle slots off corners when corners are disabled", () => {
-    const positions = getSeatSlots("rectangle", 11, {
-      includeCornerSeats: false
-    });
-    const corners = new Set(["9:13", "91:13", "91:87", "9:87"]);
-
-    expect(
-      positions.some((position) =>
-        corners.has(`${position.leftPercent}:${position.topPercent}`)
-      )
-    ).toBe(false);
-  });
-
-  it("uses an equal x/y radius for round tables", () => {
-    const position = getSeatPositionPercent(0, 6, "round");
-    const radius = Math.hypot(position.leftPercent - 50, position.topPercent - 50);
-
-    expect(radius).toBeCloseTo(38);
-  });
-
-  it("offsets even round tables away from exact top and bottom", () => {
-    const positions = getSeatSlots("round", 1, {
-      includeCornerSeats: true
-    });
-
-    expect(positions[0].topPercent).toBeGreaterThan(15);
-    expect(positions[1].topPercent).toBeLessThan(85);
+    expect(normalized.map((placement) => placement.seatIndex).sort((a, b) => a - b))
+      .toEqual([0, 1, 2]);
+    expect(new Set(normalized.map((placement) => placement.seatIndex)).size).toBe(3);
   });
 });

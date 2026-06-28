@@ -1,7 +1,9 @@
 import type {
-  GameState,
-  PersistedGameState,
+  AnyPersistedGameState,
   Player,
+  SeatRail,
+  TableSeatPlacement,
+  TableShape,
   Transaction
 } from "./pokerTypes";
 
@@ -76,26 +78,77 @@ export function validateTransaction(
   return null;
 }
 
-export function validatePersistedState(value: unknown): value is PersistedGameState {
+function isValidTableShape(value: unknown): value is TableShape {
+  return value === "rectangle" || value === "oval" || value === "round";
+}
+
+function isValidSeatRail(value: unknown): value is SeatRail {
+  return value === "top" || value === "right" || value === "bottom" || value === "left";
+}
+
+function isValidSeatPlacement(value: unknown): value is TableSeatPlacement {
   if (!value || typeof value !== "object") {
     return false;
   }
 
-  const candidate = value as Partial<GameState>;
+  const candidate = value as Partial<TableSeatPlacement>;
   return (
+    typeof candidate.seatIndex === "number" &&
+    Number.isInteger(candidate.seatIndex) &&
+    candidate.seatIndex >= 0 &&
+    isValidSeatRail(candidate.rail) &&
+    typeof candidate.order === "number" &&
+    Number.isInteger(candidate.order) &&
+    candidate.order >= 0
+  );
+}
+
+export function validatePersistedState(value: unknown): value is AnyPersistedGameState {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as {
+    schemaVersion?: unknown;
+    settings?: {
+      currencyCode?: unknown;
+      defaultBuyInCents?: unknown;
+      gameName?: unknown;
+      createdAt?: unknown;
+      tableShape?: unknown;
+      tableSeatPlacements?: unknown;
+      tableSeatLayout?: unknown;
+      tableIncludeCornerSeats?: unknown;
+    };
+    players?: unknown;
+    transactions?: unknown;
+  };
+  const isLegacySettings =
     candidate.schemaVersion === 1 &&
     !!candidate.settings &&
-    Array.isArray(candidate.players) &&
-    Array.isArray(candidate.transactions) &&
-    candidate.settings.currencyCode === "USD" &&
-    typeof candidate.settings.defaultBuyInCents === "number" &&
     (candidate.settings.tableSeatLayout === undefined ||
       candidate.settings.tableSeatLayout === "top_bottom" ||
       candidate.settings.tableSeatLayout === "left_right" ||
       candidate.settings.tableSeatLayout === "rectangle" ||
       candidate.settings.tableSeatLayout === "round") &&
     (candidate.settings.tableIncludeCornerSeats === undefined ||
-      typeof candidate.settings.tableIncludeCornerSeats === "boolean") &&
+      typeof candidate.settings.tableIncludeCornerSeats === "boolean");
+  const isCurrentSettings =
+    candidate.schemaVersion === 2 &&
+    isValidTableShape(candidate.settings?.tableShape) &&
+    Array.isArray(candidate.settings?.tableSeatPlacements) &&
+    candidate.settings.tableSeatPlacements.every(isValidSeatPlacement);
+
+  return (
+    (candidate.schemaVersion === 1 || candidate.schemaVersion === 2) &&
+    !!candidate.settings &&
+    Array.isArray(candidate.players) &&
+    Array.isArray(candidate.transactions) &&
+    candidate.settings.currencyCode === "USD" &&
+    typeof candidate.settings.defaultBuyInCents === "number" &&
+    typeof candidate.settings.gameName === "string" &&
+    typeof candidate.settings.createdAt === "string" &&
+    (isLegacySettings || isCurrentSettings) &&
     candidate.players.every(
       (player) =>
         typeof player.id === "string" &&

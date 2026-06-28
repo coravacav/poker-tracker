@@ -1,20 +1,25 @@
 import { hasPlayerTransactions } from "../domain/ledger";
-import { getAutoSeatSlotCount } from "../domain/tableLayout";
+import {
+  moveSeatPlacement,
+  normalizeSeatPlacements
+} from "../domain/tableLayout";
 import type {
+  AnyPersistedGameState,
   GameState,
-  PersistedGameState,
   Player,
   PlayerId,
+  SeatRail,
   Transaction,
   TransactionId
 } from "../domain/pokerTypes";
+import { migratePersistedState } from "./persistence";
 import { createDefaultGameState, createId } from "./seedGame";
 
 export type GameAction =
   | { type: "set_game_name"; name: string }
   | { type: "set_default_buy_in"; amountCents: number }
-  | { type: "set_table_seat_layout"; layout: GameState["settings"]["tableSeatLayout"] }
-  | { type: "set_table_include_corner_seats"; includeCornerSeats: boolean }
+  | { type: "set_table_shape"; shape: GameState["settings"]["tableShape"] }
+  | { type: "move_table_seat"; seatIndex: number; rail: SeatRail; order: number }
   | { type: "move_player_to_seat"; playerId: PlayerId; seatIndex: number }
   | { type: "set_player_count"; count: number }
   | { type: "add_player"; name?: string }
@@ -24,16 +29,13 @@ export type GameAction =
   | { type: "add_transaction"; transaction: Transaction }
   | { type: "flip_transaction"; transactionId: TransactionId }
   | { type: "void_transaction"; transactionId: TransactionId; reason: string }
-  | { type: "replace_state_from_import"; state: PersistedGameState }
+  | { type: "replace_state_from_import"; state: AnyPersistedGameState }
   | { type: "reset_game" };
-
-const MAX_ACTIVE_PLAYERS = 12;
 
 function reconcileSeatIndexes(state: GameState): GameState {
   const activePlayers = [...state.players]
     .filter((player) => player.isActive)
     .sort((a, b) => a.seatIndex - b.seatIndex);
-  const slotCount = getAutoSeatSlotCount(activePlayers.length);
   const usedSeatIndexes = new Set<number>();
   const nextSeatByPlayerId = new Map<PlayerId, number>();
   const playersNeedingSeats: Player[] = [];
@@ -42,7 +44,7 @@ function reconcileSeatIndexes(state: GameState): GameState {
     if (
       Number.isInteger(player.seatIndex) &&
       player.seatIndex >= 0 &&
-      player.seatIndex < slotCount &&
+      player.seatIndex < Number.MAX_SAFE_INTEGER &&
       !usedSeatIndexes.has(player.seatIndex)
     ) {
       usedSeatIndexes.add(player.seatIndex);
@@ -52,23 +54,36 @@ function reconcileSeatIndexes(state: GameState): GameState {
     }
   }
 
-  const availableSeatIndexes = Array.from({ length: slotCount }, (_, index) => index)
-    .filter((index) => !usedSeatIndexes.has(index));
-
   for (const player of playersNeedingSeats) {
-    const nextSeatIndex = availableSeatIndexes.shift();
-    if (nextSeatIndex !== undefined) {
-      nextSeatByPlayerId.set(player.id, nextSeatIndex);
+    let nextSeatIndex = 0;
+    while (usedSeatIndexes.has(nextSeatIndex)) {
+      nextSeatIndex += 1;
     }
+
+    usedSeatIndexes.add(nextSeatIndex);
+    nextSeatByPlayerId.set(player.id, nextSeatIndex);
   }
+
+  const players = state.players.map((player) =>
+    player.isActive
+      ? { ...player, seatIndex: nextSeatByPlayerId.get(player.id) ?? player.seatIndex }
+      : player
+  );
+  const activeSeatIndexes = players
+    .filter((player) => player.isActive)
+    .map((player) => player.seatIndex);
 
   return {
     ...state,
-    players: state.players.map((player) =>
-      player.isActive
-        ? { ...player, seatIndex: nextSeatByPlayerId.get(player.id) ?? player.seatIndex }
-        : player
-    )
+    settings: {
+      ...state.settings,
+      tableSeatPlacements: normalizeSeatPlacements(
+        state.settings.tableSeatPlacements,
+        activeSeatIndexes,
+        state.settings.tableShape
+      )
+    },
+    players
   };
 }
 
@@ -96,31 +111,36 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       };
 
-    case "set_table_seat_layout":
-      return {
+    case "set_table_shape":
+      return reconcileSeatIndexes({
         ...state,
         settings: {
           ...state.settings,
-          tableSeatLayout: action.layout
+          tableShape: action.shape
         }
-      };
+      });
 
-    case "set_table_include_corner_seats":
-      return {
+    case "move_table_seat":
+      return reconcileSeatIndexes({
         ...state,
         settings: {
           ...state.settings,
-          tableIncludeCornerSeats: action.includeCornerSeats
+          tableSeatPlacements: moveSeatPlacement(
+            state.settings.tableSeatPlacements,
+            action.seatIndex,
+            action.rail,
+            action.order
+          )
         }
-      };
+      });
 
     case "move_player_to_seat": {
       const activePlayers = state.players.filter((player) => player.isActive);
-      const slotCount = getAutoSeatSlotCount(activePlayers.length);
+      const activeSeatIndexes = new Set(activePlayers.map((player) => player.seatIndex));
       if (
         !Number.isInteger(action.seatIndex) ||
         action.seatIndex < 0 ||
-        action.seatIndex >= slotCount
+        !activeSeatIndexes.has(action.seatIndex)
       ) {
         return state;
       }
@@ -164,7 +184,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const targetCount = Math.max(
         1,
         protectedPlayerIds.size,
-        Math.min(MAX_ACTIVE_PLAYERS, action.count)
+        action.count
       );
 
       if (targetCount > activePlayers.length) {
@@ -212,10 +232,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case "add_player":
-      if (state.players.filter((player) => player.isActive).length >= MAX_ACTIVE_PLAYERS) {
-        return state;
-      }
-
       return reconcileSeatIndexes({
         ...state,
         players: [
@@ -379,15 +395,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
     case "replace_state_from_import":
-      return reconcileSeatIndexes({
-        ...action.state,
-        settings: {
-          ...action.state.settings,
-          tableSeatLayout: action.state.settings.tableSeatLayout ?? "top_bottom",
-          tableIncludeCornerSeats:
-            action.state.settings.tableIncludeCornerSeats ?? true
-        }
-      });
+      return reconcileSeatIndexes(migratePersistedState(action.state));
 
     case "reset_game":
       return createDefaultGameState();

@@ -1,4 +1,5 @@
 import type { GameState, Player } from "../domain/pokerTypes";
+import { createDefaultSeatPlacements } from "../domain/tableLayout";
 
 export function createId(prefix: string): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -18,17 +19,19 @@ export function createDefaultPlayers(count = 6): Player[] {
 }
 
 export function createDefaultGameState(): GameState {
+  const players = createDefaultPlayers();
+
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     settings: {
       gameName: "Poker Night",
       currencyCode: "USD",
       defaultBuyInCents: 2000,
-      tableSeatLayout: "top_bottom",
-      tableIncludeCornerSeats: true,
+      tableShape: "rectangle",
+      tableSeatPlacements: createDefaultSeatPlacements(players.length, "rectangle"),
       createdAt: new Date().toISOString()
     },
-    players: createDefaultPlayers(),
+    players,
     transactions: []
   };
 }

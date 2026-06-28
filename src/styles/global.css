@@ -316,7 +316,7 @@ label span {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .panel-heading,
@@ -434,6 +434,7 @@ label span {
 .poker-table {
   position: relative;
   min-height: 0;
+  min-width: 720px;
   margin: 8px 12px 12px;
   border: 10px solid #604437;
   border-radius: 999px;
@@ -452,11 +453,46 @@ label span {
 }
 
 .poker-table.layout-round {
-  width: min(590px, calc(100% - 24px), calc(100dvh - 112px));
-  min-height: 0;
   aspect-ratio: 1;
   justify-self: center;
   border-radius: 999px;
+}
+
+.table-toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+}
+
+.shape-segments {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(82px, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.shape-segments button {
+  min-height: 36px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  padding: 6px 10px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.shape-segments button:last-child {
+  border-right: 0;
+}
+
+.shape-segments button[aria-pressed="true"] {
+  color: var(--green);
+  background: var(--green-soft);
 }
 
 .felt-center {
@@ -492,6 +528,38 @@ label span {
   position: absolute;
   width: clamp(128px, 13vw, 156px);
   transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.poker-table.is-layout-editing .player-seat {
+  outline: 2px solid rgba(21, 94, 239, 0.35);
+  outline-offset: 2px;
+}
+
+.layout-drop-target {
+  position: absolute;
+  z-index: 1;
+  width: 42px;
+  height: 42px;
+  transform: translate(-50%, -50%);
+  border: 2px dashed rgba(255, 255, 255, 0.74);
+  border-radius: 999px;
+  padding: 0;
+  background: rgba(21, 94, 239, 0.18);
+}
+
+.layout-drop-target::after {
+  position: absolute;
+  inset: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  content: "";
+}
+
+.layout-drop-target.is-over {
+  border-color: #ffd666;
+  background: rgba(255, 214, 102, 0.34);
+  box-shadow: 0 0 0 5px rgba(255, 214, 102, 0.18);
 }
 
 .player-seat {
@@ -1206,8 +1274,6 @@ dd {
   }
 
   .poker-table.layout-round {
-    width: min(620px, calc(100% - 28px));
-    min-height: 0;
     border-radius: 999px;
   }
 

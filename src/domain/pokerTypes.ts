@@ -13,13 +13,21 @@ export type Player = {
 };
 
 export type TableSeatLayout = "top_bottom" | "left_right" | "rectangle" | "round";
+export type TableShape = "rectangle" | "oval" | "round";
+export type SeatRail = "top" | "right" | "bottom" | "left";
+
+export type TableSeatPlacement = {
+  seatIndex: number;
+  rail: SeatRail;
+  order: number;
+};
 
 export type GameSettings = {
   gameName: string;
   currencyCode: "USD";
   defaultBuyInCents: number;
-  tableSeatLayout: TableSeatLayout;
-  tableIncludeCornerSeats: boolean;
+  tableShape: TableShape;
+  tableSeatPlacements: TableSeatPlacement[];
   createdAt: string;
 };
 
@@ -63,11 +71,28 @@ export type BankSummary = {
 };
 
 export type PersistedGameState = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   settings: GameSettings;
   players: Player[];
   transactions: Transaction[];
 };
+
+export type LegacyGameSettings = Omit<
+  GameSettings,
+  "tableShape" | "tableSeatPlacements"
+> & {
+  tableSeatLayout?: TableSeatLayout;
+  tableIncludeCornerSeats?: boolean;
+};
+
+export type LegacyPersistedGameState = {
+  schemaVersion: 1;
+  settings: LegacyGameSettings;
+  players: Player[];
+  transactions: Transaction[];
+};
+
+export type AnyPersistedGameState = PersistedGameState | LegacyPersistedGameState;
 
 export type GameState = PersistedGameState;
 
