@@ -67,6 +67,17 @@ describe("tableLayout", () => {
     expect(moved.find((placement) => placement.seatIndex === 1)?.seatIndex).toBe(1);
   });
 
+  it("moves a physical seat rightward within the same line", () => {
+    const placements = createDefaultSeatPlacements(6, "rectangle");
+    const moved = moveSeatPlacement(placements, 0, "top", 2);
+    const topSeats = moved
+      .filter((placement) => placement.rail === "top")
+      .sort((a, b) => a.order - b.order)
+      .map((placement) => placement.seatIndex);
+
+    expect(topSeats).toEqual([1, 0, 2]);
+  });
+
   it("normalizes duplicate and missing placements", () => {
     const normalized = normalizeSeatPlacements(
       [

@@ -35,6 +35,7 @@ type PokerTableProps = {
   activePlayers: Player[];
   defaultBuyInCents: number;
   dispatch: Dispatch<GameAction>;
+  layoutEditing: boolean;
   onAddTransaction: (transaction: Transaction) => boolean;
   readOnly: boolean;
   tableSeatPlacements: TableSeatPlacement[];
@@ -191,6 +192,7 @@ export function PokerTable({
   activePlayers,
   defaultBuyInCents,
   dispatch,
+  layoutEditing,
   onAddTransaction,
   readOnly,
   tableSeatPlacements,
@@ -208,7 +210,6 @@ export function PokerTable({
   const [cashOutError, setCashOutError] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
-  const [layoutEditing, setLayoutEditing] = useState(false);
   const [activeDragType, setActiveDragType] = useState<
     "seat" | "bucket" | "table-seat" | null
   >(null);
@@ -457,28 +458,21 @@ export function PokerTable({
           <h2>Table Layout</h2>
         </div>
         <div className="table-toolbar-controls">
-          <div className="shape-segments" aria-label="Table shape">
-            {SHAPES.map(({ shape, label }) => (
-              <button
-                key={shape}
-                type="button"
-                aria-pressed={tableShape === shape}
-                disabled={readOnly}
-                onClick={() => dispatch({ type: "set_table_shape", shape })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button
-            className="text-button"
-            type="button"
-            aria-pressed={layoutEditing}
-            disabled={readOnly}
-            onClick={() => setLayoutEditing(!layoutEditing)}
-          >
-            Edit layout
-          </button>
+          {layoutEditing ? (
+            <div className="shape-segments" aria-label="Table shape">
+              {SHAPES.map(({ shape, label }) => (
+                <button
+                  key={shape}
+                  type="button"
+                  aria-pressed={tableShape === shape}
+                  disabled={readOnly}
+                  onClick={() => dispatch({ type: "set_table_shape", shape })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <span className="default-buy-in">
             Default buy-in {formatCurrency(defaultBuyInCents)}
           </span>

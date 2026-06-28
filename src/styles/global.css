@@ -144,8 +144,7 @@ td {
 }
 
 .mode-tabs {
-  display: inline-grid;
-  grid-template-columns: repeat(3, minmax(86px, 1fr));
+  display: inline-flex;
   gap: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -154,6 +153,7 @@ td {
 }
 
 .mode-tabs button {
+  min-width: 86px;
   min-height: 42px;
   border: 0;
   border-radius: 6px;
@@ -167,6 +167,11 @@ td {
   color: var(--ink);
   background: var(--surface);
   box-shadow: 0 1px 4px rgba(19, 31, 27, 0.12);
+}
+
+.mode-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .app-main {

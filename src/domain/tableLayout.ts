@@ -185,8 +185,15 @@ export function moveSeatPlacement(
   const byRail = groupByRail(
     placements.filter((placement) => placement.seatIndex !== seatIndex)
   );
-  const targetRailPlacements = byRail.get(targetRail) ?? [];
-  const safeOrder = Math.max(0, Math.min(targetOrder, targetRailPlacements.length));
+  const targetRailPlacements = reindexRail(targetRail, byRail.get(targetRail) ?? []);
+  const adjustedTargetOrder =
+    movingPlacement.rail === targetRail && targetOrder > movingPlacement.order
+      ? targetOrder - 1
+      : targetOrder;
+  const safeOrder = Math.max(
+    0,
+    Math.min(adjustedTargetOrder, targetRailPlacements.length)
+  );
 
   targetRailPlacements.splice(safeOrder, 0, {
     seatIndex,

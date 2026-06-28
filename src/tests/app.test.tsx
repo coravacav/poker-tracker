@@ -19,13 +19,10 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Settle" })).toBeInTheDocument();
 
     expect(screen.getByRole("heading", { name: "Table Layout" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Rectangle" })).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
-    expect(screen.getByRole("button", { name: "Oval" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Round" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit layout" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rectangle" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Oval" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Round" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Chip Pool" })).toBeInTheDocument();
 
     const iconKey = screen.getByLabelText("Card icon key");
@@ -56,6 +53,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Game Setup" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Players" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Table Layout" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit layout" })).not.toBeInTheDocument();
     expect(screen.queryByText("Corners")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Layout" })).not.toBeInTheDocument();
   });
@@ -63,13 +61,17 @@ describe("App", () => {
   it("changes shape and shows layout insertion targets in edit mode", () => {
     render(<App />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Edit layout" }));
+
+    expect(screen.getByRole("button", { name: "Rectangle" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
     fireEvent.click(screen.getByRole("button", { name: "Oval" }));
     expect(screen.getByRole("button", { name: "Oval" })).toHaveAttribute(
       "aria-pressed",
       "true"
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit layout" }));
 
     expect(screen.getByRole("button", { name: "Move seat to top position 1" }))
       .toBeInTheDocument();
@@ -85,7 +87,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
 
     expect(screen.getByRole("button", { name: "Edit layout" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Rectangle" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Rectangle" })).not.toBeInTheDocument();
   });
 
   it("switches to Settle mode and opens chip count and audit drawers", () => {
@@ -97,6 +99,7 @@ describe("App", () => {
       "aria-pressed",
       "true"
     );
+    expect(screen.queryByRole("button", { name: "Edit layout" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Settlement" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Player Payments" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Player Net" })).toBeInTheDocument();

@@ -3,7 +3,10 @@ import type { ReactNode } from "react";
 export type AppMode = "setup" | "play" | "settle";
 
 type AppShellProps = {
+  layoutEditing: boolean;
+  layoutEditingDisabled: boolean;
   mode: AppMode;
+  onLayoutEditingChange: (layoutEditing: boolean) => void;
   onModeChange: (mode: AppMode) => void;
   play: ReactNode;
   setup: ReactNode;
@@ -17,7 +20,10 @@ const modeLabels: Array<{ mode: AppMode; label: string }> = [
 ];
 
 export function AppShell({
+  layoutEditing,
+  layoutEditingDisabled,
   mode,
+  onLayoutEditingChange,
   onModeChange,
   play,
   setup,
@@ -44,6 +50,17 @@ export function AppShell({
               {option.label}
             </button>
           ))}
+          {mode === "play" ? (
+            <button
+              type="button"
+              className={layoutEditing ? "is-active" : ""}
+              aria-pressed={layoutEditing}
+              disabled={layoutEditingDisabled}
+              onClick={() => onLayoutEditingChange(!layoutEditing)}
+            >
+              Edit layout
+            </button>
+          ) : null}
         </nav>
       </header>
 

@@ -31,6 +31,7 @@ export function App() {
   const [transactionDrawerOpen, setTransactionDrawerOpen] = useState(false);
   const [chipCountsDrawerOpen, setChipCountsDrawerOpen] = useState(false);
   const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
+  const [layoutEditing, setLayoutEditing] = useState(false);
 
   useEffect(() => {
     saveGameState(state);
@@ -102,12 +103,16 @@ export function App() {
     setTransactionDrawerOpen(false);
     setChipCountsDrawerOpen(false);
     setAuditDrawerOpen(false);
+    setLayoutEditing(false);
   }
 
   return (
     <>
       <AppShell
+        layoutEditing={layoutEditing}
+        layoutEditingDisabled={readOnly}
         mode={mode}
+        onLayoutEditingChange={setLayoutEditing}
         onModeChange={changeMode}
         setup={
           <div className="setup-mode">
@@ -136,6 +141,7 @@ export function App() {
                 defaultBuyInCents={state.settings.defaultBuyInCents}
                 dispatch={dispatch}
                 onAddTransaction={addTransaction}
+                layoutEditing={layoutEditing}
                 readOnly={readOnly}
                 tableSeatPlacements={state.settings.tableSeatPlacements}
                 tableShape={state.settings.tableShape}
