@@ -62,8 +62,8 @@ export function PlayerSeat({
         transform: CSS.Translate.toString(seatDrag.transform)
       }}
     >
-      <div className="seat-topline">
-        {layoutEditing ? (
+      {layoutEditing ? (
+        <div className="seat-topline">
           <button
             className="icon-button drag-handle"
             type="button"
@@ -75,20 +75,33 @@ export function PlayerSeat({
           >
             <Move size={15} />
           </button>
-        ) : null}
-        {layoutEditing ? <span>Seat {player.seatIndex + 1}</span> : null}
-        <button
-          className="icon-button"
-          type="button"
-          disabled={readOnly || layoutEditing}
-          title="Rename player"
-          onClick={() => onEdit(player)}
-        >
-          <Pencil size={14} />
-        </button>
-      </div>
+          <span>Seat {player.seatIndex + 1}</span>
+          <button
+            className="icon-button"
+            type="button"
+            disabled={readOnly || layoutEditing}
+            title="Rename player"
+            onClick={() => onEdit(player)}
+          >
+            <Pencil size={14} />
+          </button>
+        </div>
+      ) : null}
 
-      <h3>{player.name}</h3>
+      <div className="seat-name-row">
+        <h3>{player.name}</h3>
+        {!layoutEditing ? (
+          <button
+            className="icon-button"
+            type="button"
+            disabled={readOnly}
+            title="Rename player"
+            onClick={() => onEdit(player)}
+          >
+            <Pencil size={14} />
+          </button>
+        ) : null}
+      </div>
       <p className={`seat-net ${netClass}`}>{describeSignedMoney(netCents)}</p>
 
       <div className="seat-actions">

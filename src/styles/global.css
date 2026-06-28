@@ -666,14 +666,32 @@ label span {
   gap: 4px;
 }
 
+.seat-name-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.seat-topline + .seat-name-row {
+  margin-top: 6px;
+}
+
 .seat-topline .icon-button {
   width: 34px;
   min-width: 34px;
   min-height: 34px;
 }
 
-.seat-topline .icon-button:last-child {
+.seat-topline .icon-button:last-child,
+.seat-name-row .icon-button {
   margin-left: auto;
+}
+
+.seat-name-row .icon-button {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
 }
 
 .seat-actions .icon-button {
@@ -683,8 +701,9 @@ label span {
 }
 
 .player-seat h3 {
+  flex: 1;
   overflow-wrap: anywhere;
-  margin-top: 6px;
+  margin: 0;
   font-size: 0.95rem;
 }
 
