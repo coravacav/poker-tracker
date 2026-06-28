@@ -76,7 +76,7 @@ export function PlayerSeat({
             <Move size={15} />
           </button>
         ) : null}
-        <span>Seat {player.seatIndex + 1}</span>
+        {layoutEditing ? <span>Seat {player.seatIndex + 1}</span> : null}
         <button
           className="icon-button"
           type="button"

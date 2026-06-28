@@ -672,6 +672,10 @@ label span {
   min-height: 34px;
 }
 
+.seat-topline .icon-button:last-child {
+  margin-left: auto;
+}
+
 .seat-actions .icon-button {
   width: 32px;
   min-width: 32px;

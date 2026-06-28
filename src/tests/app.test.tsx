@@ -30,6 +30,7 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Round" })).not.toBeInTheDocument();
     expect(screen.queryByTitle("Drag to move physical seat")).not.toBeInTheDocument();
     expect(screen.queryByTitle("Drag to move player")).not.toBeInTheDocument();
+    expect(screen.queryByText("Seat 1")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Chip Pool" })).toBeInTheDocument();
 
     const iconKey = screen.getByLabelText("Card icon key");
@@ -71,6 +72,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit layout" }));
 
     expect(screen.getAllByTitle("Drag to move physical seat").length).toBeGreaterThan(0);
+    expect(screen.getByText("Seat 1")).toBeInTheDocument();
     expect(within(screen.getByLabelText("Card icon key")).getByText("Move seat"))
       .toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Rectangle" })).toHaveAttribute(
