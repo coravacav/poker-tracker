@@ -14,6 +14,7 @@ type TransactionTableProps = {
   players: Player[];
   readOnly: boolean;
   transactions: Transaction[];
+  variant?: "table" | "compact";
 };
 
 const typeLabels: Record<TransactionType, string> = {
@@ -32,7 +33,8 @@ export function TransactionTable({
   dispatch,
   players,
   readOnly,
-  transactions
+  transactions,
+  variant = "table"
 }: TransactionTableProps) {
   function playerName(playerId: string | undefined): string {
     if (!playerId) {
@@ -97,6 +99,69 @@ export function TransactionTable({
   const sortedTransactions = [...transactions].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+
+  if (variant === "compact") {
+    return (
+      <section className="audit-compact" aria-label="Transaction audit list">
+        {sortedTransactions.length === 0 ? (
+          <p className="empty-cell">No transactions yet.</p>
+        ) : (
+          sortedTransactions.map((transaction) => (
+            <article
+              key={transaction.id}
+              className={`audit-card ${transaction.voidedAt ? "voided-row" : ""}`}
+            >
+              <div className="audit-card-main">
+                <div>
+                  <p className="eyebrow">
+                    {new Date(transaction.createdAt).toLocaleTimeString()}
+                  </p>
+                  <h3>{typeLabels[transaction.type]}</h3>
+                </div>
+                <strong>{formatCurrency(transaction.amountCents)}</strong>
+              </div>
+              <div className="audit-card-flow">
+                <span>{fromLabel(transaction)}</span>
+                <span>to</span>
+                <span>{toLabel(transaction)}</span>
+              </div>
+              <div className="audit-card-meta">
+                {transaction.type === "player_transfer" ? (
+                  <span className={`category-pill category-${transaction.category ?? "poker"}`}>
+                    {categoryLabels[transaction.category ?? "poker"]}
+                  </span>
+                ) : null}
+                <span>{transaction.voidedAt ? "Voided" : "Active"}</span>
+                {transaction.note || transaction.voidReason ? (
+                  <span>{transaction.note || transaction.voidReason}</span>
+                ) : null}
+              </div>
+              <div className="table-actions">
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={readOnly || !!transaction.voidedAt}
+                  title="Flip transaction"
+                  onClick={() => flipTransaction(transaction)}
+                >
+                  <Repeat2 size={15} />
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  disabled={readOnly || !!transaction.voidedAt}
+                  title="Void transaction"
+                  onClick={() => voidTransaction(transaction)}
+                >
+                  <Ban size={15} />
+                </button>
+              </div>
+            </article>
+          ))
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="panel audit-panel">

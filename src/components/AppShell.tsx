@@ -1,24 +1,30 @@
 import type { ReactNode } from "react";
 
+export type AppMode = "setup" | "play" | "settle";
+
 type AppShellProps = {
+  mode: AppMode;
+  onModeChange: (mode: AppMode) => void;
+  play: ReactNode;
   setup: ReactNode;
-  table: ReactNode;
-  players: ReactNode;
-  bank: ReactNode;
-  transactions: ReactNode;
-  cashOut: ReactNode;
-  settlement: ReactNode;
+  settle: ReactNode;
 };
 
+const modeLabels: Array<{ mode: AppMode; label: string }> = [
+  { mode: "setup", label: "Setup" },
+  { mode: "play", label: "Play" },
+  { mode: "settle", label: "Settle" }
+];
+
 export function AppShell({
+  mode,
+  onModeChange,
+  play,
   setup,
-  table,
-  players,
-  bank,
-  transactions,
-  cashOut,
-  settlement
+  settle
 }: AppShellProps) {
+  const activeView = mode === "setup" ? setup : mode === "settle" ? settle : play;
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -26,30 +32,23 @@ export function AppShell({
           <p className="eyebrow">Local ledger</p>
           <h1>Poker Tracker</h1>
         </div>
-        {setup}
+        <nav className="mode-tabs" aria-label="Poker tracker modes">
+          {modeLabels.map((option) => (
+            <button
+              key={option.mode}
+              type="button"
+              className={mode === option.mode ? "is-active" : ""}
+              aria-pressed={mode === option.mode}
+              onClick={() => onModeChange(option.mode)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </nav>
       </header>
 
-      <main className="app-main">
-        <section className="table-zone" aria-label="Poker table">
-          {table}
-        </section>
-
-        <aside className="side-zone" aria-label="Players and chip pool">
-          {bank}
-          {players}
-        </aside>
-
-        <section className="work-zone transaction-zone" aria-label="Transactions">
-          {transactions}
-        </section>
-
-        <section className="work-zone cashout-zone" aria-label="Cash out">
-          {cashOut}
-        </section>
-
-        <section className="work-zone settlement-zone" aria-label="Settlement">
-          {settlement}
-        </section>
+      <main className={`app-main app-main-${mode}`} aria-label={`${mode} mode`}>
+        {activeView}
       </main>
     </div>
   );

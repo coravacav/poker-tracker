@@ -44,6 +44,16 @@ type TransferDraft = {
   note: string;
 };
 
+type CashOutDraft = {
+  playerId: PlayerId;
+  amountInput: string;
+};
+
+type RenameDraft = {
+  playerId: PlayerId;
+  nameInput: string;
+};
+
 function positionFor(slot: TableSeatSlot): CSSProperties {
   return {
     left: `${slot.leftPercent}%`,
@@ -125,6 +135,10 @@ export function PokerTable({
   );
   const [transferDraft, setTransferDraft] = useState<TransferDraft | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [cashOutDraft, setCashOutDraft] = useState<CashOutDraft | null>(null);
+  const [cashOutError, setCashOutError] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [activeDragType, setActiveDragType] = useState<"seat" | "bucket" | null>(
     null
   );
@@ -214,34 +228,19 @@ export function PokerTable({
   }
 
   function quickCashOut(player: Player) {
-    const rawAmount = window.prompt(
-      `Final chip value for ${player.name}`,
-      centsToInputValue(summaryByPlayerId.get(player.id)?.bankCashOutsCents ?? 0)
-    );
-    if (rawAmount === null) {
-      return;
-    }
-
-    const amountCents = parseMoneyToCents(rawAmount);
-    if (amountCents === null) {
-      return;
-    }
-
-    onAddTransaction({
-      id: createId("transaction"),
-      type: "bank_cash_out",
-      createdAt: new Date().toISOString(),
-      amountCents,
-      fromPlayerId: player.id,
-      note: "Quick chip count"
+    setCashOutDraft({
+      playerId: player.id,
+      amountInput: centsToInputValue(summaryByPlayerId.get(player.id)?.bankCashOutsCents ?? 0)
     });
+    setCashOutError(null);
   }
 
   function editPlayerName(player: Player) {
-    const name = window.prompt("Player name", player.name);
-    if (name?.trim()) {
-      dispatch({ type: "rename_player", playerId: player.id, name });
-    }
+    setRenameDraft({
+      playerId: player.id,
+      nameInput: player.name
+    });
+    setRenameError(null);
   }
 
   function confirmTransfer() {
@@ -275,6 +274,48 @@ export function PokerTable({
       setTransferDraft(null);
       setTransferError(null);
     }
+  }
+
+  function confirmQuickCashOut() {
+    if (!cashOutDraft) {
+      return;
+    }
+
+    const amountCents = parseMoneyToCents(cashOutDraft.amountInput);
+    if (amountCents === null) {
+      setCashOutError("Enter a valid final chip value.");
+      return;
+    }
+
+    const added = onAddTransaction({
+      id: createId("transaction"),
+      type: "bank_cash_out",
+      createdAt: new Date().toISOString(),
+      amountCents,
+      fromPlayerId: cashOutDraft.playerId,
+      note: "Quick chip count"
+    });
+
+    if (added) {
+      setCashOutDraft(null);
+      setCashOutError(null);
+    }
+  }
+
+  function confirmRename() {
+    if (!renameDraft) {
+      return;
+    }
+
+    const name = renameDraft.nameInput.trim();
+    if (!name) {
+      setRenameError("Enter a player name.");
+      return;
+    }
+
+    dispatch({ type: "rename_player", playerId: renameDraft.playerId, name });
+    setRenameDraft(null);
+    setRenameError(null);
   }
 
   const transferPreviewAmountCents = transferDraft
@@ -505,7 +546,7 @@ export function PokerTable({
                   })
                 }
               >
-              Food
+                Food
               </button>
             </div>
 
@@ -516,6 +557,91 @@ export function PokerTable({
               </button>
               <button className="primary-button" type="button" onClick={confirmTransfer}>
                 Record transfer
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {cashOutDraft ? (
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal table-action-modal" role="dialog" aria-modal="true" aria-label="Final chips">
+            <div className="modal-heading">
+              <div>
+                <p className="eyebrow">Seat action</p>
+                <h2>Final chips for {playerName(cashOutDraft.playerId)}</h2>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => setCashOutDraft(null)}
+                title="Close"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <label>
+              <span>Final chips</span>
+              <input
+                inputMode="decimal"
+                value={cashOutDraft.amountInput}
+                onChange={(event) =>
+                  setCashOutDraft({
+                    ...cashOutDraft,
+                    amountInput: event.currentTarget.value
+                  })
+                }
+              />
+            </label>
+            {cashOutError ? <div className="notice notice-warning">{cashOutError}</div> : null}
+            <div className="modal-actions">
+              <button type="button" onClick={() => setCashOutDraft(null)}>
+                Cancel
+              </button>
+              <button className="primary-button" type="button" onClick={confirmQuickCashOut}>
+                Record final chips
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {renameDraft ? (
+        <div className="modal-backdrop" role="presentation">
+          <section className="modal table-action-modal" role="dialog" aria-modal="true" aria-label="Rename player">
+            <div className="modal-heading">
+              <div>
+                <p className="eyebrow">Seat action</p>
+                <h2>Rename {playerName(renameDraft.playerId)}</h2>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => setRenameDraft(null)}
+                title="Close"
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <label>
+              <span>Player name</span>
+              <input
+                value={renameDraft.nameInput}
+                onChange={(event) =>
+                  setRenameDraft({
+                    ...renameDraft,
+                    nameInput: event.currentTarget.value
+                  })
+                }
+              />
+            </label>
+            {renameError ? <div className="notice notice-warning">{renameError}</div> : null}
+            <div className="modal-actions">
+              <button type="button" onClick={() => setRenameDraft(null)}>
+                Cancel
+              </button>
+              <button className="primary-button" type="button" onClick={confirmRename}>
+                Save name
               </button>
             </div>
           </section>

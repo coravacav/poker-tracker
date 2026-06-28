@@ -36,6 +36,27 @@ export function SettlementPanel({
 
       <div className="settlement-layout">
         <div>
+          <h3>Player Payments</h3>
+          <div className="settlement-list">
+            {minimizedPayments.length === 0 ? (
+              <p className="muted">No player-to-player payments needed.</p>
+            ) : (
+              minimizedPayments.map((payment) => (
+                <div
+                  className="settlement-line payment-line"
+                  key={`${payment.fromPlayerId}-${payment.toPlayerId}-${payment.amountCents}`}
+                >
+                  <span>{playerNameById(players, payment.fromPlayerId)}</span>
+                  <ArrowRight size={15} />
+                  <span>{playerNameById(players, payment.toPlayerId)}</span>
+                  <strong>{formatCurrency(payment.amountCents)}</strong>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div>
           <h3>Player Net</h3>
           <div className="settlement-list">
             {sortedSummaries.map((summary) => (
@@ -54,27 +75,6 @@ export function SettlementPanel({
                 </strong>
               </div>
             ))}
-          </div>
-        </div>
-
-        <div>
-          <h3>Player Payments</h3>
-          <div className="settlement-list">
-            {minimizedPayments.length === 0 ? (
-              <p className="muted">No player-to-player payments needed.</p>
-            ) : (
-              minimizedPayments.map((payment) => (
-                <div
-                  className="settlement-line payment-line"
-                  key={`${payment.fromPlayerId}-${payment.toPlayerId}-${payment.amountCents}`}
-                >
-                  <span>{playerNameById(players, payment.fromPlayerId)}</span>
-                  <ArrowRight size={15} />
-                  <span>{playerNameById(players, payment.toPlayerId)}</span>
-                  <strong>{formatCurrency(payment.amountCents)}</strong>
-                </div>
-              ))
-            )}
           </div>
         </div>
       </div>

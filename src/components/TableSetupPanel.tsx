@@ -45,108 +45,117 @@ export function TableSetupPanel({
   }
 
   return (
-    <div className="setup-panel" aria-label="Game setup">
-      <label className="compact-field">
-        <span>Game</span>
-        <input
-          type="text"
-          value={state.settings.gameName}
-          onChange={(event) =>
-            dispatch({ type: "set_game_name", name: event.currentTarget.value })
-          }
-        />
-      </label>
+    <section className="panel setup-settings-panel" aria-label="Game setup">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Before play</p>
+          <h2>Game Setup</h2>
+        </div>
+      </div>
 
-      <label className="compact-field money-field">
-        <span>Buy-in</span>
-        <input
-          inputMode="decimal"
-          type="text"
-          value={buyInInput}
-          onBlur={commitBuyIn}
-          onChange={(event) => setBuyInInput(event.currentTarget.value)}
-        />
-      </label>
-
-      <label className="compact-field count-field">
-        <span>Players</span>
-        <input
-          min={1}
-          max={12}
-          type="number"
-          value={activePlayerCount}
-          onChange={(event) => {
-            const requestedCount = Number.parseInt(event.currentTarget.value, 10) || 1;
-
-            dispatch({
-              type: "set_player_count",
-              count: Math.max(minimumPlayerCount, requestedCount)
-            });
-          }}
-        />
-      </label>
-
-      <label className="compact-field layout-field">
-        <span>Layout</span>
-        <select
-          value={state.settings.tableSeatLayout ?? "top_bottom"}
-          onChange={(event) =>
-            dispatch({
-              type: "set_table_seat_layout",
-              layout: event.currentTarget.value as TableSeatLayout
-            })
-          }
-        >
-          <option value="top_bottom">Oval - top/bottom</option>
-          <option value="left_right">Oval - left/right</option>
-          <option value="rectangle">Rectangle</option>
-          <option value="round">Round</option>
-        </select>
-      </label>
-
-      {state.settings.tableSeatLayout === "rectangle" ? (
-        <label className="compact-toggle">
+      <div className="setup-panel">
+        <label className="compact-field">
+          <span>Game</span>
           <input
-            type="checkbox"
-            checked={state.settings.tableIncludeCornerSeats ?? true}
+            type="text"
+            value={state.settings.gameName}
             onChange={(event) =>
-              dispatch({
-                type: "set_table_include_corner_seats",
-                includeCornerSeats: event.currentTarget.checked
-              })
+              dispatch({ type: "set_game_name", name: event.currentTarget.value })
             }
           />
-          <span>Corners</span>
         </label>
-      ) : null}
 
-      <button
-        className="text-button"
-        type="button"
-        disabled={readOnly}
-        onClick={() => dispatch({ type: "add_player" })}
-      >
-        <Plus size={16} />
-        Player
-      </button>
+        <label className="compact-field money-field">
+          <span>Buy-in</span>
+          <input
+            inputMode="decimal"
+            type="text"
+            value={buyInInput}
+            onBlur={commitBuyIn}
+            onChange={(event) => setBuyInInput(event.currentTarget.value)}
+          />
+        </label>
 
-      <button
-        className="text-button"
-        type="button"
-        onClick={() => setReadOnly(!readOnly)}
-        title="Toggle read-only audit mode"
-      >
-        {readOnly ? <ShieldCheck size={16} /> : <ShieldOff size={16} />}
-        {readOnly ? "Read-only" : "Editable"}
-      </button>
+        <label className="compact-field count-field">
+          <span>Players</span>
+          <input
+            min={1}
+            max={12}
+            type="number"
+            value={activePlayerCount}
+            onChange={(event) => {
+              const requestedCount = Number.parseInt(event.currentTarget.value, 10) || 1;
 
-      <ExportImportControls dispatch={dispatch} state={state} />
-      {buyInError ? <span className="inline-error">{buyInError}</span> : null}
-      {minimumPlayerCount > 1 ? (
-        <span className="inline-hint">
-          Minimum {minimumPlayerCount} players because they have transactions.
-        </span>
-      ) : null}
-    </div>
+              dispatch({
+                type: "set_player_count",
+                count: Math.max(minimumPlayerCount, requestedCount)
+              });
+            }}
+          />
+        </label>
+
+        <label className="compact-field layout-field">
+          <span>Layout</span>
+          <select
+            value={state.settings.tableSeatLayout ?? "top_bottom"}
+            onChange={(event) =>
+              dispatch({
+                type: "set_table_seat_layout",
+                layout: event.currentTarget.value as TableSeatLayout
+              })
+            }
+          >
+            <option value="top_bottom">Oval - top/bottom</option>
+            <option value="left_right">Oval - left/right</option>
+            <option value="rectangle">Rectangle</option>
+            <option value="round">Round</option>
+          </select>
+        </label>
+
+        {state.settings.tableSeatLayout === "rectangle" ? (
+          <label className="compact-toggle">
+            <input
+              type="checkbox"
+              checked={state.settings.tableIncludeCornerSeats ?? true}
+              onChange={(event) =>
+                dispatch({
+                  type: "set_table_include_corner_seats",
+                  includeCornerSeats: event.currentTarget.checked
+                })
+              }
+            />
+            <span>Corners</span>
+          </label>
+        ) : null}
+
+        <button
+          className="text-button"
+          type="button"
+          disabled={readOnly}
+          onClick={() => dispatch({ type: "add_player" })}
+        >
+          <Plus size={16} />
+          Player
+        </button>
+
+        <button
+          className="text-button"
+          type="button"
+          onClick={() => setReadOnly(!readOnly)}
+          title="Toggle read-only audit mode"
+        >
+          {readOnly ? <ShieldCheck size={16} /> : <ShieldOff size={16} />}
+          {readOnly ? "Read-only" : "Editable"}
+        </button>
+
+        <ExportImportControls dispatch={dispatch} state={state} />
+        {buyInError ? <span className="inline-error">{buyInError}</span> : null}
+        {minimumPlayerCount > 1 ? (
+          <span className="inline-hint">
+            Minimum {minimumPlayerCount} players because they have transactions.
+          </span>
+        ) : null}
+      </div>
+    </section>
   );
 }

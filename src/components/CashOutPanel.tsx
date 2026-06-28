@@ -15,6 +15,7 @@ type CashOutPanelProps = {
   readOnly: boolean;
   summaries: PlayerLedgerSummary[];
   transactions: Transaction[];
+  variant?: "panel" | "drawer";
 };
 
 export function CashOutPanel({
@@ -22,7 +23,8 @@ export function CashOutPanel({
   players,
   readOnly,
   summaries,
-  transactions
+  transactions,
+  variant = "panel"
 }: CashOutPanelProps) {
   const [cashOutInputs, setCashOutInputs] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -81,14 +83,16 @@ export function CashOutPanel({
   }
 
   return (
-    <section className="panel cashout-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">End of night</p>
-          <h2>Chip Counts</h2>
+    <section className={variant === "drawer" ? "cashout-panel" : "panel cashout-panel"}>
+      {variant === "panel" ? (
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">End of night</p>
+            <h2>Chip Counts</h2>
+          </div>
+          <BadgeDollarSign size={20} />
         </div>
-        <BadgeDollarSign size={20} />
-      </div>
+      ) : null}
 
       {missingCashOuts.length > 0 ? (
         <div className="notice notice-warning">
