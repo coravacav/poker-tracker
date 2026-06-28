@@ -121,6 +121,108 @@ describe("gameReducer", () => {
     expect(state.players.find((candidate) => candidate.id === player.id)?.isActive).toBe(true);
   });
 
+  it("moves a player to an empty physical seat slot", () => {
+    let state = createDefaultGameState();
+    const player = state.players[0];
+
+    state = gameReducer(state, {
+      type: "move_player_to_seat",
+      playerId: player.id,
+      seatIndex: 7
+    });
+
+    expect(state.players.find((candidate) => candidate.id === player.id)?.seatIndex).toBe(7);
+    expect(state.players.some((candidate) => candidate.seatIndex === 0)).toBe(false);
+  });
+
+  it("swaps players when moving onto an occupied seat slot", () => {
+    let state = createDefaultGameState();
+    const [firstPlayer, secondPlayer] = state.players;
+
+    state = gameReducer(state, {
+      type: "move_player_to_seat",
+      playerId: firstPlayer.id,
+      seatIndex: secondPlayer.seatIndex
+    });
+
+    expect(state.players.find((player) => player.id === firstPlayer.id)?.seatIndex).toBe(1);
+    expect(state.players.find((player) => player.id === secondPlayer.id)?.seatIndex).toBe(0);
+  });
+
+  it("adds a player into the lowest empty physical seat slot", () => {
+    let state = createDefaultGameState();
+    const player = state.players[0];
+
+    state = gameReducer(state, {
+      type: "move_player_to_seat",
+      playerId: player.id,
+      seatIndex: 7
+    });
+    state = gameReducer(state, { type: "add_player", name: "Sam" });
+
+    const addedPlayer = state.players[state.players.length - 1];
+    expect(addedPlayer.seatIndex).toBe(0);
+  });
+
+  it("does not add more than twelve active players", () => {
+    let state = createDefaultGameState();
+
+    for (let index = 0; index < 8; index += 1) {
+      state = gameReducer(state, { type: "add_player" });
+    }
+
+    expect(state.players.filter((player) => player.isActive)).toHaveLength(12);
+  });
+
+  it("preserves valid physical seat indexes when reducing player count", () => {
+    let state = createDefaultGameState();
+    const protectedPlayer = state.players[0];
+
+    state = gameReducer(state, {
+      type: "move_player_to_seat",
+      playerId: protectedPlayer.id,
+      seatIndex: 5
+    });
+    state = gameReducer(state, {
+      type: "add_transaction",
+      transaction: {
+        id: "t1",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: protectedPlayer.id
+      }
+    });
+    state = gameReducer(state, { type: "set_player_count", count: 5 });
+
+    expect(state.players.find((player) => player.id === protectedPlayer.id)?.seatIndex).toBe(5);
+  });
+
+  it("defaults missing corner-seat import settings to enabled", () => {
+    const state = createDefaultGameState();
+    const importedState = {
+      ...state,
+      players: state.players.map((player, index) => ({
+        ...player,
+        seatIndex: index === 0 ? 7 : player.seatIndex
+      })),
+      settings: {
+        gameName: state.settings.gameName,
+        currencyCode: state.settings.currencyCode,
+        defaultBuyInCents: state.settings.defaultBuyInCents,
+        tableSeatLayout: state.settings.tableSeatLayout,
+        createdAt: state.settings.createdAt
+      }
+    };
+
+    const nextState = gameReducer(createDefaultGameState(), {
+      type: "replace_state_from_import",
+      state: importedState as any
+    });
+
+    expect(nextState.settings.tableIncludeCornerSeats).toBe(true);
+  });
+
   it("flips a player transfer by voiding the original and adding the reversed copy", () => {
     let state = createDefaultGameState();
     const [fromPlayer, toPlayer] = state.players;

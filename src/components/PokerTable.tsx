@@ -2,10 +2,11 @@ import {
   DndContext,
   PointerSensor,
   type DragEndEvent,
+  type DragStartEvent,
+  useDroppable,
   useSensor,
   useSensors
 } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { CSSProperties, Dispatch } from "react";
@@ -18,7 +19,7 @@ import type {
   TransactionCategory,
   Transaction
 } from "../domain/pokerTypes";
-import { getSeatPositionPercent } from "../domain/tableLayout";
+import { getSeatSlots, type TableSeatSlot } from "../domain/tableLayout";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
 import { PlayerSeat } from "./PlayerSeat";
@@ -31,6 +32,7 @@ type PokerTableProps = {
   onAddTransaction: (transaction: Transaction) => boolean;
   readOnly: boolean;
   seatLayout: TableSeatLayout;
+  tableIncludeCornerSeats: boolean;
   summaryByPlayerId: Map<PlayerId, PlayerLedgerSummary>;
 };
 
@@ -42,13 +44,68 @@ type TransferDraft = {
   note: string;
 };
 
-function positionFor(index: number, count: number, layout: TableSeatLayout): CSSProperties {
-  const position = getSeatPositionPercent(index, count, layout);
-
+function positionFor(slot: TableSeatSlot): CSSProperties {
   return {
-    left: `${position.leftPercent}%`,
-    top: `${position.topPercent}%`
+    left: `${slot.leftPercent}%`,
+    top: `${slot.topPercent}%`
   };
+}
+
+type SeatSlotProps = {
+  isSeatDragging: boolean;
+  player?: Player;
+  readOnly: boolean;
+  slot: TableSeatSlot;
+  summary?: PlayerLedgerSummary;
+  onBuyIn: (player: Player) => void;
+  onCashOut: (player: Player) => void;
+  onEdit: (player: Player) => void;
+  onStartTransfer: (fromPlayer: Player) => void;
+};
+
+function SeatSlot({
+  isSeatDragging,
+  player,
+  readOnly,
+  slot,
+  summary,
+  onBuyIn,
+  onCashOut,
+  onEdit,
+  onStartTransfer
+}: SeatSlotProps) {
+  const drop = useDroppable({
+    id: `seat-slot:${slot.seatIndex}`,
+    disabled: readOnly
+  });
+
+  return (
+    <div
+      ref={drop.setNodeRef}
+      className={`seat-slot ${drop.isOver ? "is-over" : ""}`}
+      style={positionFor(slot)}
+    >
+      {player ? (
+        <PlayerSeat
+          player={player}
+          readOnly={readOnly}
+          summary={summary}
+          onBuyIn={onBuyIn}
+          onCashOut={onCashOut}
+          onEdit={onEdit}
+          onStartTransfer={onStartTransfer}
+        />
+      ) : (
+        <div
+          className="empty-seat-target"
+          aria-hidden={!isSeatDragging}
+          title={`Seat ${slot.seatIndex + 1}`}
+        >
+          Seat {slot.seatIndex + 1}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function PokerTable({
@@ -58,6 +115,7 @@ export function PokerTable({
   onAddTransaction,
   readOnly,
   seatLayout,
+  tableIncludeCornerSeats,
   summaryByPlayerId
 }: PokerTableProps) {
   const sensors = useSensors(
@@ -67,9 +125,20 @@ export function PokerTable({
   );
   const [transferDraft, setTransferDraft] = useState<TransferDraft | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
+  const [activeDragType, setActiveDragType] = useState<"seat" | "bucket" | null>(
+    null
+  );
 
-  const activePlayerIds = useMemo(
-    () => activePlayers.map((player) => player.id),
+  const seatSlots = useMemo(
+    () =>
+      getSeatSlots(seatLayout, activePlayers.length, {
+        includeCornerSeats: tableIncludeCornerSeats
+      }),
+    [activePlayers.length, seatLayout, tableIncludeCornerSeats]
+  );
+  const playerBySeatIndex = useMemo(
+    () =>
+      new Map(activePlayers.map((player) => [player.seatIndex, player] as const)),
     [activePlayers]
   );
 
@@ -93,39 +162,43 @@ export function PokerTable({
     setTransferError(null);
   }
 
+  function handleDragStart(event: DragStartEvent) {
+    const activeId = String(event.active.id);
+    const [, dragType] = activeId.match(/^(seat|bucket):(.+)$/) ?? [];
+    setActiveDragType(dragType === "seat" || dragType === "bucket" ? dragType : null);
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setActiveDragType(null);
+
     if (readOnly || !event.over) {
       return;
     }
 
     const activeId = String(event.active.id);
     const overId = String(event.over.id);
-    if (!overId.startsWith("player:")) {
+    if (!overId.startsWith("seat-slot:")) {
       return;
     }
 
     const [, dragType, draggedPlayerId] = activeId.match(/^(seat|bucket):(.+)$/) ?? [];
-    const targetPlayerId = overId.replace("player:", "");
+    const targetSeatIndex = Number.parseInt(overId.replace("seat-slot:", ""), 10);
+    const targetPlayer = playerBySeatIndex.get(targetSeatIndex);
 
-    if (!dragType || !draggedPlayerId || draggedPlayerId === targetPlayerId) {
+    if (!dragType || !draggedPlayerId || Number.isNaN(targetSeatIndex)) {
       return;
     }
 
     if (dragType === "seat") {
-      const oldIndex = activePlayerIds.indexOf(draggedPlayerId);
-      const newIndex = activePlayerIds.indexOf(targetPlayerId);
-      if (oldIndex === -1 || newIndex === -1) {
-        return;
-      }
-
       dispatch({
-        type: "reorder_players",
-        orderedPlayerIds: arrayMove(activePlayerIds, oldIndex, newIndex)
+        type: "move_player_to_seat",
+        playerId: draggedPlayerId,
+        seatIndex: targetSeatIndex
       });
     }
 
-    if (dragType === "bucket") {
-      openTransfer(draggedPlayerId, targetPlayerId);
+    if (dragType === "bucket" && targetPlayer && draggedPlayerId !== targetPlayer.id) {
+      openTransfer(draggedPlayerId, targetPlayer.id);
     }
   }
 
@@ -218,6 +291,19 @@ export function PokerTable({
   const transferToCurrentNet = transferDraft
     ? summaryByPlayerId.get(transferDraft.toPlayerId)?.netCents ?? 0
     : 0;
+  const tableShapeClass =
+    seatLayout === "rectangle"
+      ? "layout-rectangle"
+      : seatLayout === "round"
+        ? "layout-round"
+        : "layout-oval";
+  const tableClassName = [
+    "poker-table",
+    tableShapeClass,
+    activeDragType === "seat" ? "is-seat-dragging" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <section className="poker-table-panel">
@@ -231,25 +317,35 @@ export function PokerTable({
         </span>
       </div>
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="poker-table" aria-label="Poker seating">
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragCancel={() => setActiveDragType(null)}
+        onDragEnd={handleDragEnd}
+      >
+        <div className={tableClassName} aria-label="Poker seating">
           <div className="felt-center">
             <span>{activePlayers.length}</span>
             <small>players</small>
           </div>
-          {activePlayers.map((player, index) => (
-            <PlayerSeat
-              key={player.id}
-              player={player}
-              positionStyle={positionFor(index, activePlayers.length, seatLayout)}
-              readOnly={readOnly}
-              summary={summaryByPlayerId.get(player.id)}
-              onBuyIn={quickBuyIn}
-              onCashOut={quickCashOut}
-              onEdit={editPlayerName}
-              onStartTransfer={(fromPlayer) => openTransfer(fromPlayer.id)}
-            />
-          ))}
+          {seatSlots.map((slot) => {
+            const player = playerBySeatIndex.get(slot.seatIndex);
+
+            return (
+              <SeatSlot
+                key={slot.seatIndex}
+                isSeatDragging={activeDragType === "seat"}
+                player={player}
+                readOnly={readOnly}
+                slot={slot}
+                summary={player ? summaryByPlayerId.get(player.id) : undefined}
+                onBuyIn={quickBuyIn}
+                onCashOut={quickCashOut}
+                onEdit={editPlayerName}
+                onStartTransfer={(fromPlayer) => openTransfer(fromPlayer.id)}
+              />
+            );
+          })}
         </div>
       </DndContext>
 

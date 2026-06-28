@@ -12,13 +12,14 @@ export type Player = {
   isActive: boolean;
 };
 
-export type TableSeatLayout = "top_bottom" | "left_right";
+export type TableSeatLayout = "top_bottom" | "left_right" | "rectangle" | "round";
 
 export type GameSettings = {
   gameName: string;
   currencyCode: "USD";
   defaultBuyInCents: number;
   tableSeatLayout: TableSeatLayout;
+  tableIncludeCornerSeats: boolean;
   createdAt: string;
 };
 

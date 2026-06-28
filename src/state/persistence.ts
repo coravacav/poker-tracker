@@ -21,7 +21,8 @@ export function loadGameState(): GameState {
           ...parsed,
           settings: {
             ...parsed.settings,
-            tableSeatLayout: parsed.settings.tableSeatLayout ?? "top_bottom"
+            tableSeatLayout: parsed.settings.tableSeatLayout ?? "top_bottom",
+            tableIncludeCornerSeats: parsed.settings.tableIncludeCornerSeats ?? true
           }
         }
       : createDefaultGameState();

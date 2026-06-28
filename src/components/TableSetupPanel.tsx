@@ -97,10 +97,28 @@ export function TableSetupPanel({
             })
           }
         >
-          <option value="top_bottom">Top/bottom</option>
-          <option value="left_right">Left/right</option>
+          <option value="top_bottom">Oval - top/bottom</option>
+          <option value="left_right">Oval - left/right</option>
+          <option value="rectangle">Rectangle</option>
+          <option value="round">Round</option>
         </select>
       </label>
+
+      {state.settings.tableSeatLayout === "rectangle" ? (
+        <label className="compact-toggle">
+          <input
+            type="checkbox"
+            checked={state.settings.tableIncludeCornerSeats ?? true}
+            onChange={(event) =>
+              dispatch({
+                type: "set_table_include_corner_seats",
+                includeCornerSeats: event.currentTarget.checked
+              })
+            }
+          />
+          <span>Corners</span>
+        </label>
+      ) : null}
 
       <button
         className="text-button"

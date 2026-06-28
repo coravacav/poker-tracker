@@ -91,7 +91,11 @@ export function validatePersistedState(value: unknown): value is PersistedGameSt
     typeof candidate.settings.defaultBuyInCents === "number" &&
     (candidate.settings.tableSeatLayout === undefined ||
       candidate.settings.tableSeatLayout === "top_bottom" ||
-      candidate.settings.tableSeatLayout === "left_right") &&
+      candidate.settings.tableSeatLayout === "left_right" ||
+      candidate.settings.tableSeatLayout === "rectangle" ||
+      candidate.settings.tableSeatLayout === "round") &&
+    (candidate.settings.tableIncludeCornerSeats === undefined ||
+      typeof candidate.settings.tableIncludeCornerSeats === "boolean") &&
     candidate.players.every(
       (player) =>
         typeof player.id === "string" &&

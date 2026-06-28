@@ -25,6 +25,7 @@ export function createDefaultGameState(): GameState {
       currencyCode: "USD",
       defaultBuyInCents: 2000,
       tableSeatLayout: "top_bottom",
+      tableIncludeCornerSeats: true,
       createdAt: new Date().toISOString()
     },
     players: createDefaultPlayers(),

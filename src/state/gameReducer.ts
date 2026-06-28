@@ -1,7 +1,9 @@
 import { hasPlayerTransactions } from "../domain/ledger";
+import { getAutoSeatSlotCount } from "../domain/tableLayout";
 import type {
   GameState,
   PersistedGameState,
+  Player,
   PlayerId,
   Transaction,
   TransactionId
@@ -12,6 +14,8 @@ export type GameAction =
   | { type: "set_game_name"; name: string }
   | { type: "set_default_buy_in"; amountCents: number }
   | { type: "set_table_seat_layout"; layout: GameState["settings"]["tableSeatLayout"] }
+  | { type: "set_table_include_corner_seats"; includeCornerSeats: boolean }
+  | { type: "move_player_to_seat"; playerId: PlayerId; seatIndex: number }
   | { type: "set_player_count"; count: number }
   | { type: "add_player"; name?: string }
   | { type: "rename_player"; playerId: PlayerId; name: string }
@@ -23,12 +27,48 @@ export type GameAction =
   | { type: "replace_state_from_import"; state: PersistedGameState }
   | { type: "reset_game" };
 
-function normalizeSeatIndexes(state: GameState): GameState {
+const MAX_ACTIVE_PLAYERS = 12;
+
+function reconcileSeatIndexes(state: GameState): GameState {
+  const activePlayers = [...state.players]
+    .filter((player) => player.isActive)
+    .sort((a, b) => a.seatIndex - b.seatIndex);
+  const slotCount = getAutoSeatSlotCount(activePlayers.length);
+  const usedSeatIndexes = new Set<number>();
+  const nextSeatByPlayerId = new Map<PlayerId, number>();
+  const playersNeedingSeats: Player[] = [];
+
+  for (const player of activePlayers) {
+    if (
+      Number.isInteger(player.seatIndex) &&
+      player.seatIndex >= 0 &&
+      player.seatIndex < slotCount &&
+      !usedSeatIndexes.has(player.seatIndex)
+    ) {
+      usedSeatIndexes.add(player.seatIndex);
+      nextSeatByPlayerId.set(player.id, player.seatIndex);
+    } else {
+      playersNeedingSeats.push(player);
+    }
+  }
+
+  const availableSeatIndexes = Array.from({ length: slotCount }, (_, index) => index)
+    .filter((index) => !usedSeatIndexes.has(index));
+
+  for (const player of playersNeedingSeats) {
+    const nextSeatIndex = availableSeatIndexes.shift();
+    if (nextSeatIndex !== undefined) {
+      nextSeatByPlayerId.set(player.id, nextSeatIndex);
+    }
+  }
+
   return {
     ...state,
-    players: [...state.players]
-      .sort((a, b) => a.seatIndex - b.seatIndex)
-      .map((player, index) => ({ ...player, seatIndex: index }))
+    players: state.players.map((player) =>
+      player.isActive
+        ? { ...player, seatIndex: nextSeatByPlayerId.get(player.id) ?? player.seatIndex }
+        : player
+    )
   };
 }
 
@@ -65,6 +105,52 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       };
 
+    case "set_table_include_corner_seats":
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          tableIncludeCornerSeats: action.includeCornerSeats
+        }
+      };
+
+    case "move_player_to_seat": {
+      const activePlayers = state.players.filter((player) => player.isActive);
+      const slotCount = getAutoSeatSlotCount(activePlayers.length);
+      if (
+        !Number.isInteger(action.seatIndex) ||
+        action.seatIndex < 0 ||
+        action.seatIndex >= slotCount
+      ) {
+        return state;
+      }
+
+      const movingPlayer = activePlayers.find((player) => player.id === action.playerId);
+      if (!movingPlayer || movingPlayer.seatIndex === action.seatIndex) {
+        return state;
+      }
+
+      const occupyingPlayer = activePlayers.find(
+        (player) =>
+          player.id !== movingPlayer.id && player.seatIndex === action.seatIndex
+      );
+
+      return {
+        ...state,
+        players: state.players.map((player) => {
+          if (player.id === movingPlayer.id) {
+            return { ...player, seatIndex: action.seatIndex };
+          }
+
+          if (occupyingPlayer && player.id === occupyingPlayer.id) {
+            return { ...player, seatIndex: movingPlayer.seatIndex };
+          }
+
+          return player;
+        })
+      };
+    }
+
     case "set_player_count": {
       const protectedPlayerIds = new Set(
         state.players
@@ -78,7 +164,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const targetCount = Math.max(
         1,
         protectedPlayerIds.size,
-        Math.min(12, action.count)
+        Math.min(MAX_ACTIVE_PLAYERS, action.count)
       );
 
       if (targetCount > activePlayers.length) {
@@ -86,11 +172,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         const newPlayers = Array.from({ length: playersToAdd }, (_, offset) => ({
           id: createId("player"),
           name: nextPlayerName(state.players.length + offset),
-          seatIndex: state.players.length + offset,
+          seatIndex: Number.MAX_SAFE_INTEGER,
           isActive: true
         }));
 
-        return normalizeSeatIndexes({
+        return reconcileSeatIndexes({
           ...state,
           players: [...playersWithProtectedActive, ...newPlayers]
         });
@@ -113,24 +199,31 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             return player;
           });
 
-        return normalizeSeatIndexes({
+        return reconcileSeatIndexes({
           ...state,
           players
         });
       }
 
-      return state;
+      return reconcileSeatIndexes({
+        ...state,
+        players: playersWithProtectedActive
+      });
     }
 
     case "add_player":
-      return normalizeSeatIndexes({
+      if (state.players.filter((player) => player.isActive).length >= MAX_ACTIVE_PLAYERS) {
+        return state;
+      }
+
+      return reconcileSeatIndexes({
         ...state,
         players: [
           ...state.players,
           {
             id: createId("player"),
             name: action.name?.trim() || nextPlayerName(state.players.length),
-            seatIndex: state.players.length,
+            seatIndex: Number.MAX_SAFE_INTEGER,
             isActive: true
           }
         ]
@@ -151,7 +244,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return state;
       }
 
-      return normalizeSeatIndexes({
+      return reconcileSeatIndexes({
         ...state,
         players: state.players.map((player) =>
           player.id === action.playerId ? { ...player, isActive: false } : player
@@ -163,7 +256,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         action.orderedPlayerIds.map((playerId, index) => [playerId, index])
       );
 
-      return normalizeSeatIndexes({
+      return reconcileSeatIndexes({
         ...state,
         players: state.players.map((player) => ({
           ...player,
@@ -286,11 +379,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
     case "replace_state_from_import":
-      return normalizeSeatIndexes({
+      return reconcileSeatIndexes({
         ...action.state,
         settings: {
           ...action.state.settings,
-          tableSeatLayout: action.state.settings.tableSeatLayout ?? "top_bottom"
+          tableSeatLayout: action.state.settings.tableSeatLayout ?? "top_bottom",
+          tableIncludeCornerSeats:
+            action.state.settings.tableIncludeCornerSeats ?? true
         }
       });
 

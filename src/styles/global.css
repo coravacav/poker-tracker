@@ -205,7 +205,24 @@ label span {
 }
 
 .layout-field {
-  max-width: 138px;
+  max-width: 184px;
+}
+
+.compact-toggle {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.compact-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--green);
 }
 
 .panel,
@@ -344,6 +361,19 @@ label span {
     var(--shadow);
 }
 
+.poker-table.layout-rectangle {
+  border-radius: 8px;
+  background: #14704e;
+}
+
+.poker-table.layout-round {
+  width: min(620px, calc(100% - 28px));
+  min-height: 0;
+  aspect-ratio: 1;
+  margin: 10px auto 16px;
+  border-radius: 999px;
+}
+
 .felt-center {
   position: absolute;
   left: 50%;
@@ -373,7 +403,7 @@ label span {
   text-transform: uppercase;
 }
 
-.seat-position {
+.seat-slot {
   position: absolute;
   width: clamp(154px, 18vw, 190px);
   transform: translate(-50%, -50%);
@@ -388,9 +418,34 @@ label span {
   box-shadow: 0 12px 26px rgba(1, 32, 21, 0.22);
 }
 
-.player-seat.is-over {
+.seat-slot.is-over .player-seat,
+.seat-slot.is-over .empty-seat-target {
   outline: 3px solid rgba(255, 214, 102, 0.82);
   outline-offset: 2px;
+}
+
+.empty-seat-target {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 58px;
+  border: 1px dashed rgba(255, 255, 255, 0.42);
+  border-radius: 8px;
+  color: rgba(247, 255, 251, 0.82);
+  background: rgba(5, 45, 31, 0.42);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 140ms ease,
+    visibility 140ms ease;
+}
+
+.poker-table.is-seat-dragging .empty-seat-target {
+  opacity: 1;
+  visibility: visible;
 }
 
 .seat-topline,
@@ -809,7 +864,17 @@ dd {
     border-radius: 42px;
   }
 
-  .seat-position {
+  .poker-table.layout-rectangle {
+    border-radius: 8px;
+  }
+
+  .poker-table.layout-round {
+    width: min(620px, calc(100% - 28px));
+    min-height: 0;
+    border-radius: 999px;
+  }
+
+  .seat-slot {
     width: min(46vw, 180px);
   }
 
@@ -827,7 +892,11 @@ dd {
     min-height: 860px;
   }
 
-  .seat-position {
+  .poker-table.layout-round {
+    min-height: 0;
+  }
+
+  .seat-slot {
     width: min(76vw, 210px);
   }
 
