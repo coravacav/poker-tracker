@@ -14,6 +14,7 @@ import type {
 import { validateTransaction } from "../domain/validation";
 import { createId } from "../state/seedGame";
 import { TransferPreview } from "./TransferPreview";
+import { TransferQuickAmountButtons } from "./TransferQuickAmountButtons";
 
 type TransactionFormProps = {
   defaultBuyInCents: number;
@@ -240,23 +241,37 @@ export function TransactionForm({
         </div>
 
         <div className="quick-amounts">
-          <button
-            type="button"
-            disabled={readOnly}
-            onClick={() => applyQuickAmount(Math.round(defaultBuyInCents / 2))}
-          >
-            Half
-          </button>
-          <button type="button" disabled={readOnly} onClick={() => applyQuickAmount(defaultBuyInCents)}>
-            Buy-in
-          </button>
-          <button
-            type="button"
-            disabled={readOnly}
-            onClick={() => applyQuickAmount(defaultBuyInCents * 2)}
-          >
-            Double
-          </button>
+          {type === "player_transfer" ? (
+            <TransferQuickAmountButtons
+              defaultBuyInCents={defaultBuyInCents}
+              disabled={readOnly}
+              onSelect={applyQuickAmount}
+            />
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={readOnly}
+                onClick={() => applyQuickAmount(Math.round(defaultBuyInCents / 2))}
+              >
+                Half
+              </button>
+              <button
+                type="button"
+                disabled={readOnly}
+                onClick={() => applyQuickAmount(defaultBuyInCents)}
+              >
+                Buy-in
+              </button>
+              <button
+                type="button"
+                disabled={readOnly}
+                onClick={() => applyQuickAmount(defaultBuyInCents * 2)}
+              >
+                Double
+              </button>
+            </>
+          )}
           <button
             type="button"
             disabled={readOnly}

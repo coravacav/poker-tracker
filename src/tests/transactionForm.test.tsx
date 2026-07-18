@@ -9,6 +9,29 @@ const players: Player[] = [
 ];
 
 describe("TransactionForm", () => {
+  it("offers transfer amounts based on the default buy-in", () => {
+    render(
+      <TransactionForm
+        defaultBuyInCents={2000}
+        onAddTransaction={vi.fn(() => true)}
+        players={players}
+        readOnly={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "player_transfer" }
+    });
+
+    expect(screen.getByRole("button", { name: "2 buy-ins $40.00" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 buy-in $20.00" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1/2 buy-in $10.00" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1/4 buy-in $5.00" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "1/4 buy-in $5.00" }));
+    expect(screen.getByLabelText("Amount")).toHaveValue("5.00");
+  });
+
   it("records food as a fast player transfer category", () => {
     const onAddTransaction = vi.fn(() => true);
 

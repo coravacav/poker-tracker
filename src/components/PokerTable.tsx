@@ -30,6 +30,7 @@ import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
 import { PlayerSeat } from "./PlayerSeat";
 import { TransferPreview } from "./TransferPreview";
+import { TransferQuickAmountButtons } from "./TransferQuickAmountButtons";
 
 type PokerTableProps = {
   activePlayers: Player[];
@@ -737,39 +738,15 @@ export function PokerTable({
             </div>
 
             <div className="quick-amounts">
-              <button
-                type="button"
-                onClick={() =>
+              <TransferQuickAmountButtons
+                defaultBuyInCents={defaultBuyInCents}
+                onSelect={(amountCents) =>
                   setTransferDraft({
                     ...transferDraft,
-                    amountInput: centsToInputValue(Math.round(defaultBuyInCents / 2))
+                    amountInput: centsToInputValue(amountCents)
                   })
                 }
-              >
-                Half
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setTransferDraft({
-                    ...transferDraft,
-                    amountInput: centsToInputValue(defaultBuyInCents)
-                  })
-                }
-              >
-                Buy-in
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setTransferDraft({
-                    ...transferDraft,
-                    amountInput: centsToInputValue(defaultBuyInCents * 2)
-                  })
-                }
-              >
-                Double
-              </button>
+              />
               <button
                 type="button"
                 onClick={() =>
