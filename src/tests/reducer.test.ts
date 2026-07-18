@@ -6,7 +6,9 @@ describe("gameReducer", () => {
   it("defaults new games to rectangle dynamic table settings", () => {
     const state = createDefaultGameState();
 
-    expect(state.schemaVersion).toBe(2);
+    expect(state.schemaVersion).toBe(3);
+    expect(state.settings.chipDenominations).toEqual([]);
+    expect(state.cashOutDrafts).toEqual([]);
     expect(state.settings.tableShape).toBe("rectangle");
     expect(state.settings.tableSeatPlacements).toEqual([
       { seatIndex: 0, rail: "top", order: 0 },
@@ -234,7 +236,7 @@ describe("gameReducer", () => {
     expect(state.players.find((player) => player.id === protectedPlayer.id)?.seatIndex).toBe(5);
   });
 
-  it("migrates v1 imports to v2 shape and dynamic placements", () => {
+  it("migrates v1 imports to v3 shape and dynamic placements", () => {
     const state = createDefaultGameState();
     const importedState = {
       schemaVersion: 1,
@@ -257,9 +259,120 @@ describe("gameReducer", () => {
       state: importedState as any
     });
 
-    expect(nextState.schemaVersion).toBe(2);
+    expect(nextState.schemaVersion).toBe(3);
     expect(nextState.settings.tableShape).toBe("round");
     expect(nextState.settings.tableSeatPlacements).toHaveLength(6);
+    expect(nextState.settings.chipDenominations).toEqual([]);
+    expect(nextState.cashOutDrafts).toEqual([]);
+  });
+
+  it("saves chip settings and autosaved player drafts", () => {
+    let state = createDefaultGameState();
+    const player = state.players[0];
+    const denomination = { id: "blue", label: "Blue", colorHex: "#0000ff", valueCents: 500 };
+
+    state = gameReducer(state, { type: "set_chip_denominations", denominations: [denomination] });
+    state = gameReducer(state, {
+      type: "save_cash_out_draft",
+      draft: {
+        playerId: player.id,
+        lines: [{ denominationId: "blue", label: "Blue", colorHex: "#0000ff", valueCents: 500, count: 3 }]
+      }
+    });
+
+    expect(state.settings.chipDenominations).toEqual([denomination]);
+    expect(state.cashOutDrafts[0].lines[0].count).toBe(3);
+
+    const editedDenomination = {
+      ...denomination,
+      label: "Navy",
+      colorHex: "#000080",
+      valueCents: 1000
+    };
+    state = gameReducer(state, {
+      type: "set_chip_denominations",
+      denominations: [editedDenomination]
+    });
+    expect(state.cashOutDrafts[0].lines[0]).toEqual({
+      denominationId: "blue",
+      label: "Navy",
+      colorHex: "#000080",
+      valueCents: 1000,
+      count: 3
+    });
+
+    state = gameReducer(state, { type: "clear_cash_out_draft", playerId: player.id });
+    expect(state.cashOutDrafts).toEqual([]);
+  });
+
+  it("records a counted cash-out and atomically replaces a correction", () => {
+    let state = createDefaultGameState();
+    const player = state.players[0];
+    const original = {
+      id: "cashout",
+      type: "bank_cash_out" as const,
+      createdAt: "2026-05-10T00:00:00.000Z",
+      amountCents: 1000,
+      fromPlayerId: player.id,
+      chipCountBreakdown: [
+        { denominationId: "blue", label: "Blue", colorHex: "#0000ff", valueCents: 500, count: 2 }
+      ]
+    };
+    state = gameReducer(state, { type: "record_cash_out", transaction: original });
+    state = gameReducer(state, {
+      type: "start_cash_out_correction",
+      playerId: player.id,
+      transactionId: original.id
+    });
+    expect(state.cashOutDrafts[0].correctingTransactionId).toBe(original.id);
+
+    state = gameReducer(state, {
+      type: "replace_cash_out",
+      originalTransactionId: original.id,
+      replacement: {
+        ...original,
+        id: "corrected",
+        amountCents: 1500,
+        correctsTransactionId: original.id,
+        chipCountBreakdown: [
+          { denominationId: "blue", label: "Blue", colorHex: "#0000ff", valueCents: 500, count: 3 }
+        ]
+      }
+    });
+
+    expect(state.transactions[0]).toEqual(expect.objectContaining({ voidReason: "Corrected chip count" }));
+    expect(state.transactions[1]).toEqual(expect.objectContaining({ id: "corrected", correctsTransactionId: "cashout" }));
+    expect(state.cashOutDrafts).toEqual([]);
+  });
+
+  it("refuses to replace a voided cash-out", () => {
+    let state = createDefaultGameState();
+    const player = state.players[0];
+    state = gameReducer(state, {
+      type: "add_transaction",
+      transaction: {
+        id: "cashout",
+        type: "bank_cash_out",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 0,
+        fromPlayerId: player.id,
+        voidedAt: "2026-05-11T00:00:00.000Z"
+      }
+    });
+    const before = state;
+    state = gameReducer(state, {
+      type: "replace_cash_out",
+      originalTransactionId: "cashout",
+      replacement: {
+        id: "replacement",
+        type: "bank_cash_out",
+        createdAt: "2026-05-12T00:00:00.000Z",
+        amountCents: 0,
+        fromPlayerId: player.id,
+        chipCountBreakdown: []
+      }
+    });
+    expect(state).toBe(before);
   });
 
   it("flips a player transfer by voiding the original and adding the reversed copy", () => {

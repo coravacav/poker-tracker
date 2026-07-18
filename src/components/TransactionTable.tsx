@@ -8,6 +8,7 @@ import type {
   TransactionType
 } from "../domain/pokerTypes";
 import type { GameAction } from "../state/gameReducer";
+import { ChipBreakdown } from "./ChipBreakdown";
 
 type TransactionTableProps = {
   dispatch: Dispatch<GameAction>;
@@ -135,7 +136,13 @@ export function TransactionTable({
                 {transaction.note || transaction.voidReason ? (
                   <span>{transaction.note || transaction.voidReason}</span>
                 ) : null}
+                {transaction.correctsTransactionId ? (
+                  <span>Corrects transaction {transaction.correctsTransactionId}</span>
+                ) : null}
               </div>
+              {transaction.chipCountBreakdown !== undefined ? (
+                <ChipBreakdown lines={transaction.chipCountBreakdown} disclosure />
+              ) : null}
               <div className="table-actions">
                 <button
                   className="icon-button"
@@ -212,7 +219,15 @@ export function TransactionTable({
                     )}
                   </td>
                   <td>{formatCurrency(transaction.amountCents)}</td>
-                  <td>{transaction.note || transaction.voidReason || ""}</td>
+                  <td>
+                    {transaction.note || transaction.voidReason || ""}
+                    {transaction.correctsTransactionId ? (
+                      <div>Corrects transaction {transaction.correctsTransactionId}</div>
+                    ) : null}
+                    {transaction.chipCountBreakdown !== undefined ? (
+                      <ChipBreakdown lines={transaction.chipCountBreakdown} disclosure />
+                    ) : null}
+                  </td>
                   <td>{transaction.voidedAt ? "Voided" : "Active"}</td>
                   <td>
                     <div className="table-actions">

@@ -1,11 +1,65 @@
 import type {
   AnyPersistedGameState,
+  CashOutDraft,
+  ChipCountLine,
+  ChipDenomination,
   Player,
   SeatRail,
   TableSeatPlacement,
   TableShape,
   Transaction
 } from "./pokerTypes";
+import { chipCountTotalCents } from "./chipCounts";
+
+const COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
+
+export function isValidChipDenomination(value: unknown): value is ChipDenomination {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ChipDenomination>;
+  return (
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    typeof candidate.label === "string" &&
+    candidate.label.trim().length > 0 &&
+    typeof candidate.colorHex === "string" &&
+    COLOR_PATTERN.test(candidate.colorHex) &&
+    typeof candidate.valueCents === "number" &&
+    Number.isSafeInteger(candidate.valueCents) &&
+    candidate.valueCents > 0
+  );
+}
+
+export function isValidChipCountLine(value: unknown): value is ChipCountLine {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ChipCountLine>;
+  return (
+    typeof candidate.denominationId === "string" &&
+    candidate.denominationId.length > 0 &&
+    typeof candidate.label === "string" &&
+    candidate.label.trim().length > 0 &&
+    typeof candidate.colorHex === "string" &&
+    COLOR_PATTERN.test(candidate.colorHex) &&
+    typeof candidate.valueCents === "number" &&
+    Number.isSafeInteger(candidate.valueCents) &&
+    candidate.valueCents > 0 &&
+    typeof candidate.count === "number" &&
+    Number.isSafeInteger(candidate.count) &&
+    candidate.count > 0
+  );
+}
+
+function isValidCashOutDraft(value: unknown): value is CashOutDraft {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<CashOutDraft>;
+  return (
+    typeof candidate.playerId === "string" &&
+    Array.isArray(candidate.lines) &&
+    candidate.lines.every(isValidChipCountLine) &&
+    new Set(candidate.lines.map((line) => line.denominationId)).size === candidate.lines.length &&
+    (candidate.correctingTransactionId === undefined ||
+      typeof candidate.correctingTransactionId === "string")
+  );
+}
 
 export function validateTransaction(
   transaction: Transaction,
@@ -75,6 +129,40 @@ export function validateTransaction(
     return "Choose a valid transaction category.";
   }
 
+  if (transaction.chipCountBreakdown !== undefined) {
+    if (transaction.type !== "bank_cash_out") {
+      return "Chip count details are only valid for cash-outs.";
+    }
+
+    if (
+      !Array.isArray(transaction.chipCountBreakdown) ||
+      !transaction.chipCountBreakdown.every(isValidChipCountLine) ||
+      new Set(transaction.chipCountBreakdown.map((line) => line.denominationId)).size !==
+        transaction.chipCountBreakdown.length
+    ) {
+      return "Enter a valid chip count breakdown.";
+    }
+
+    const breakdownTotalCents = chipCountTotalCents(transaction.chipCountBreakdown);
+    if (!Number.isSafeInteger(breakdownTotalCents)) {
+      return "The chip count total is too large.";
+    }
+
+    if (breakdownTotalCents !== transaction.amountCents) {
+      return "The chip count breakdown does not match the cash-out amount.";
+    }
+
+    if (transaction.chipCountBreakdown.length === 0 && transaction.amountCents !== 0) {
+      return "An empty chip count can only record a zero cash-out.";
+    }
+  }
+
+  if (transaction.correctsTransactionId !== undefined) {
+    if (transaction.type !== "bank_cash_out" || !transaction.correctsTransactionId) {
+      return "Only a cash-out can correct another cash-out.";
+    }
+  }
+
   return null;
 }
 
@@ -119,9 +207,11 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
       tableSeatPlacements?: unknown;
       tableSeatLayout?: unknown;
       tableIncludeCornerSeats?: unknown;
+      chipDenominations?: unknown;
     };
     players?: unknown;
     transactions?: unknown;
+    cashOutDrafts?: unknown;
   };
   const isLegacySettings =
     candidate.schemaVersion === 1 &&
@@ -133,14 +223,34 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
       candidate.settings.tableSeatLayout === "round") &&
     (candidate.settings.tableIncludeCornerSeats === undefined ||
       typeof candidate.settings.tableIncludeCornerSeats === "boolean");
-  const isCurrentSettings =
+  const isV2Settings =
     candidate.schemaVersion === 2 &&
     isValidTableShape(candidate.settings?.tableShape) &&
     Array.isArray(candidate.settings?.tableSeatPlacements) &&
     candidate.settings.tableSeatPlacements.every(isValidSeatPlacement);
+  const isCurrentSettings =
+    candidate.schemaVersion === 3 &&
+    isValidTableShape(candidate.settings?.tableShape) &&
+    Array.isArray(candidate.settings?.tableSeatPlacements) &&
+    candidate.settings.tableSeatPlacements.every(isValidSeatPlacement) &&
+    Array.isArray(candidate.settings?.chipDenominations) &&
+    candidate.settings.chipDenominations.every(isValidChipDenomination) &&
+    new Set(candidate.settings.chipDenominations.map((item) => item.id)).size ===
+      candidate.settings.chipDenominations.length &&
+    new Set(
+      candidate.settings.chipDenominations.map((item) => item.label.trim().toLowerCase())
+    ).size === candidate.settings.chipDenominations.length &&
+    new Set(
+      candidate.settings.chipDenominations.map((item) => item.colorHex.toLowerCase())
+    ).size === candidate.settings.chipDenominations.length;
+  const persistedPlayerIds = new Set(
+    Array.isArray(candidate.players) ? candidate.players.map((player) => player.id) : []
+  );
 
   return (
-    (candidate.schemaVersion === 1 || candidate.schemaVersion === 2) &&
+    (candidate.schemaVersion === 1 ||
+      candidate.schemaVersion === 2 ||
+      candidate.schemaVersion === 3) &&
     !!candidate.settings &&
     Array.isArray(candidate.players) &&
     Array.isArray(candidate.transactions) &&
@@ -148,7 +258,13 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     typeof candidate.settings.defaultBuyInCents === "number" &&
     typeof candidate.settings.gameName === "string" &&
     typeof candidate.settings.createdAt === "string" &&
-    (isLegacySettings || isCurrentSettings) &&
+    (isLegacySettings || isV2Settings || isCurrentSettings) &&
+    (candidate.schemaVersion !== 3 ||
+      (Array.isArray(candidate.cashOutDrafts) &&
+        candidate.cashOutDrafts.every(isValidCashOutDraft) &&
+        candidate.cashOutDrafts.every((draft) => persistedPlayerIds.has(draft.playerId)) &&
+        new Set(candidate.cashOutDrafts.map((draft) => draft.playerId)).size ===
+          candidate.cashOutDrafts.length)) &&
     candidate.players.every(
       (player) =>
         typeof player.id === "string" &&
@@ -156,15 +272,43 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
         typeof player.seatIndex === "number" &&
         typeof player.isActive === "boolean"
     ) &&
-    candidate.transactions.every(
-      (transaction) =>
+    candidate.transactions.every((transaction) => {
+      const basic =
         typeof transaction.id === "string" &&
         typeof transaction.type === "string" &&
         typeof transaction.createdAt === "string" &&
         typeof transaction.amountCents === "number" &&
         (transaction.category === undefined ||
           transaction.category === "poker" ||
-          transaction.category === "food")
-    )
+          transaction.category === "food");
+      if (!basic) return false;
+      if (
+        transaction.chipCountBreakdown !== undefined &&
+        (!Array.isArray(transaction.chipCountBreakdown) ||
+          transaction.type !== "bank_cash_out" ||
+          !transaction.chipCountBreakdown.every(isValidChipCountLine) ||
+          new Set(
+            transaction.chipCountBreakdown.map(
+              (line: ChipCountLine) => line.denominationId
+            )
+          ).size !==
+            transaction.chipCountBreakdown.length ||
+          chipCountTotalCents(transaction.chipCountBreakdown) !== transaction.amountCents)
+      ) {
+        return false;
+      }
+      if (
+        transaction.chipCountBreakdown !== undefined &&
+        !Number.isSafeInteger(chipCountTotalCents(transaction.chipCountBreakdown))
+      ) {
+        return false;
+      }
+      return (
+        transaction.correctsTransactionId === undefined ||
+        (transaction.type === "bank_cash_out" &&
+          typeof transaction.correctsTransactionId === "string" &&
+          transaction.correctsTransactionId.length > 0)
+      );
+    })
   );
 }

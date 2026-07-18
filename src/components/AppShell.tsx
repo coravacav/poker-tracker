@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type AppMode = "setup" | "play" | "settle";
+export type AppMode = "setup" | "play" | "cash_out" | "settle";
 
 type AppShellProps = {
   layoutEditing: boolean;
@@ -8,6 +8,7 @@ type AppShellProps = {
   mode: AppMode;
   onLayoutEditingChange: (layoutEditing: boolean) => void;
   onModeChange: (mode: AppMode) => void;
+  cashOut: ReactNode;
   play: ReactNode;
   setup: ReactNode;
   settle: ReactNode;
@@ -16,10 +17,12 @@ type AppShellProps = {
 const modeLabels: Array<{ mode: AppMode; label: string }> = [
   { mode: "setup", label: "Setup" },
   { mode: "play", label: "Play" },
+  { mode: "cash_out", label: "Cash Out" },
   { mode: "settle", label: "Settle" }
 ];
 
 export function AppShell({
+  cashOut,
   layoutEditing,
   layoutEditingDisabled,
   mode,
@@ -29,7 +32,8 @@ export function AppShell({
   setup,
   settle
 }: AppShellProps) {
-  const activeView = mode === "setup" ? setup : mode === "settle" ? settle : play;
+  const activeView =
+    mode === "setup" ? setup : mode === "cash_out" ? cashOut : mode === "settle" ? settle : play;
 
   return (
     <div className="app-shell">

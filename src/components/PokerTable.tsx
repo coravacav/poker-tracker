@@ -52,11 +52,6 @@ type TransferDraft = {
   note: string;
 };
 
-type CashOutDraft = {
-  playerId: PlayerId;
-  amountInput: string;
-};
-
 type RenameDraft = {
   playerId: PlayerId;
   nameInput: string;
@@ -85,7 +80,6 @@ type SeatSlotProps = {
   slot: TableSeatSlot;
   summary?: PlayerLedgerSummary;
   onBuyIn: (player: Player) => void;
-  onCashOut: (player: Player) => void;
   onEdit: (player: Player) => void;
   onSeatElementChange: (playerId: PlayerId, element: HTMLElement | null) => void;
   onStartTransfer: (fromPlayer: Player) => void;
@@ -99,7 +93,6 @@ function SeatSlot({
   slot,
   summary,
   onBuyIn,
-  onCashOut,
   onEdit,
   onSeatElementChange,
   onStartTransfer
@@ -122,7 +115,6 @@ function SeatSlot({
           readOnly={readOnly}
           summary={summary}
           onBuyIn={onBuyIn}
-          onCashOut={onCashOut}
           onEdit={onEdit}
           onSeatElementChange={onSeatElementChange}
           onStartTransfer={onStartTransfer}
@@ -211,8 +203,6 @@ export function PokerTable({
   );
   const [transferDraft, setTransferDraft] = useState<TransferDraft | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
-  const [cashOutDraft, setCashOutDraft] = useState<CashOutDraft | null>(null);
-  const [cashOutError, setCashOutError] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [activeDragType, setActiveDragType] = useState<
@@ -429,14 +419,6 @@ export function PokerTable({
     });
   }
 
-  function quickCashOut(player: Player) {
-    setCashOutDraft({
-      playerId: player.id,
-      amountInput: centsToInputValue(summaryByPlayerId.get(player.id)?.bankCashOutsCents ?? 0)
-    });
-    setCashOutError(null);
-  }
-
   function editPlayerName(player: Player) {
     setRenameDraft({
       playerId: player.id,
@@ -475,32 +457,6 @@ export function PokerTable({
     if (added) {
       setTransferDraft(null);
       setTransferError(null);
-    }
-  }
-
-  function confirmQuickCashOut() {
-    if (!cashOutDraft) {
-      return;
-    }
-
-    const amountCents = parseMoneyToCents(cashOutDraft.amountInput);
-    if (amountCents === null) {
-      setCashOutError("Enter a valid final chip value.");
-      return;
-    }
-
-    const added = onAddTransaction({
-      id: createId("transaction"),
-      type: "bank_cash_out",
-      createdAt: new Date().toISOString(),
-      amountCents,
-      fromPlayerId: cashOutDraft.playerId,
-      note: "Quick chip count"
-    });
-
-    if (added) {
-      setCashOutDraft(null);
-      setCashOutError(null);
     }
   }
 
@@ -614,7 +570,6 @@ export function PokerTable({
                 slot={slot}
                 summary={player ? summaryByPlayerId.get(player.id) : undefined}
                 onBuyIn={quickBuyIn}
-                onCashOut={quickCashOut}
                 onEdit={editPlayerName}
                 onSeatElementChange={setPlayerSeatElement}
                 onStartTransfer={(fromPlayer) => openTransfer(fromPlayer.id)}
@@ -767,49 +722,6 @@ export function PokerTable({
               </button>
               <button className="primary-button" type="button" onClick={confirmTransfer}>
                 Record transfer
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {cashOutDraft ? (
-        <div className="modal-backdrop" role="presentation">
-          <section className="modal table-action-modal" role="dialog" aria-modal="true" aria-label="Final chips">
-            <div className="modal-heading">
-              <div>
-                <p className="eyebrow">Seat action</p>
-                <h2>Final chips for {playerName(cashOutDraft.playerId)}</h2>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setCashOutDraft(null)}
-                title="Close"
-              >
-                <X size={17} />
-              </button>
-            </div>
-            <label>
-              <span>Final chips</span>
-              <input
-                inputMode="decimal"
-                value={cashOutDraft.amountInput}
-                onChange={(event) =>
-                  setCashOutDraft({
-                    ...cashOutDraft,
-                    amountInput: event.currentTarget.value
-                  })
-                }
-              />
-            </label>
-            {cashOutError ? <div className="notice notice-warning">{cashOutError}</div> : null}
-            <div className="modal-actions">
-              <button type="button" onClick={() => setCashOutDraft(null)}>
-                Cancel
-              </button>
-              <button className="primary-button" type="button" onClick={confirmQuickCashOut}>
-                Record final chips
               </button>
             </div>
           </section>

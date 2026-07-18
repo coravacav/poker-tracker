@@ -2,7 +2,8 @@ import { X } from "lucide-react";
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { AppShell, type AppMode } from "./components/AppShell";
 import { BankSummaryPanel } from "./components/BankSummary";
-import { CashOutPanel } from "./components/CashOutPanel";
+import { CashOutMode } from "./components/CashOutMode";
+import { ChipDenominationPanel } from "./components/ChipDenominationPanel";
 import { IconKey } from "./components/IconKey";
 import { PlayerDrawer } from "./components/PlayerDrawer";
 import { PokerTable } from "./components/PokerTable";
@@ -17,6 +18,7 @@ import {
   getSummaryByPlayerId,
   hasPlayerTransactions
 } from "./domain/ledger";
+import { getCashOutOverview } from "./domain/chipCounts";
 import type { Transaction } from "./domain/pokerTypes";
 import { filterSettlementSummariesForDisplay } from "./domain/settlement";
 import { validateTransaction } from "./domain/validation";
@@ -29,7 +31,6 @@ export function App() {
   const [readOnly, setReadOnly] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [transactionDrawerOpen, setTransactionDrawerOpen] = useState(false);
-  const [chipCountsDrawerOpen, setChipCountsDrawerOpen] = useState(false);
   const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
   const [layoutEditing, setLayoutEditing] = useState(false);
 
@@ -81,6 +82,18 @@ export function App() {
     [bankSummary, playerSummaries]
   );
 
+  const cashOutOverview = useMemo(
+    () =>
+      getCashOutOverview(
+        activePlayers,
+        state.transactions,
+        state.cashOutDrafts,
+        state.settings.chipDenominations,
+        bankSummary
+      ),
+    [activePlayers, bankSummary, state.cashOutDrafts, state.settings.chipDenominations, state.transactions]
+  );
+
   function addTransaction(transaction: Transaction): boolean {
     if (readOnly) {
       setNotice("Read-only mode is on. Turn it off to record transactions.");
@@ -101,7 +114,6 @@ export function App() {
   function changeMode(nextMode: AppMode) {
     setMode(nextMode);
     setTransactionDrawerOpen(false);
-    setChipCountsDrawerOpen(false);
     setAuditDrawerOpen(false);
     setLayoutEditing(false);
   }
@@ -109,6 +121,18 @@ export function App() {
   return (
     <>
       <AppShell
+        cashOut={
+          <CashOutMode
+            bankSummary={bankSummary}
+            denominations={state.settings.chipDenominations}
+            dispatch={dispatch}
+            drafts={state.cashOutDrafts}
+            players={activePlayers}
+            readOnly={readOnly}
+            summaries={playerSummaries}
+            transactions={state.transactions}
+          />
+        }
         layoutEditing={layoutEditing}
         layoutEditingDisabled={readOnly}
         mode={mode}
@@ -129,6 +153,11 @@ export function App() {
               players={activePlayers}
               readOnly={readOnly}
               transactions={state.transactions}
+            />
+            <ChipDenominationPanel
+              denominations={state.settings.chipDenominations}
+              dispatch={dispatch}
+              readOnly={readOnly}
             />
           </div>
         }
@@ -177,13 +206,6 @@ export function App() {
               />
               <div className="settle-actions">
                 <button
-                  className="primary-button"
-                  type="button"
-                  onClick={() => setChipCountsDrawerOpen(true)}
-                >
-                  Chip Counts
-                </button>
-                <button
                   className="text-button"
                   type="button"
                   onClick={() => setAuditDrawerOpen(true)}
@@ -192,6 +214,25 @@ export function App() {
                 </button>
               </div>
             </section>
+            {cashOutOverview.missingPlayers.length > 0 || bankSummary.balanceCents !== 0 || cashOutOverview.multiplePlayerIds.size > 0 ? (
+              <div className="settle-warnings">
+                {cashOutOverview.missingPlayers.length > 0 ? (
+                  <div className="notice notice-warning">
+                    Missing cash-outs: {cashOutOverview.missingPlayers.map((player) => player.name).join(", ")}.
+                  </div>
+                ) : null}
+                {bankSummary.balanceCents !== 0 ? (
+                  <div className="notice notice-warning">
+                    The chip pool still has {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(bankSummary.balanceCents / 100)} remaining.
+                  </div>
+                ) : null}
+                {cashOutOverview.multiplePlayerIds.size > 0 ? (
+                  <div className="notice notice-warning">
+                    Resolve multiple active cash-outs in Transaction Audit.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <SettlementPanel
               bankSummary={bankSummary}
               imbalanceCents={imbalanceCents}
@@ -233,37 +274,6 @@ export function App() {
               players={activePlayers}
               readOnly={readOnly}
               summaryByPlayerId={summaryByPlayerId}
-            />
-          </section>
-        </div>
-      ) : null}
-
-      {chipCountsDrawerOpen ? (
-        <div className="drawer-backdrop" role="presentation">
-          <section
-            className="drawer-panel drawer-panel-wide"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Chip counts"
-          >
-            <div className="drawer-heading">
-              <h2>Chip Counts</h2>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setChipCountsDrawerOpen(false)}
-                title="Close"
-              >
-                <X size={17} />
-              </button>
-            </div>
-            <CashOutPanel
-              onAddTransaction={addTransaction}
-              players={activePlayers}
-              summaries={playerSummaries}
-              transactions={state.transactions}
-              readOnly={readOnly}
-              variant="drawer"
             />
           </section>
         </div>

@@ -1,6 +1,27 @@
 export type PlayerId = string;
 export type TransactionId = string;
 
+export type ChipDenomination = {
+  id: string;
+  label: string;
+  colorHex: string;
+  valueCents: number;
+};
+
+export type ChipCountLine = {
+  denominationId: string;
+  label: string;
+  colorHex: string;
+  valueCents: number;
+  count: number;
+};
+
+export type CashOutDraft = {
+  playerId: PlayerId;
+  lines: ChipCountLine[];
+  correctingTransactionId?: TransactionId;
+};
+
 export type SeatPosition = {
   index: number;
 };
@@ -28,6 +49,7 @@ export type GameSettings = {
   defaultBuyInCents: number;
   tableShape: TableShape;
   tableSeatPlacements: TableSeatPlacement[];
+  chipDenominations: ChipDenomination[];
   createdAt: string;
 };
 
@@ -51,6 +73,8 @@ export type Transaction = {
   category?: TransactionCategory;
   note?: string;
   flippedFromTransactionId?: TransactionId;
+  chipCountBreakdown?: ChipCountLine[];
+  correctsTransactionId?: TransactionId;
   voidedAt?: string;
   voidReason?: string;
 };
@@ -71,15 +95,16 @@ export type BankSummary = {
 };
 
 export type PersistedGameState = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   settings: GameSettings;
   players: Player[];
   transactions: Transaction[];
+  cashOutDrafts: CashOutDraft[];
 };
 
 export type LegacyGameSettings = Omit<
   GameSettings,
-  "tableShape" | "tableSeatPlacements"
+  "tableShape" | "tableSeatPlacements" | "chipDenominations"
 > & {
   tableSeatLayout?: TableSeatLayout;
   tableIncludeCornerSeats?: boolean;
@@ -92,7 +117,17 @@ export type LegacyPersistedGameState = {
   transactions: Transaction[];
 };
 
-export type AnyPersistedGameState = PersistedGameState | LegacyPersistedGameState;
+export type LegacyPersistedGameStateV2 = {
+  schemaVersion: 2;
+  settings: Omit<GameSettings, "chipDenominations">;
+  players: Player[];
+  transactions: Transaction[];
+};
+
+export type AnyPersistedGameState =
+  | PersistedGameState
+  | LegacyPersistedGameStateV2
+  | LegacyPersistedGameState;
 
 export type GameState = PersistedGameState;
 

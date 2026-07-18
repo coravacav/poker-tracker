@@ -1,10 +1,16 @@
 import { hasPlayerTransactions } from "../domain/ledger";
 import {
+  mergeChipCountLines,
+  snapshotNonzeroChipCountLines
+} from "../domain/chipCounts";
+import {
   moveSeatPlacement,
   normalizeSeatPlacements
 } from "../domain/tableLayout";
 import type {
   AnyPersistedGameState,
+  CashOutDraft,
+  ChipDenomination,
   GameState,
   Player,
   PlayerId,
@@ -18,6 +24,7 @@ import { createDefaultGameState, createId } from "./seedGame";
 export type GameAction =
   | { type: "set_game_name"; name: string }
   | { type: "set_default_buy_in"; amountCents: number }
+  | { type: "set_chip_denominations"; denominations: ChipDenomination[] }
   | { type: "set_table_shape"; shape: GameState["settings"]["tableShape"] }
   | { type: "move_table_seat"; seatIndex: number; rail: SeatRail; order: number }
   | { type: "move_player_to_seat"; playerId: PlayerId; seatIndex: number }
@@ -27,6 +34,15 @@ export type GameAction =
   | { type: "archive_player"; playerId: PlayerId }
   | { type: "reorder_players"; orderedPlayerIds: PlayerId[] }
   | { type: "add_transaction"; transaction: Transaction }
+  | { type: "save_cash_out_draft"; draft: CashOutDraft }
+  | { type: "clear_cash_out_draft"; playerId: PlayerId }
+  | { type: "start_cash_out_correction"; playerId: PlayerId; transactionId: TransactionId }
+  | { type: "record_cash_out"; transaction: Transaction }
+  | {
+      type: "replace_cash_out";
+      originalTransactionId: TransactionId;
+      replacement: Transaction;
+    }
   | { type: "flip_transaction"; transactionId: TransactionId }
   | { type: "void_transaction"; transactionId: TransactionId; reason: string }
   | { type: "replace_state_from_import"; state: AnyPersistedGameState }
@@ -109,6 +125,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...state.settings,
           defaultBuyInCents: action.amountCents
         }
+      };
+
+    case "set_chip_denominations":
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          chipDenominations: action.denominations.map((denomination) => ({ ...denomination }))
+        },
+        cashOutDrafts: state.cashOutDrafts.map((draft) => ({
+          ...draft,
+          lines: snapshotNonzeroChipCountLines(
+            mergeChipCountLines(action.denominations, draft.lines)
+          )
+        }))
       };
 
     case "set_table_shape":
@@ -287,6 +318,119 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         transactions: [...state.transactions, action.transaction]
       };
 
+    case "save_cash_out_draft":
+      return {
+        ...state,
+        cashOutDrafts: [
+          ...state.cashOutDrafts.filter(
+            (draft) => draft.playerId !== action.draft.playerId
+          ),
+          {
+            ...action.draft,
+            lines: action.draft.lines.map((line) => ({ ...line }))
+          }
+        ]
+      };
+
+    case "clear_cash_out_draft":
+      return {
+        ...state,
+        cashOutDrafts: state.cashOutDrafts.filter(
+          (draft) => draft.playerId !== action.playerId
+        )
+      };
+
+    case "start_cash_out_correction": {
+      const original = state.transactions.find(
+        (transaction) =>
+          transaction.id === action.transactionId &&
+          transaction.type === "bank_cash_out" &&
+          transaction.fromPlayerId === action.playerId &&
+          !transaction.voidedAt
+      );
+      if (!original) return state;
+
+      return {
+        ...state,
+        cashOutDrafts: [
+          ...state.cashOutDrafts.filter((draft) => draft.playerId !== action.playerId),
+          {
+            playerId: action.playerId,
+            lines: (original.chipCountBreakdown ?? []).map((line) => ({ ...line })),
+            correctingTransactionId: original.id
+          }
+        ]
+      };
+    }
+
+    case "record_cash_out": {
+      if (
+        action.transaction.type !== "bank_cash_out" ||
+        !action.transaction.fromPlayerId ||
+        action.transaction.chipCountBreakdown === undefined
+      ) {
+        return state;
+      }
+
+      return {
+        ...state,
+        transactions: [
+          ...state.transactions,
+          {
+            ...action.transaction,
+            chipCountBreakdown: action.transaction.chipCountBreakdown.map((line) => ({
+              ...line
+            }))
+          }
+        ],
+        cashOutDrafts: state.cashOutDrafts.filter(
+          (draft) => draft.playerId !== action.transaction.fromPlayerId
+        )
+      };
+    }
+
+    case "replace_cash_out": {
+      const original = state.transactions.find(
+        (transaction) => transaction.id === action.originalTransactionId
+      );
+      if (
+        !original ||
+        original.voidedAt ||
+        original.type !== "bank_cash_out" ||
+        action.replacement.type !== "bank_cash_out" ||
+        original.fromPlayerId !== action.replacement.fromPlayerId ||
+        action.replacement.chipCountBreakdown === undefined ||
+        action.replacement.correctsTransactionId !== original.id
+      ) {
+        return state;
+      }
+
+      const voidedAt = new Date().toISOString();
+      return {
+        ...state,
+        transactions: [
+          ...state.transactions.map((transaction) =>
+            transaction.id === original.id
+              ? {
+                  ...transaction,
+                  voidedAt,
+                  voidReason: "Corrected chip count"
+                }
+              : transaction
+          ),
+          {
+            ...action.replacement,
+            chipCountBreakdown: action.replacement.chipCountBreakdown.map((line) => ({
+              ...line
+            }))
+          }
+        ],
+        cashOutDrafts: state.cashOutDrafts.filter(
+          (draft) => draft.playerId !== action.replacement.fromPlayerId
+        )
+      };
+    }
+
     case "flip_transaction": {
       const original = state.transactions.find(
         (transaction) => transaction.id === action.transactionId
@@ -330,7 +474,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           fromPlayerId: original.toPlayerId,
           toPlayerId: undefined,
           bankDirection: undefined,
-          category: undefined
+          category: undefined,
+          chipCountBreakdown: undefined,
+          correctsTransactionId: undefined
         };
       }
 
@@ -345,7 +491,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           fromPlayerId: undefined,
           toPlayerId: original.fromPlayerId,
           bankDirection: undefined,
-          category: undefined
+          category: undefined,
+          chipCountBreakdown: undefined,
+          correctsTransactionId: undefined
         };
       }
 

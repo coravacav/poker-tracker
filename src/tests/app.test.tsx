@@ -21,7 +21,7 @@ describe("App", () => {
       within(screen.getByRole("navigation", { name: "Poker tracker modes" }))
         .getAllByRole("button")
         .map((button) => button.textContent)
-    ).toEqual(["Edit layout", "Setup", "Play", "Settle"]);
+    ).toEqual(["Edit layout", "Setup", "Play", "Cash Out", "Settle"]);
 
     expect(screen.getByRole("heading", { name: "Table Layout" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit layout" })).toBeInTheDocument();
@@ -38,7 +38,6 @@ describe("App", () => {
       "Rename",
       "Buy-in",
       "Transfer",
-      "Final chips",
       "Drag transfer"
     ]) {
       expect(within(iconKey).getByText(label)).toBeInTheDocument();
@@ -60,6 +59,7 @@ describe("App", () => {
     );
     expect(screen.getByRole("heading", { name: "Game Setup" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Players" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Chip Value Key" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Table Layout" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit layout" })).not.toBeInTheDocument();
     expect(screen.queryByText("Corners")).not.toBeInTheDocument();
@@ -102,7 +102,18 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Rectangle" })).not.toBeInTheDocument();
   });
 
-  it("switches to Settle mode and opens chip count and audit drawers", () => {
+  it("switches to Cash Out mode and shows full-page player counting", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cash Out" }));
+
+    expect(screen.getByRole("button", { name: "Cash Out" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "Cash Out" })).toBeInTheDocument();
+    expect(screen.getByText(/Configure the Chip Value Key in Setup/)).toBeInTheDocument();
+    expect(screen.queryByTitle("Record final chips")).not.toBeInTheDocument();
+  });
+
+  it("keeps Settle focused on settlement and transaction audit", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Settle" }));
@@ -116,9 +127,8 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Player Payments" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Player Net" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Chip Counts" }));
-    expect(screen.getByRole("dialog", { name: "Chip counts" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("button", { name: "Chip Counts" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Missing cash-outs/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Transaction Audit" }));
     expect(screen.getByRole("dialog", { name: "Transaction audit" })).toBeInTheDocument();

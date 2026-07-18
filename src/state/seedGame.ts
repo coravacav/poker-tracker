@@ -22,16 +22,18 @@ export function createDefaultGameState(): GameState {
   const players = createDefaultPlayers();
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     settings: {
       gameName: "Poker Night",
       currencyCode: "USD",
       defaultBuyInCents: 2000,
       tableShape: "rectangle",
       tableSeatPlacements: createDefaultSeatPlacements(players.length, "rectangle"),
+      chipDenominations: [],
       createdAt: new Date().toISOString()
     },
     players,
-    transactions: []
+    transactions: [],
+    cashOutDrafts: []
   };
 }
