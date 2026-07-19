@@ -43,10 +43,12 @@ describe("TransactionForm", () => {
     expect(onAddTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "bank_cash_out",
+        cashOutKind: "partial",
         fromPlayerId: "p2",
         amountCents: 3750
       })
     );
+    expect(screen.getByText(/during-game payout/)).toBeInTheDocument();
   });
 
   it("keeps transfer participants independent from the bank player", () => {

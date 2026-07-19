@@ -20,7 +20,7 @@ type TransactionTableProps = {
 
 const typeLabels: Record<TransactionType, string> = {
   bank_buy_in: "Buy-in",
-  bank_cash_out: "Chip count",
+  bank_cash_out: "Cash-out",
   player_transfer: "Transfer",
   debt_coverage: "Debt coverage",
   manual_bank_adjustment: "Chip adjustment"
@@ -109,6 +109,14 @@ export function TransactionTable({
   function typeLabel(transaction: Transaction): string {
     if (transaction.type === "bank_buy_in" && transaction.coveredByPlayerId) {
       return "Covered buy-in";
+    }
+
+    if (transaction.type === "bank_cash_out") {
+      return transaction.cashOutKind === "partial"
+        ? "Partial cash-out"
+        : transaction.cashOutKind === "final"
+          ? "Final cash-out"
+          : "Cash-out";
     }
 
     return typeLabels[transaction.type];

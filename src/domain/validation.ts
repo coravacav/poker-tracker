@@ -113,6 +113,18 @@ export function validateTransaction(
     return "Choose the player returning chips.";
   }
 
+  if (transaction.cashOutKind !== undefined) {
+    if (transaction.type !== "bank_cash_out") {
+      return "Cash-out kind is only valid for cash-outs.";
+    }
+    if (transaction.cashOutKind !== "partial" && transaction.cashOutKind !== "final") {
+      return "Choose a valid cash-out kind.";
+    }
+    if (transaction.cashOutKind === "partial" && transaction.amountCents === 0) {
+      return "A partial cash-out must be greater than zero.";
+    }
+  }
+
   if (
     transaction.type === "bank_cash_out" &&
     transaction.fromPlayerId &&
@@ -215,6 +227,9 @@ export function validateTransaction(
     if (transaction.type !== "bank_cash_out" || !transaction.correctsTransactionId) {
       return "Only a cash-out can correct another cash-out.";
     }
+    if (transaction.cashOutKind !== undefined && transaction.cashOutKind !== "final") {
+      return "Only a final cash-out can correct another cash-out.";
+    }
   }
 
   return null;
@@ -291,7 +306,9 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     Array.isArray(candidate.settings?.tableSeatPlacements) &&
     candidate.settings.tableSeatPlacements.every(isValidSeatPlacement);
   const hasCurrentSettings =
-    (candidate.schemaVersion === 3 || candidate.schemaVersion === 4) &&
+    (candidate.schemaVersion === 3 ||
+      candidate.schemaVersion === 4 ||
+      candidate.schemaVersion === 5) &&
     isValidTableShape(candidate.settings?.tableShape) &&
     Array.isArray(candidate.settings?.tableSeatPlacements) &&
     candidate.settings.tableSeatPlacements.every(isValidSeatPlacement) &&
@@ -313,7 +330,8 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     (candidate.schemaVersion === 1 ||
       candidate.schemaVersion === 2 ||
       candidate.schemaVersion === 3 ||
-      candidate.schemaVersion === 4) &&
+      candidate.schemaVersion === 4 ||
+      candidate.schemaVersion === 5) &&
     !!candidate.settings &&
     Array.isArray(candidate.players) &&
     Array.isArray(candidate.transactions) &&
@@ -322,7 +340,9 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     typeof candidate.settings.gameName === "string" &&
     typeof candidate.settings.createdAt === "string" &&
     (isLegacySettings || isV2Settings || hasCurrentSettings) &&
-    ((candidate.schemaVersion !== 3 && candidate.schemaVersion !== 4) ||
+    ((candidate.schemaVersion !== 3 &&
+      candidate.schemaVersion !== 4 &&
+      candidate.schemaVersion !== 5) ||
       (Array.isArray(candidate.cashOutDrafts) &&
         candidate.cashOutDrafts.every(isValidCashOutDraft) &&
         candidate.cashOutDrafts.every((draft) => persistedPlayerIds.has(draft.playerId)) &&
@@ -340,7 +360,9 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
         typeof transaction.id === "string" &&
         typeof transaction.type === "string" &&
         TRANSACTION_TYPES.has(transaction.type as TransactionType) &&
-        (transaction.type !== "debt_coverage" || candidate.schemaVersion === 4) &&
+        (transaction.type !== "debt_coverage" ||
+          candidate.schemaVersion === 4 ||
+          candidate.schemaVersion === 5) &&
         typeof transaction.createdAt === "string" &&
         typeof transaction.amountCents === "number" &&
         Number.isSafeInteger(transaction.amountCents) &&
@@ -348,6 +370,13 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
           transaction.category === "poker" ||
           transaction.category === "food");
       if (!basic) return false;
+      if (
+        candidate.schemaVersion === 5 &&
+        transaction.type === "bank_cash_out" &&
+        (transaction.cashOutKind !== "partial" && transaction.cashOutKind !== "final")
+      ) {
+        return false;
+      }
 
       const structuralError = validateTransaction(
         transaction as Transaction,

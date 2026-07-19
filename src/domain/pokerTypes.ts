@@ -62,6 +62,7 @@ export type TransactionType =
 
 export type BankDirection = "incoming" | "outgoing";
 export type TransactionCategory = "poker" | "food";
+export type CashOutKind = "partial" | "final";
 
 export type Transaction = {
   id: TransactionId;
@@ -74,6 +75,7 @@ export type Transaction = {
   coveredPlayerId?: PlayerId;
   bankDirection?: BankDirection;
   category?: TransactionCategory;
+  cashOutKind?: CashOutKind;
   note?: string;
   flippedFromTransactionId?: TransactionId;
   chipCountBreakdown?: ChipCountLine[];
@@ -100,6 +102,14 @@ export type BankSummary = {
 };
 
 export type PersistedGameState = {
+  schemaVersion: 5;
+  settings: GameSettings;
+  players: Player[];
+  transactions: Transaction[];
+  cashOutDrafts: CashOutDraft[];
+};
+
+export type LegacyPersistedGameStateV4 = {
   schemaVersion: 4;
   settings: GameSettings;
   players: Player[];
@@ -139,6 +149,7 @@ export type LegacyPersistedGameStateV3 = {
 
 export type AnyPersistedGameState =
   | PersistedGameState
+  | LegacyPersistedGameStateV4
   | LegacyPersistedGameStateV3
   | LegacyPersistedGameStateV2
   | LegacyPersistedGameState;

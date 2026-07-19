@@ -22,7 +22,7 @@ describe("gameReducer", () => {
   it("defaults new games to rectangle dynamic table settings", () => {
     const state = createDefaultGameState();
 
-    expect(state.schemaVersion).toBe(4);
+    expect(state.schemaVersion).toBe(5);
     expect(state.settings.chipDenominations).toEqual([]);
     expect(state.cashOutDrafts).toEqual([]);
     expect(state.settings.tableShape).toBe("rectangle");
@@ -516,7 +516,7 @@ describe("gameReducer", () => {
     expect(state.players.find((player) => player.id === protectedPlayer.id)?.seatIndex).toBe(5);
   });
 
-  it("migrates v1 imports to v4 shape and dynamic placements", () => {
+  it("migrates v1 imports to v5 shape and dynamic placements", () => {
     const state = createDefaultGameState();
     const importedState = {
       schemaVersion: 1,
@@ -539,7 +539,7 @@ describe("gameReducer", () => {
       state: importedState as any
     });
 
-    expect(nextState.schemaVersion).toBe(4);
+    expect(nextState.schemaVersion).toBe(5);
     expect(nextState.settings.tableShape).toBe("round");
     expect(nextState.settings.tableSeatPlacements).toHaveLength(6);
     expect(nextState.settings.chipDenominations).toEqual([]);
@@ -591,6 +591,7 @@ describe("gameReducer", () => {
     const original = {
       id: "cashout",
       type: "bank_cash_out" as const,
+      cashOutKind: "final" as const,
       createdAt: "2026-05-10T00:00:00.000Z",
       amountCents: 1000,
       fromPlayerId: player.id,
@@ -633,6 +634,7 @@ describe("gameReducer", () => {
       transaction: {
         id: "cashout",
         type: "bank_cash_out",
+        cashOutKind: "final",
         createdAt: "2026-05-10T00:00:00.000Z",
         amountCents: 0,
         fromPlayerId: player.id,
@@ -646,6 +648,7 @@ describe("gameReducer", () => {
       replacement: {
         id: "replacement",
         type: "bank_cash_out",
+        cashOutKind: "final",
         createdAt: "2026-05-12T00:00:00.000Z",
         amountCents: 0,
         fromPlayerId: player.id,
@@ -711,6 +714,7 @@ describe("gameReducer", () => {
     expect(state.transactions[1]).toEqual(
       expect.objectContaining({
         type: "bank_cash_out",
+        cashOutKind: "partial",
         amountCents: 2000,
         fromPlayerId: player.id,
         toPlayerId: undefined,

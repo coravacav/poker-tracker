@@ -1,5 +1,6 @@
 import { hasPlayerTransactions } from "../domain/ledger";
 import {
+  currentFinalCashOutForPlayer,
   mergeChipCountLines,
   snapshotNonzeroChipCountLines
 } from "../domain/chipCounts";
@@ -367,14 +368,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
     case "start_cash_out_correction": {
-      const original = state.transactions.find(
-        (transaction) =>
-          transaction.id === action.transactionId &&
-          transaction.type === "bank_cash_out" &&
-          transaction.fromPlayerId === action.playerId &&
-          !transaction.voidedAt
-      );
-      if (!original) return state;
+      const original = currentFinalCashOutForPlayer(state.transactions, action.playerId);
+      if (!original || original.id !== action.transactionId) return state;
 
       return {
         ...state,
@@ -392,6 +387,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "record_cash_out": {
       if (
         action.transaction.type !== "bank_cash_out" ||
+        action.transaction.cashOutKind !== "final" ||
         !action.transaction.fromPlayerId ||
         action.transaction.chipCountBreakdown === undefined
       ) {
@@ -423,7 +419,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         !original ||
         original.voidedAt ||
         original.type !== "bank_cash_out" ||
+        original.cashOutKind !== "final" ||
         action.replacement.type !== "bank_cash_out" ||
+        action.replacement.cashOutKind !== "final" ||
         original.fromPlayerId !== action.replacement.fromPlayerId ||
         action.replacement.chipCountBreakdown === undefined ||
         action.replacement.correctsTransactionId !== original.id
@@ -504,6 +502,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           coveredByPlayerId: undefined,
           coveredPlayerId: undefined,
           chipCountBreakdown: undefined,
+          cashOutKind: "partial",
           correctsTransactionId: undefined
         };
       }
@@ -523,6 +522,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           coveredByPlayerId: undefined,
           coveredPlayerId: undefined,
           chipCountBreakdown: undefined,
+          cashOutKind: undefined,
           correctsTransactionId: undefined
         };
       }

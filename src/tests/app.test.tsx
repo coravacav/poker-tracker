@@ -39,6 +39,7 @@ describe("App", () => {
     for (const label of [
       "Rename",
       "Buy-in",
+      "Cash out",
       "Transfer",
       "Drag transfer"
     ]) {
@@ -169,6 +170,34 @@ describe("App", () => {
     expect(screen.queryByRole("dialog", { name: "Add transaction" })).not.toBeInTheDocument();
   });
 
+  it("records a confirmed partial cash-out from a player card", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getAllByTitle("Record partial cash-out")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Partial cash-out" });
+    expect(within(dialog).getByRole("heading", { name: "Cash out Player 1" }))
+      .toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Amount")).toHaveValue("20.00");
+
+    fireEvent.change(within(dialog).getByLabelText("Amount"), { target: { value: "0" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record partial cash-out" }));
+    expect(within(dialog).getByText("Enter a positive cash-out amount.")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "1/4 buy-in $5.00" }));
+    expect(within(dialog).getByLabelText("Partial cash-out preview")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record partial cash-out" }));
+    expect(screen.queryByRole("dialog", { name: "Partial cash-out" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cash Out" }));
+    expect(screen.getByText("0 / 6")).toBeInTheDocument();
+    expect(screen.getByText("Cashed out earlier")).toBeInTheDocument();
+    expect(screen.queryByText(/multiple active cash-outs/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Settle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Transaction Audit" }));
+    expect(screen.getByRole("heading", { name: "Partial cash-out" })).toBeInTheDocument();
+  });
+
   it("records a settlement-ready full debt coverage and recalculates payments", () => {
     const state = createDefaultGameState();
     state.players = state.players.slice(0, 2);
@@ -193,6 +222,7 @@ describe("App", () => {
       {
         id: "alex-cash-out",
         type: "bank_cash_out",
+        cashOutKind: "final",
         createdAt: "2026-01-01T01:00:00.000Z",
         amountCents: 0,
         fromPlayerId: alex.id
@@ -200,6 +230,7 @@ describe("App", () => {
       {
         id: "blair-cash-out",
         type: "bank_cash_out",
+        cashOutKind: "final",
         createdAt: "2026-01-01T01:01:00.000Z",
         amountCents: 4000,
         fromPlayerId: blair.id

@@ -1,5 +1,6 @@
 import {
   ArrowRightLeft,
+  BadgeDollarSign,
   CircleDollarSign,
   HandCoins,
   Move,
@@ -10,6 +11,7 @@ const items = [
   { label: "Move seat", icon: Move },
   { label: "Rename", icon: Pencil },
   { label: "Buy-in", icon: HandCoins },
+  { label: "Cash out", icon: BadgeDollarSign },
   { label: "Transfer", icon: ArrowRightLeft },
   { label: "Drag transfer", icon: CircleDollarSign }
 ];

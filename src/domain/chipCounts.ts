@@ -16,13 +16,67 @@ export type ChipCountAggregate = ChipDenomination & {
 export type CashOutOverview = {
   completedPlayerIds: Set<PlayerId>;
   missingPlayers: Player[];
-  manualPlayerIds: Set<PlayerId>;
-  multiplePlayerIds: Set<PlayerId>;
+  manualFinalPlayerIds: Set<PlayerId>;
   recordedTotalCents: number;
   projectedTotalCents: number;
   projectedRemainingCents: number;
   aggregates: ChipCountAggregate[];
 };
+
+function transactionTimestamp(transaction: Transaction): number {
+  const timestamp = Date.parse(transaction.createdAt);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function affectsPlayerChipStack(transaction: Transaction, playerId: PlayerId): boolean {
+  if (transaction.voidedAt) return false;
+  if (transaction.type === "bank_buy_in") return transaction.toPlayerId === playerId;
+  if (transaction.type === "bank_cash_out") return transaction.fromPlayerId === playerId;
+  if (transaction.type === "player_transfer" && transaction.category !== "food") {
+    return transaction.fromPlayerId === playerId || transaction.toPlayerId === playerId;
+  }
+  return false;
+}
+
+export function latestChipStackTransactionForPlayer(
+  transactions: Transaction[],
+  playerId: PlayerId
+): Transaction | undefined {
+  let latest: { transaction: Transaction; index: number } | undefined;
+
+  for (const [index, transaction] of transactions.entries()) {
+    if (!affectsPlayerChipStack(transaction, playerId)) continue;
+    if (!latest) {
+      latest = { transaction, index };
+      continue;
+    }
+
+    const timestampDifference =
+      transactionTimestamp(transaction) - transactionTimestamp(latest.transaction);
+    if (timestampDifference > 0 || (timestampDifference === 0 && index > latest.index)) {
+      latest = { transaction, index };
+    }
+  }
+
+  return latest?.transaction;
+}
+
+export function currentFinalCashOutForPlayer(
+  transactions: Transaction[],
+  playerId: PlayerId
+): Transaction | undefined {
+  const latest = latestChipStackTransactionForPlayer(transactions, playerId);
+  return latest?.type === "bank_cash_out" && latest.cashOutKind === "final"
+    ? latest
+    : undefined;
+}
+
+export function isPlayerCashOutComplete(
+  transactions: Transaction[],
+  playerId: PlayerId
+): boolean {
+  return currentFinalCashOutForPlayer(transactions, playerId) !== undefined;
+}
 
 export function chipCountLineTotalCents(line: ChipCountLine): number {
   return line.valueCents * line.count;
@@ -90,8 +144,7 @@ export function getCashOutOverview(
 
   const draftByPlayer = new Map(drafts.map((draft) => [draft.playerId, draft]));
   const completedPlayerIds = new Set<PlayerId>();
-  const manualPlayerIds = new Set<PlayerId>();
-  const multiplePlayerIds = new Set<PlayerId>();
+  const manualFinalPlayerIds = new Set<PlayerId>();
   const effectiveLines: ChipCountLine[] = [];
 
   let recordedTotalCents = 0;
@@ -100,18 +153,24 @@ export function getCashOutOverview(
 
   for (const player of players) {
     const playerCashOuts = cashOutsByPlayer.get(player.id) ?? [];
+    const currentFinalCashOut = currentFinalCashOutForPlayer(transactions, player.id);
     const draft = draftByPlayer.get(player.id);
-    if (playerCashOuts.length > 0) completedPlayerIds.add(player.id);
-    if (playerCashOuts.length > 1) multiplePlayerIds.add(player.id);
-    if (playerCashOuts.some((transaction) => transaction.chipCountBreakdown === undefined)) {
-      manualPlayerIds.add(player.id);
+    if (currentFinalCashOut) completedPlayerIds.add(player.id);
+    if (currentFinalCashOut && currentFinalCashOut.chipCountBreakdown === undefined) {
+      manualFinalPlayerIds.add(player.id);
     }
 
     if (draft?.correctingTransactionId) {
-      const original = playerCashOuts.find(
-        (transaction) => transaction.id === draft.correctingTransactionId
-      );
+      const original =
+        currentFinalCashOut?.id === draft.correctingTransactionId
+          ? currentFinalCashOut
+          : undefined;
       if (original) {
+        for (const transaction of playerCashOuts) {
+          if (transaction.id !== original.id && transaction.chipCountBreakdown) {
+            effectiveLines.push(...transaction.chipCountBreakdown);
+          }
+        }
         const merged = mergeChipCountLines(denominations, draft.lines);
         projectedTotalCents += chipCountTotalCents(merged) - original.amountCents;
         effectiveLines.push(...snapshotNonzeroChipCountLines(merged));
@@ -119,16 +178,13 @@ export function getCashOutOverview(
       }
     }
 
-    if (playerCashOuts.length > 0) {
-      for (const transaction of playerCashOuts) {
-        if (transaction.chipCountBreakdown) {
-          effectiveLines.push(...transaction.chipCountBreakdown);
-        }
+    for (const transaction of playerCashOuts) {
+      if (transaction.chipCountBreakdown) {
+        effectiveLines.push(...transaction.chipCountBreakdown);
       }
-      continue;
     }
 
-    if (draft) {
+    if (!currentFinalCashOut && draft && !draft.correctingTransactionId) {
       const merged = mergeChipCountLines(denominations, draft.lines);
       projectedTotalCents += chipCountTotalCents(merged);
       effectiveLines.push(...snapshotNonzeroChipCountLines(merged));
@@ -162,8 +218,7 @@ export function getCashOutOverview(
   return {
     completedPlayerIds,
     missingPlayers: players.filter((player) => !completedPlayerIds.has(player.id)),
-    manualPlayerIds,
-    multiplePlayerIds,
+    manualFinalPlayerIds,
     recordedTotalCents,
     projectedTotalCents,
     projectedRemainingCents:

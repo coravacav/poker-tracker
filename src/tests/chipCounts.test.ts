@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   chipCountTotalCents,
+  currentFinalCashOutForPlayer,
   getCashOutOverview,
+  isPlayerCashOutComplete,
   mergeChipCountLines
 } from "../domain/chipCounts";
 import type { BankSummary, CashOutDraft, ChipDenomination, Player, Transaction } from "../domain/pokerTypes";
@@ -33,7 +35,7 @@ describe("chip counts", () => {
     ];
     const transactions: Transaction[] = [
       { id: "buy", type: "bank_buy_in", createdAt: "2026-01-01", amountCents: 4000, toPlayerId: "p1" },
-      { id: "out", type: "bank_cash_out", createdAt: "2026-01-02", amountCents: 2000, fromPlayerId: "p1" }
+      { id: "out", type: "bank_cash_out", cashOutKind: "final", createdAt: "2026-01-02", amountCents: 2000, fromPlayerId: "p1" }
     ];
     const drafts: CashOutDraft[] = [
       {
@@ -46,9 +48,82 @@ describe("chip counts", () => {
 
     expect([...overview.completedPlayerIds]).toEqual(["p1"]);
     expect(overview.missingPlayers.map((player) => player.id)).toEqual(["p2"]);
-    expect([...overview.manualPlayerIds]).toEqual(["p1"]);
+    expect([...overview.manualFinalPlayerIds]).toEqual(["p1"]);
     expect(overview.projectedTotalCents).toBe(3500);
     expect(overview.projectedRemainingCents).toBe(500);
     expect(overview.aggregates[0]).toEqual(expect.objectContaining({ id: "blue", count: 3, totalCents: 1500 }));
+  });
+
+  it("projects a final draft on top of partial payouts without completing the player", () => {
+    const players: Player[] = [
+      { id: "p1", name: "Alex", seatIndex: 0, isActive: true }
+    ];
+    const transactions: Transaction[] = [
+      { id: "buy", type: "bank_buy_in", createdAt: "2026-01-01", amountCents: 4000, toPlayerId: "p1" },
+      { id: "partial", type: "bank_cash_out", cashOutKind: "partial", createdAt: "2026-01-02", amountCents: 1000, fromPlayerId: "p1" }
+    ];
+    const drafts: CashOutDraft[] = [
+      {
+        playerId: "p1",
+        lines: [{ denominationId: "blue", label: "Blue", colorHex: "#0000ff", valueCents: 500, count: 6 }]
+      }
+    ];
+
+    const overview = getCashOutOverview(
+      players,
+      transactions,
+      drafts,
+      denominations,
+      { incomingCents: 4000, outgoingCents: 1000, balanceCents: 3000 }
+    );
+
+    expect(overview.completedPlayerIds.size).toBe(0);
+    expect(overview.recordedTotalCents).toBe(1000);
+    expect(overview.projectedTotalCents).toBe(4000);
+    expect(overview.projectedRemainingCents).toBe(0);
+    expect(overview.manualFinalPlayerIds.size).toBe(0);
+  });
+
+  it("reopens completion after later chip activity and ignores non-chip activity", () => {
+    const transactions: Transaction[] = [
+      { id: "buy", type: "bank_buy_in", createdAt: "2026-01-01T00:00:00Z", amountCents: 2000, toPlayerId: "p1" },
+      { id: "partial", type: "bank_cash_out", cashOutKind: "partial", createdAt: "2026-01-01T01:00:00Z", amountCents: 500, fromPlayerId: "p1" },
+      { id: "final-1", type: "bank_cash_out", cashOutKind: "final", createdAt: "2026-01-01T02:00:00Z", amountCents: 1500, fromPlayerId: "p1" },
+      { id: "food", type: "player_transfer", category: "food", createdAt: "2026-01-01T03:00:00Z", amountCents: 300, fromPlayerId: "p1", toPlayerId: "p2" },
+      { id: "coverage", type: "debt_coverage", createdAt: "2026-01-01T04:00:00Z", amountCents: 300, coveredPlayerId: "p1", coveredByPlayerId: "p2" }
+    ];
+
+    expect(isPlayerCashOutComplete(transactions, "p1")).toBe(true);
+    expect(currentFinalCashOutForPlayer(transactions, "p1")?.id).toBe("final-1");
+
+    transactions.push({
+      id: "rebuy",
+      type: "bank_buy_in",
+      createdAt: "2026-01-01T05:00:00Z",
+      amountCents: 1000,
+      toPlayerId: "p1"
+    });
+    expect(isPlayerCashOutComplete(transactions, "p1")).toBe(false);
+
+    transactions.push({
+      id: "final-2",
+      type: "bank_cash_out",
+      cashOutKind: "final",
+      createdAt: "2026-01-01T06:00:00Z",
+      amountCents: 1000,
+      fromPlayerId: "p1"
+    });
+    expect(currentFinalCashOutForPlayer(transactions, "p1")?.id).toBe("final-2");
+
+    transactions.push({
+      id: "poker-transfer",
+      type: "player_transfer",
+      category: "poker",
+      createdAt: "2026-01-01T07:00:00Z",
+      amountCents: 100,
+      fromPlayerId: "p2",
+      toPlayerId: "p1"
+    });
+    expect(isPlayerCashOutComplete(transactions, "p1")).toBe(false);
   });
 });

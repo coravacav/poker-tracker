@@ -8,6 +8,7 @@ function transaction(changes: Partial<Transaction> = {}): Transaction {
   return {
     id: "cashout",
     type: "bank_cash_out",
+    cashOutKind: "final",
     createdAt: "2026-01-01",
     amountCents: 1000,
     fromPlayerId: "p1",
@@ -31,6 +32,27 @@ describe("chip count validation", () => {
     expect(
       validateTransaction(
         transaction({ type: "bank_buy_in", fromPlayerId: undefined, toPlayerId: "p1" }),
+        players
+      )
+    ).toMatch(/only valid for cash-outs/);
+  });
+
+  it("requires positive partial cash-outs and keeps cash-out kinds type-specific", () => {
+    expect(
+      validateTransaction(
+        transaction({ cashOutKind: "partial", amountCents: 0, chipCountBreakdown: [] }),
+        players
+      )
+    ).toMatch(/greater than zero/);
+    expect(
+      validateTransaction(
+        transaction({
+          type: "bank_buy_in",
+          cashOutKind: "partial",
+          fromPlayerId: undefined,
+          toPlayerId: "p1",
+          chipCountBreakdown: undefined
+        }),
         players
       )
     ).toMatch(/only valid for cash-outs/);

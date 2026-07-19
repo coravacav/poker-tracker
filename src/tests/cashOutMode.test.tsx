@@ -26,8 +26,21 @@ function initialState(): GameState {
   };
 }
 
-function Harness() {
-  const [state, dispatch] = useReducer(gameReducer, undefined, initialState);
+function Harness({ withPartial = false }: { withPartial?: boolean }) {
+  const [state, dispatch] = useReducer(gameReducer, undefined, () => {
+    const state = initialState();
+    if (withPartial) {
+      state.transactions.push({
+        id: "partial",
+        type: "bank_cash_out",
+        cashOutKind: "partial",
+        createdAt: "2026-01-02",
+        amountCents: 500,
+        fromPlayerId: state.players[0].id
+      });
+    }
+    return state;
+  });
   const summaries = useMemo(() => buildPlayerSummaries(state.players, state.transactions), [state]);
   const bank = useMemo(() => calculateBankSummary(state.transactions), [state.transactions]);
   return (
@@ -100,6 +113,26 @@ describe("CashOutMode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Record correction" }));
 
     expect(screen.getByText("3 × $5.00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Correct count" })).toBeInTheDocument();
+  });
+
+  it("keeps final counting available after a partial cash-out", () => {
+    render(<Harness withPartial />);
+    const card = screen.getByRole("article");
+
+    expect(within(card).getByText("Partial")).toBeInTheDocument();
+    expect(within(card).getByText("Cashed out earlier")).toBeInTheDocument();
+    expect(screen.getByText("0 / 1")).toBeInTheDocument();
+    expect(screen.queryByText(/multiple active cash-outs/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Player 1 Blue chip count"), {
+      target: { value: "3" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record cash-out" }));
+
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+    expect(within(card).getByText("Total cashed out")).toBeInTheDocument();
+    expect(within(card).getAllByText("$20.00").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Correct count" })).toBeInTheDocument();
   });
 });

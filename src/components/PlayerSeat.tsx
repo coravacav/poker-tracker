@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useCallback } from "react";
 import {
   ArrowRightLeft,
+  BadgeDollarSign,
   CircleDollarSign,
   HandCoins,
   Pencil,
@@ -17,6 +18,7 @@ type PlayerSeatProps = {
   readOnly: boolean;
   summary?: PlayerLedgerSummary;
   onBuyIn: (player: Player) => void;
+  onCashOut: (player: Player) => void;
   onEdit: (player: Player) => void;
   onSeatElementChange?: (playerId: Player["id"], element: HTMLElement | null) => void;
   onStartTransfer: (fromPlayer: Player) => void;
@@ -28,6 +30,7 @@ export function PlayerSeat({
   readOnly,
   summary,
   onBuyIn,
+  onCashOut,
   onEdit,
   onSeatElementChange,
   onStartTransfer
@@ -110,6 +113,15 @@ export function PlayerSeat({
           onClick={() => onBuyIn(player)}
         >
           <HandCoins size={16} />
+        </button>
+        <button
+          className="icon-button"
+          type="button"
+          disabled={readOnly || layoutEditing}
+          title="Record partial cash-out"
+          onClick={() => onCashOut(player)}
+        >
+          <BadgeDollarSign size={16} />
         </button>
         <button
           className="icon-button"

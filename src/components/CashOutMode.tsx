@@ -5,6 +5,7 @@ import {
   activeCashOutsForPlayer,
   chipCountLineTotalCents,
   chipCountTotalCents,
+  currentFinalCashOutForPlayer,
   getCashOutOverview,
   mergeChipCountLines,
   snapshotNonzeroChipCountLines
@@ -158,6 +159,7 @@ export function CashOutMode({
     const transaction: Transaction = {
       id: createId("transaction"),
       type: "bank_cash_out",
+      cashOutKind: "final",
       createdAt: new Date().toISOString(),
       amountCents,
       fromPlayerId: player.id,
@@ -213,11 +215,8 @@ export function CashOutMode({
         {overview.projectedRemainingCents !== 0 ? (
           <div className="notice notice-warning"><TriangleAlert size={16} />Projected counts leave {formatCurrency(overview.projectedRemainingCents)} in the chip pool.</div>
         ) : null}
-        {overview.manualPlayerIds.size > 0 ? (
-          <div className="notice notice-warning">Manual cash-outs cannot contribute chip-color totals.</div>
-        ) : null}
-        {overview.multiplePlayerIds.size > 0 ? (
-          <div className="notice notice-warning">Some players have multiple active cash-outs. Resolve them in Transaction Audit.</div>
+        {overview.manualFinalPlayerIds.size > 0 ? (
+          <div className="notice notice-warning">Some final cash-outs do not include chip-color totals.</div>
         ) : null}
 
         <div className="chip-aggregate-grid">
@@ -242,26 +241,41 @@ export function CashOutMode({
       <section className="cash-out-player-grid" aria-label="Player chip counts">
         {players.map((player) => {
           const cashOuts = activeCashOutsForPlayer(transactions, player.id);
+          const currentFinalCashOut = currentFinalCashOutForPlayer(transactions, player.id);
           const draft = draftByPlayer.get(player.id);
           const correctionOriginal = draft?.correctingTransactionId
-            ? cashOuts.find((transaction) => transaction.id === draft.correctingTransactionId)
+            ? currentFinalCashOut?.id === draft.correctingTransactionId
+              ? currentFinalCashOut
+              : undefined
             : undefined;
           const orphanedCorrection = !!draft?.correctingTransactionId && !correctionOriginal;
-          const isEditing = cashOuts.length === 0 || !!draft?.correctingTransactionId;
+          const isEditing = !currentFinalCashOut || !!draft?.correctingTransactionId;
           const lines = visibleLinesFor(player.id);
           const totalCents = chipCountTotalCents(lines);
           const summary = summaryByPlayer.get(player.id);
           const recordedTotal = cashOuts.reduce((total, transaction) => total + transaction.amountCents, 0);
+          const earlierCashOuts = currentFinalCashOut
+            ? cashOuts.filter((transaction) => transaction.id !== currentFinalCashOut.id)
+            : cashOuts;
+          const earlierTotal = earlierCashOuts.reduce(
+            (total, transaction) => total + transaction.amountCents,
+            0
+          );
 
           return (
-            <article className={`panel cash-out-card ${cashOuts.length > 0 && !isEditing ? "is-recorded" : ""}`} key={player.id}>
+            <article className={`panel cash-out-card ${currentFinalCashOut && !isEditing ? "is-recorded" : ""}`} key={player.id}>
               <div className="cash-out-card-heading">
                 <div><p className="eyebrow">Seat {player.seatIndex + 1}</p><h3>{player.name}</h3></div>
-                {cashOuts.length > 0 ? <span className="status-pill">Recorded</span> : null}
+                {currentFinalCashOut ? (
+                  <span className="status-pill">Recorded</span>
+                ) : cashOuts.length > 0 ? (
+                  <span className="status-pill">Partial</span>
+                ) : null}
               </div>
               <div className="cash-out-ledger-summary">
                 <span>Buy-ins <strong>{formatCurrency(summary?.bankBuyInsCents ?? 0)}</strong></span>
                 <span>Transfers <strong>{formatCurrency((summary?.sentToPlayersCents ?? 0) - (summary?.receivedFromPlayersCents ?? 0))}</strong></span>
+                {earlierTotal > 0 ? <span>Cashed out earlier <strong>{formatCurrency(earlierTotal)}</strong></span> : null}
               </div>
 
               {orphanedCorrection ? (
@@ -293,7 +307,10 @@ export function CashOutMode({
                       );
                     })}
                   </div>
-                  <div className="cash-out-card-total"><span>{draft?.correctingTransactionId ? "Corrected total" : "Cash-out total"}</span><strong>{formatCurrency(totalCents)}</strong></div>
+                  <div className="cash-out-card-total"><span>{draft?.correctingTransactionId ? "Corrected final total" : "Final cash-out total"}</span><strong>{formatCurrency(totalCents)}</strong></div>
+                  {earlierTotal > 0 && !draft?.correctingTransactionId ? (
+                    <p className="muted">Projected total payout {formatCurrency(earlierTotal + totalCents)}.</p>
+                  ) : null}
                   {errors[player.id] ? <div className="notice notice-warning">{errors[player.id]}</div> : null}
                   <div className="cash-out-card-actions">
                     {draft ? <button className="text-button" type="button" disabled={readOnly} onClick={() => clearDraft(player.id)}><Trash2 size={15} />Clear draft</button> : null}
@@ -304,15 +321,16 @@ export function CashOutMode({
                 </>
               ) : (
                 <>
-                  <div className="cash-out-card-total"><span>Recorded cash-out</span><strong>{formatCurrency(recordedTotal)}</strong></div>
-                  {cashOuts.map((transaction) => transaction.chipCountBreakdown !== undefined ? (
-                    <ChipBreakdown key={transaction.id} lines={transaction.chipCountBreakdown} />
-                  ) : <p className="muted" key={transaction.id}>Recorded manually without a color breakdown.</p>)}
-                  {cashOuts.length === 1 ? (
-                    <button className="text-button" type="button" disabled={readOnly || (denominations.length === 0 && cashOuts[0].chipCountBreakdown === undefined)} onClick={() => dispatch({ type: "start_cash_out_correction", playerId: player.id, transactionId: cashOuts[0].id })}>
-                      <RotateCcw size={15} />{cashOuts[0].chipCountBreakdown === undefined ? "Recount by color" : "Correct count"}
+                  <div className="cash-out-card-total"><span>Total cashed out</span><strong>{formatCurrency(recordedTotal)}</strong></div>
+                  {earlierTotal > 0 ? <p className="muted">Earlier cash-outs {formatCurrency(earlierTotal)}.</p> : null}
+                  {currentFinalCashOut?.chipCountBreakdown !== undefined ? (
+                    <ChipBreakdown lines={currentFinalCashOut.chipCountBreakdown} />
+                  ) : <p className="muted">Final cash-out recorded without a color breakdown.</p>}
+                  {currentFinalCashOut ? (
+                    <button className="text-button" type="button" disabled={readOnly || (denominations.length === 0 && currentFinalCashOut.chipCountBreakdown === undefined)} onClick={() => dispatch({ type: "start_cash_out_correction", playerId: player.id, transactionId: currentFinalCashOut.id })}>
+                      <RotateCcw size={15} />{currentFinalCashOut.chipCountBreakdown === undefined ? "Recount by color" : "Correct count"}
                     </button>
-                  ) : <p className="muted">Use Transaction Audit to resolve multiple cash-outs.</p>}
+                  ) : null}
                 </>
               )}
             </article>

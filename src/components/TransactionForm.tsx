@@ -29,7 +29,7 @@ type TransactionEntryType = Exclude<TransactionType, "debt_coverage"> | "covered
 const transactionLabels: Record<TransactionEntryType, string> = {
   bank_buy_in: "Chip buy-in",
   covered_buy_in: "Covered buy-in",
-  bank_cash_out: "Chip cash-out",
+  bank_cash_out: "Partial cash-out",
   player_transfer: "Player transfer",
   manual_bank_adjustment: "Chip adjustment"
 };
@@ -107,6 +107,7 @@ export function TransactionForm({
 
     if (type === "bank_cash_out") {
       transaction.fromPlayerId = bankPlayerId;
+      transaction.cashOutKind = "partial";
     }
 
     if (type === "player_transfer") {
@@ -251,8 +252,14 @@ export function TransactionForm({
           </label>
         </div>
 
+        {type === "bank_cash_out" ? (
+          <p className="muted">
+            Records a during-game payout. Record the player&apos;s final chip count in Cash Out mode.
+          </p>
+        ) : null}
+
         <div className="quick-amounts">
-          {type === "player_transfer" || type === "covered_buy_in" ? (
+          {type === "player_transfer" || type === "covered_buy_in" || type === "bank_cash_out" ? (
             <TransferQuickAmountButtons
               defaultBuyInCents={defaultBuyInCents}
               disabled={readOnly}

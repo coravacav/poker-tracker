@@ -2,6 +2,7 @@ import type {
   AnyPersistedGameState,
   GameState,
   Player,
+  Transaction,
   TableSeatLayout,
   TableShape
 } from "../domain/pokerTypes";
@@ -48,8 +49,75 @@ function resetActiveSeatIndexes(players: Player[]): Player[] {
   );
 }
 
+function transactionTimestamp(transaction: Transaction): number {
+  const timestamp = Date.parse(transaction.createdAt);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function classifyLegacyCashOuts(transactions: Transaction[]): Transaction[] {
+  const inferredKinds = new Map<string, "partial" | "final">();
+  const activeByPlayer = new Map<string, Array<{ transaction: Transaction; index: number }>>();
+
+  for (const [index, transaction] of transactions.entries()) {
+    if (
+      transaction.type !== "bank_cash_out" ||
+      transaction.voidedAt ||
+      transaction.cashOutKind ||
+      !transaction.fromPlayerId
+    ) {
+      continue;
+    }
+
+    const current = activeByPlayer.get(transaction.fromPlayerId) ?? [];
+    current.push({ transaction, index });
+    activeByPlayer.set(transaction.fromPlayerId, current);
+  }
+
+  for (const cashOuts of activeByPlayer.values()) {
+    cashOuts.sort((left, right) => {
+      const timestampDifference =
+        transactionTimestamp(left.transaction) - transactionTimestamp(right.transaction);
+      return timestampDifference || left.index - right.index;
+    });
+
+    for (const { transaction } of cashOuts) inferredKinds.set(transaction.id, "partial");
+    const latest = cashOuts[cashOuts.length - 1];
+    if (latest) inferredKinds.set(latest.transaction.id, "final");
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const transaction of transactions) {
+      if (transaction.type !== "bank_cash_out" || !transaction.correctsTransactionId) continue;
+      const kind = transaction.cashOutKind ?? inferredKinds.get(transaction.id);
+      if (kind && !inferredKinds.has(transaction.correctsTransactionId)) {
+        inferredKinds.set(transaction.correctsTransactionId, kind);
+        changed = true;
+      }
+    }
+  }
+
+  return transactions.map((transaction) =>
+    transaction.type === "bank_cash_out"
+      ? {
+          ...transaction,
+          cashOutKind: transaction.cashOutKind ?? inferredKinds.get(transaction.id) ?? "partial"
+        }
+      : transaction
+  );
+}
+
+function finishMigration(state: Omit<GameState, "schemaVersion">): GameState {
+  return {
+    ...state,
+    schemaVersion: 5,
+    transactions: classifyLegacyCashOuts(state.transactions)
+  };
+}
+
 export function migratePersistedState(state: AnyPersistedGameState): GameState {
-  if (state.schemaVersion === 4) {
+  if (state.schemaVersion === 5) {
     return {
       ...state,
       settings: {
@@ -61,12 +129,26 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
         )
       }
     };
+  }
+
+  if (state.schemaVersion === 4) {
+    return finishMigration({
+      settings: {
+        ...state.settings,
+        tableSeatPlacements: normalizeSeatPlacements(
+          state.settings.tableSeatPlacements,
+          activeSeatIndexes(state.players),
+          state.settings.tableShape
+        )
+      },
+      players: state.players,
+      transactions: state.transactions,
+      cashOutDrafts: state.cashOutDrafts
+    });
   }
 
   if (state.schemaVersion === 3) {
-    return {
-      ...state,
-      schemaVersion: 4,
+    return finishMigration({
       settings: {
         ...state.settings,
         tableSeatPlacements: normalizeSeatPlacements(
@@ -74,13 +156,15 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
           activeSeatIndexes(state.players),
           state.settings.tableShape
         )
-      }
-    };
+      },
+      players: state.players,
+      transactions: state.transactions,
+      cashOutDrafts: state.cashOutDrafts
+    });
   }
 
   if (state.schemaVersion === 2) {
-    return {
-      schemaVersion: 4,
+    return finishMigration({
       settings: {
         ...state.settings,
         chipDenominations: [],
@@ -93,15 +177,14 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
       players: state.players,
       transactions: state.transactions,
       cashOutDrafts: []
-    };
+    });
   }
 
   const players = resetActiveSeatIndexes(state.players);
   const activeCount = players.filter((player) => player.isActive).length;
   const tableShape = shapeFromLegacyLayout(state.settings.tableSeatLayout);
 
-  return {
-    schemaVersion: 4,
+  return finishMigration({
     settings: {
       gameName: state.settings.gameName,
       currencyCode: state.settings.currencyCode,
@@ -114,7 +197,7 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
     players,
     transactions: state.transactions,
     cashOutDrafts: []
-  };
+  });
 }
 
 export function loadGameState(): GameState {

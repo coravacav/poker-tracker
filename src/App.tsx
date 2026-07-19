@@ -139,7 +139,6 @@ export function App() {
 
   const settlementReady =
     cashOutOverview.missingPlayers.length === 0 &&
-    cashOutOverview.multiplePlayerIds.size === 0 &&
     bankSummary.balanceCents === 0 &&
     imbalanceCents === 0;
 
@@ -256,7 +255,7 @@ export function App() {
                 </button>
               </div>
             </section>
-            {cashOutOverview.missingPlayers.length > 0 || bankSummary.balanceCents !== 0 || cashOutOverview.multiplePlayerIds.size > 0 ? (
+            {cashOutOverview.missingPlayers.length > 0 || bankSummary.balanceCents !== 0 ? (
               <div className="settle-warnings">
                 {cashOutOverview.missingPlayers.length > 0 ? (
                   <div className="notice notice-warning">
@@ -266,11 +265,6 @@ export function App() {
                 {bankSummary.balanceCents !== 0 ? (
                   <div className="notice notice-warning">
                     The chip pool still has {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(bankSummary.balanceCents / 100)} remaining.
-                  </div>
-                ) : null}
-                {cashOutOverview.multiplePlayerIds.size > 0 ? (
-                  <div className="notice notice-warning">
-                    Resolve multiple active cash-outs in Transaction Audit.
                   </div>
                 ) : null}
               </div>
