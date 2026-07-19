@@ -9,6 +9,76 @@ const players: Player[] = [
 ];
 
 describe("TransactionForm", () => {
+  it("keeps the selected player and amount when switching between buy-in and cash-out", () => {
+    const onAddTransaction = vi.fn(() => true);
+
+    render(
+      <TransactionForm
+        defaultBuyInCents={2000}
+        onAddTransaction={onAddTransaction}
+        players={players}
+        readOnly={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "p2" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "37.50" } });
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "bank_cash_out" }
+    });
+
+    expect(screen.getByLabelText("From")).toHaveValue("p2");
+    expect(screen.getByLabelText("Amount")).toHaveValue("37.50");
+
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "bank_buy_in" }
+    });
+    expect(screen.getByLabelText("To")).toHaveValue("p2");
+
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "bank_cash_out" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add transaction" }));
+
+    expect(onAddTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "bank_cash_out",
+        fromPlayerId: "p2",
+        amountCents: 3750
+      })
+    );
+  });
+
+  it("keeps transfer participants independent from the bank player", () => {
+    render(
+      <TransactionForm
+        defaultBuyInCents={2000}
+        onAddTransaction={vi.fn(() => true)}
+        players={players}
+        readOnly={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "player_transfer" }
+    });
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "p2" } });
+
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "bank_buy_in" }
+    });
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "bank_cash_out" }
+    });
+    expect(screen.getByLabelText("From")).toHaveValue("p1");
+
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "player_transfer" }
+    });
+    expect(screen.getByLabelText("From")).toHaveValue("p2");
+    expect(screen.getByLabelText("To")).toHaveValue("p1");
+  });
+
   it("offers transfer amounts based on the default buy-in", () => {
     render(
       <TransactionForm

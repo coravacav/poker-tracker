@@ -39,6 +39,7 @@ export function TransactionForm({
   summaryByPlayerId
 }: TransactionFormProps) {
   const [type, setType] = useState<TransactionType>("bank_buy_in");
+  const [bankPlayerId, setBankPlayerId] = useState(players[0]?.id ?? "");
   const [fromPlayerId, setFromPlayerId] = useState(players[0]?.id ?? "");
   const [toPlayerId, setToPlayerId] = useState(players[0]?.id ?? "");
   const [amountInput, setAmountInput] = useState(centsToInputValue(defaultBuyInCents));
@@ -52,6 +53,10 @@ export function TransactionForm({
       return;
     }
 
+    if (!players.some((player) => player.id === bankPlayerId)) {
+      setBankPlayerId(players[0].id);
+    }
+
     if (!players.some((player) => player.id === fromPlayerId)) {
       setFromPlayerId(players[0].id);
     }
@@ -59,7 +64,7 @@ export function TransactionForm({
     if (!players.some((player) => player.id === toPlayerId)) {
       setToPlayerId(players[0].id);
     }
-  }, [fromPlayerId, players, toPlayerId]);
+  }, [bankPlayerId, fromPlayerId, players, toPlayerId]);
 
   function applyQuickAmount(cents: number) {
     setAmountInput(centsToInputValue(cents));
@@ -98,11 +103,11 @@ export function TransactionForm({
     };
 
     if (type === "bank_buy_in") {
-      transaction.toPlayerId = toPlayerId;
+      transaction.toPlayerId = bankPlayerId;
     }
 
     if (type === "bank_cash_out") {
-      transaction.fromPlayerId = fromPlayerId;
+      transaction.fromPlayerId = bankPlayerId;
     }
 
     if (type === "player_transfer") {
@@ -160,8 +165,14 @@ export function TransactionForm({
               <span>From</span>
               <select
                 disabled={readOnly}
-                value={fromPlayerId}
-                onChange={(event) => setFromPlayerId(event.currentTarget.value)}
+                value={type === "bank_cash_out" ? bankPlayerId : fromPlayerId}
+                onChange={(event) => {
+                  if (type === "bank_cash_out") {
+                    setBankPlayerId(event.currentTarget.value);
+                  } else {
+                    setFromPlayerId(event.currentTarget.value);
+                  }
+                }}
               >
                 {players.map((player) => (
                   <option key={player.id} value={player.id}>
@@ -177,8 +188,14 @@ export function TransactionForm({
               <span>To</span>
               <select
                 disabled={readOnly}
-                value={toPlayerId}
-                onChange={(event) => setToPlayerId(event.currentTarget.value)}
+                value={type === "bank_buy_in" ? bankPlayerId : toPlayerId}
+                onChange={(event) => {
+                  if (type === "bank_buy_in") {
+                    setBankPlayerId(event.currentTarget.value);
+                  } else {
+                    setToPlayerId(event.currentTarget.value);
+                  }
+                }}
               >
                 {players.map((player) => (
                   <option key={player.id} value={player.id}>
