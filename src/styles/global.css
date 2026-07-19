@@ -841,6 +841,22 @@ label span {
   background: rgba(21, 94, 239, 0.18);
 }
 
+.layout-drop-top {
+  transform: translate(-50%, calc(-50% + 104px));
+}
+
+.layout-drop-right {
+  transform: translate(calc(-50% - 136px), -50%);
+}
+
+.layout-drop-bottom {
+  transform: translate(-50%, calc(-50% - 104px));
+}
+
+.layout-drop-left {
+  transform: translate(calc(-50% + 136px), -50%);
+}
+
 .layout-drop-target::after {
   position: absolute;
   inset: 12px;

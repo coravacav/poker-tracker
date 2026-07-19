@@ -1,6 +1,9 @@
 import {
   DndContext,
   PointerSensor,
+  pointerWithin,
+  rectIntersection,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
   useDroppable,
@@ -21,6 +24,7 @@ import type {
   Transaction
 } from "../domain/pokerTypes";
 import {
+  getLayoutInsertionSlots,
   getSeatSlots,
   getTableLayoutMetrics,
   type TableSeatSlot
@@ -63,13 +67,16 @@ type RenameDraft = {
   nameInput: string;
 };
 
-const RAILS: SeatRail[] = ["top", "right", "bottom", "left"];
 const SHAPES: Array<{ shape: TableShape; label: string }> = [
   { shape: "rectangle", label: "Rectangle" },
   { shape: "oval", label: "Oval" },
   { shape: "round", label: "Round" }
 ];
 const CARD_REARRANGE_ANIMATION_MS = 240;
+const pokerTableCollisionDetection: CollisionDetection = (args) =>
+  String(args.active.id).startsWith("table-seat:")
+    ? pointerWithin(args)
+    : rectIntersection(args);
 
 function positionFor(slot: TableSeatSlot): CSSProperties {
   return {
@@ -176,22 +183,10 @@ function buildInsertionTargets(
   tableShape: TableShape,
   placements: TableSeatPlacement[]
 ): InsertionTarget[] {
-  return RAILS.flatMap((rail) => {
-    const count = placements.filter((placement) => placement.rail === rail).length;
-    const targetPlacements = Array.from({ length: count + 1 }, (_, order) => ({
-      seatIndex: -1 - order,
-      rail,
-      order
-    }));
-
-    return getSeatSlots(tableShape, targetPlacements).map((slot) => ({
-      id: `layout-target:${rail}:${slot.order}`,
-      rail,
-      order: slot.order,
-      leftPercent: slot.leftPercent,
-      topPercent: slot.topPercent
-    }));
-  });
+  return getLayoutInsertionSlots(tableShape, placements).map((slot) => ({
+    id: `layout-target:${slot.rail}:${slot.order}`,
+    ...slot
+  }));
 }
 
 export function PokerTable({
@@ -600,6 +595,7 @@ export function PokerTable({
 
       <DndContext
         sensors={sensors}
+        collisionDetection={pokerTableCollisionDetection}
         onDragStart={handleDragStart}
         onDragCancel={() => setActiveDragType(null)}
         onDragEnd={handleDragEnd}

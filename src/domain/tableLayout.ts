@@ -11,6 +11,11 @@ export type TableSeatSlot = SeatPositionPercent & {
   order: number;
 };
 
+export type TableLayoutInsertionSlot = SeatPositionPercent & {
+  rail: SeatRail;
+  order: number;
+};
+
 export type TableLayoutMetrics = {
   minWidthPx: number;
   minHeightPx: number;
@@ -200,20 +205,21 @@ export function moveSeatPlacement(
     rail: targetRail,
     order: safeOrder
   });
-  byRail.set(targetRail, targetRailPlacements);
+  byRail.set(
+    targetRail,
+    targetRailPlacements.map((placement, order) => ({
+      ...placement,
+      rail: targetRail,
+      order
+    }))
+  );
 
   return sortPlacements(
     RAILS.flatMap((rail) => reindexRail(rail, byRail.get(rail) ?? []))
   );
 }
 
-function linePosition(
-  rail: SeatRail,
-  order: number,
-  count: number
-): SeatPositionPercent {
-  const ratio = (order + 1) / (count + 1);
-
+function linePosition(rail: SeatRail, ratio: number): SeatPositionPercent {
   if (rail === "top") {
     return {
       leftPercent: RECT_LEFT + (RECT_RIGHT - RECT_LEFT) * ratio,
@@ -241,8 +247,7 @@ function linePosition(
   };
 }
 
-function arcAngle(rail: SeatRail, order: number, count: number): number {
-  const ratio = (order + 1) / (count + 1);
+function arcAngle(rail: SeatRail, ratio: number): number {
   const ranges: Record<SeatRail, [number, number]> = {
     top: [225, 315],
     right: [315, 405],
@@ -256,10 +261,9 @@ function arcAngle(rail: SeatRail, order: number, count: number): number {
 function arcPosition(
   shape: TableShape,
   rail: SeatRail,
-  order: number,
-  count: number
+  ratio: number
 ): SeatPositionPercent {
-  const angle = arcAngle(rail, order, count);
+  const angle = arcAngle(rail, ratio);
   const radians = (angle * Math.PI) / 180;
   const radiusX = shape === "round" ? ROUND_RADIUS : OVAL_RADIUS_X;
   const radiusY = shape === "round" ? ROUND_RADIUS : OVAL_RADIUS_Y;
@@ -278,10 +282,11 @@ export function getSeatSlots(
 
   return sortPlacements(placements).map((placement) => {
     const count = byRail.get(placement.rail)?.length ?? 1;
+    const ratio = (placement.order + 1) / (count + 1);
     const position =
       shape === "rectangle"
-        ? linePosition(placement.rail, placement.order, count)
-        : arcPosition(shape, placement.rail, placement.order, count);
+        ? linePosition(placement.rail, ratio)
+        : arcPosition(shape, placement.rail, ratio);
 
     return {
       ...position,
@@ -289,6 +294,31 @@ export function getSeatSlots(
       rail: placement.rail,
       order: placement.order
     };
+  });
+}
+
+export function getLayoutInsertionSlots(
+  shape: TableShape,
+  placements: TableSeatPlacement[]
+): TableLayoutInsertionSlot[] {
+  const byRail = groupByRail(placements);
+
+  return RAILS.flatMap((rail) => {
+    const count = byRail.get(rail)?.length ?? 0;
+
+    return Array.from({ length: count + 1 }, (_, order) => {
+      const ratio = (order + 0.5) / (count + 1);
+      const position =
+        shape === "rectangle"
+          ? linePosition(rail, ratio)
+          : arcPosition(shape, rail, ratio);
+
+      return {
+        ...position,
+        rail,
+        order
+      };
+    });
   });
 }
 
