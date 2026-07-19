@@ -8,9 +8,19 @@ describe("money", () => {
     expect(parseMoneyToCents("20.50")).toBe(2050);
   });
 
+  it("parses leading-decimal dollar values", () => {
+    expect(parseMoneyToCents(".25")).toBe(25);
+    expect(parseMoneyToCents(".5")).toBe(50);
+    expect(parseMoneyToCents("$.25")).toBe(25);
+  });
+
   it("rejects invalid and negative values", () => {
+    expect(parseMoneyToCents("")).toBeNull();
+    expect(parseMoneyToCents(".")).toBeNull();
     expect(parseMoneyToCents("-20")).toBeNull();
+    expect(parseMoneyToCents("-.25")).toBeNull();
     expect(parseMoneyToCents("20.999")).toBeNull();
+    expect(parseMoneyToCents(".255")).toBeNull();
     expect(parseMoneyToCents("abc")).toBeNull();
   });
 

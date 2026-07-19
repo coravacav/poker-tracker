@@ -19,6 +19,24 @@ describe("ChipDenominationPanel", () => {
     });
   });
 
+  it("accepts and normalizes a leading-decimal chip value", () => {
+    const dispatch = vi.fn();
+    render(<ChipDenominationPanel denominations={[]} dispatch={dispatch} readOnly={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add chip" }));
+    fireEvent.change(screen.getByLabelText("Chip color name"), { target: { value: "Blue" } });
+    fireEvent.change(screen.getByLabelText("Blue value"), { target: { value: ".25" } });
+    fireEvent.change(screen.getByLabelText("Blue color"), { target: { value: "#0000ff" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save chip key" }));
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "set_chip_denominations",
+      denominations: [expect.objectContaining({ label: "Blue", colorHex: "#0000ff", valueCents: 25 })]
+    });
+    expect(screen.queryByText("Enter a positive value for Blue.")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Blue value")).toHaveValue("0.25");
+  });
+
   it("disables mutations in read-only mode", () => {
     render(<ChipDenominationPanel denominations={[]} dispatch={vi.fn()} readOnly />);
     expect(screen.getByRole("button", { name: "Add chip" })).toBeDisabled();

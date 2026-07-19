@@ -1,4 +1,4 @@
-const MONEY_PATTERN = /^\$?\s*([0-9]{1,9})(?:,?([0-9]{3}))*?(?:\.(\d{0,2}))?$/;
+const MONEY_PATTERN = /^\$?\s*(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/;
 
 export function parseMoneyToCents(rawValue: string): number | null {
   const normalized = rawValue.trim().replace(/,/g, "");
@@ -14,7 +14,7 @@ export function parseMoneyToCents(rawValue: string): number | null {
 
   const withoutSymbol = normalized.replace(/^\$\s*/, "");
   const [wholeRaw, decimalRaw = ""] = withoutSymbol.split(".");
-  const whole = Number.parseInt(wholeRaw, 10);
+  const whole = Number.parseInt(wholeRaw || "0", 10);
   const decimal = Number.parseInt(decimalRaw.padEnd(2, "0"), 10);
 
   if (!Number.isFinite(whole) || !Number.isFinite(decimal)) {
