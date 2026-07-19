@@ -20,6 +20,7 @@ import {
 } from "./domain/ledger";
 import { getCashOutOverview } from "./domain/chipCounts";
 import type { Transaction } from "./domain/pokerTypes";
+import { getLatestTransactionAction } from "./domain/recentTransactionAction";
 import { filterSettlementSummariesForDisplay } from "./domain/settlement";
 import { validateTransaction } from "./domain/validation";
 import { gameReducer } from "./state/gameReducer";
@@ -94,6 +95,11 @@ export function App() {
     [activePlayers, bankSummary, state.cashOutDrafts, state.settings.chipDenominations, state.transactions]
   );
 
+  const recentTransactionAction = useMemo(
+    () => getLatestTransactionAction(state.transactions),
+    [state.transactions]
+  );
+
   function addTransaction(transaction: Transaction): boolean {
     if (readOnly) {
       setNotice("Read-only mode is on. Turn it off to record transactions.");
@@ -164,6 +170,15 @@ export function App() {
         mode={mode}
         onLayoutEditingChange={setLayoutEditing}
         onModeChange={changeMode}
+        onUndoRecentTransaction={(action) =>
+          dispatch({
+            type: "undo_recent_transaction",
+            action,
+            requestedAt: new Date().toISOString()
+          })
+        }
+        readOnly={readOnly}
+        recentTransactionAction={recentTransactionAction}
         setup={
           <div className="setup-mode">
             <TableSetupPanel

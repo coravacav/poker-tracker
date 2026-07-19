@@ -18,6 +18,11 @@ import type {
   Transaction,
   TransactionId
 } from "../domain/pokerTypes";
+import {
+  getLatestTransactionAction,
+  isRecentTransactionAction
+} from "../domain/recentTransactionAction";
+import type { RecentTransactionAction } from "../domain/recentTransactionAction";
 import { migratePersistedState } from "./persistence";
 import { createDefaultGameState, createId } from "./seedGame";
 
@@ -45,6 +50,11 @@ export type GameAction =
     }
   | { type: "flip_transaction"; transactionId: TransactionId }
   | { type: "void_transaction"; transactionId: TransactionId; reason: string }
+  | {
+      type: "undo_recent_transaction";
+      action: RecentTransactionAction;
+      requestedAt: string;
+    }
   | { type: "replace_state_from_import"; state: AnyPersistedGameState }
   | { type: "reset_game" };
 
@@ -105,6 +115,22 @@ function reconcileSeatIndexes(state: GameState): GameState {
 
 function nextPlayerName(playersLength: number): string {
   return `Player ${playersLength + 1}`;
+}
+
+function withoutVoid(transaction: Transaction): Transaction {
+  const { voidedAt: _voidedAt, voidReason: _voidReason, ...activeTransaction } = transaction;
+  return activeTransaction;
+}
+
+function sameRecentAction(
+  left: RecentTransactionAction | null,
+  right: RecentTransactionAction
+): boolean {
+  return (
+    left?.kind === right.kind &&
+    left.transactionId === right.transactionId &&
+    left.occurredAt === right.occurredAt
+  );
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
@@ -547,6 +573,86 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             : transaction
         )
       };
+
+    case "undo_recent_transaction": {
+      const requestedAtMs = Date.parse(action.requestedAt);
+      const latestAction = getLatestTransactionAction(state.transactions);
+      if (
+        !sameRecentAction(latestAction, action.action) ||
+        !isRecentTransactionAction(action.action, requestedAtMs)
+      ) {
+        return state;
+      }
+
+      const target = state.transactions.find(
+        (transaction) => transaction.id === action.action.transactionId
+      );
+      if (!target) {
+        return state;
+      }
+
+      if (action.action.kind === "void") {
+        if (target.voidedAt !== action.action.occurredAt) {
+          return state;
+        }
+
+        return {
+          ...state,
+          transactions: state.transactions.map((transaction) =>
+            transaction.id === target.id ? withoutVoid(transaction) : transaction
+          )
+        };
+      }
+
+      const linkedOriginalId =
+        target.flippedFromTransactionId ?? target.correctsTransactionId;
+      const expectedVoidReason = target.flippedFromTransactionId
+        ? "Flipped transaction"
+        : target.correctsTransactionId
+          ? "Corrected chip count"
+          : null;
+      const linkedOriginal = linkedOriginalId
+        ? state.transactions.find((transaction) => transaction.id === linkedOriginalId)
+        : null;
+
+      if (
+        linkedOriginalId &&
+        (!linkedOriginal || linkedOriginal.voidReason !== expectedVoidReason || !linkedOriginal.voidedAt)
+      ) {
+        return state;
+      }
+
+      let cashOutDrafts = state.cashOutDrafts;
+      if (
+        target.type === "bank_cash_out" &&
+        target.fromPlayerId &&
+        target.chipCountBreakdown !== undefined &&
+        !cashOutDrafts.some((draft) => draft.playerId === target.fromPlayerId)
+      ) {
+        cashOutDrafts = [
+          ...cashOutDrafts,
+          {
+            playerId: target.fromPlayerId,
+            lines: target.chipCountBreakdown.map((line) => ({ ...line })),
+            ...(target.correctsTransactionId
+              ? { correctingTransactionId: target.correctsTransactionId }
+              : {})
+          }
+        ];
+      }
+
+      return {
+        ...state,
+        transactions: state.transactions
+          .filter((transaction) => transaction.id !== target.id)
+          .map((transaction) =>
+            linkedOriginal && transaction.id === linkedOriginal.id
+              ? withoutVoid(transaction)
+              : transaction
+          ),
+        cashOutDrafts
+      };
+    }
 
     case "replace_state_from_import":
       return reconcileSeatIndexes(migratePersistedState(action.state));

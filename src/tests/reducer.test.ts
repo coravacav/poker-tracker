@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { calculateBankSummary } from "../domain/ledger";
+import type { GameState } from "../domain/pokerTypes";
+import { getLatestTransactionAction } from "../domain/recentTransactionAction";
 import { gameReducer } from "../state/gameReducer";
 import { createDefaultGameState } from "../state/seedGame";
+
+function undoLatest(state: GameState, requestedAt: string): GameState {
+  const action = getLatestTransactionAction(state.transactions);
+  if (!action) {
+    throw new Error("Expected a transaction action to undo");
+  }
+
+  return gameReducer(state, {
+    type: "undo_recent_transaction",
+    action,
+    requestedAt
+  });
+}
 
 describe("gameReducer", () => {
   it("defaults new games to rectangle dynamic table settings", () => {
@@ -68,6 +84,248 @@ describe("gameReducer", () => {
 
     expect(state.transactions[0].voidedAt).toBeTruthy();
     expect(state.transactions[0].voidReason).toBe("mistake");
+  });
+
+  it("fully removes a recent transaction and recalculates the bank ledger", () => {
+    let state = createDefaultGameState();
+    state = gameReducer(state, {
+      type: "add_transaction",
+      transaction: {
+        id: "buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:10.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[0].id
+      }
+    });
+
+    expect(calculateBankSummary(state.transactions).balanceCents).toBe(2000);
+    state = undoLatest(state, "2026-05-10T00:00:20.000Z");
+
+    expect(state.transactions).toEqual([]);
+    expect(calculateBankSummary(state.transactions).balanceCents).toBe(0);
+  });
+
+  it("rejects a non-latest or expired undo request", () => {
+    const state = createDefaultGameState();
+    state.transactions = [
+      {
+        id: "first",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:05.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[0].id
+      },
+      {
+        id: "second",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:10.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[1].id
+      }
+    ];
+
+    expect(
+      gameReducer(state, {
+        type: "undo_recent_transaction",
+        action: {
+          kind: "create",
+          transactionId: "first",
+          occurredAt: "2026-05-10T00:00:05.000Z"
+        },
+        requestedAt: "2026-05-10T00:00:20.000Z"
+      })
+    ).toBe(state);
+    expect(undoLatest(state, "2026-05-10T00:00:40.000Z")).toBe(state);
+  });
+
+  it("undoes a recent void on an older transaction", () => {
+    let state = createDefaultGameState();
+    state.transactions = [
+      {
+        id: "older",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[0].id,
+        voidedAt: "2026-05-10T00:00:25.000Z",
+        voidReason: "Correction"
+      },
+      {
+        id: "newer",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:20.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[1].id
+      }
+    ];
+
+    state = undoLatest(state, "2026-05-10T00:00:30.000Z");
+
+    expect(state.transactions).toHaveLength(2);
+    expect(state.transactions[0].voidedAt).toBeUndefined();
+    expect(state.transactions[0].voidReason).toBeUndefined();
+  });
+
+  it("undoes a flip atomically by removing its result and restoring its original", () => {
+    let state = createDefaultGameState();
+    const player = state.players[0];
+    state.transactions = [
+      {
+        id: "original",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: player.id,
+        voidedAt: "2026-05-10T00:00:20.100Z",
+        voidReason: "Flipped transaction"
+      },
+      {
+        id: "flipped",
+        type: "bank_cash_out",
+        createdAt: "2026-05-10T00:00:20.000Z",
+        amountCents: 2000,
+        fromPlayerId: player.id,
+        flippedFromTransactionId: "original"
+      }
+    ];
+
+    state = undoLatest(state, "2026-05-10T00:00:25.000Z");
+
+    expect(state.transactions).toEqual([
+      expect.objectContaining({ id: "original", type: "bank_buy_in" })
+    ]);
+    expect(state.transactions[0].voidedAt).toBeUndefined();
+  });
+
+  it("undoes a cash-out correction and restores its editable correction draft", () => {
+    let state = createDefaultGameState();
+    const player = state.players[0];
+    state.transactions = [
+      {
+        id: "original",
+        type: "bank_cash_out",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 1000,
+        fromPlayerId: player.id,
+        voidedAt: "2026-05-10T00:00:20.100Z",
+        voidReason: "Corrected chip count"
+      },
+      {
+        id: "corrected",
+        type: "bank_cash_out",
+        createdAt: "2026-05-10T00:00:20.000Z",
+        amountCents: 1500,
+        fromPlayerId: player.id,
+        correctsTransactionId: "original",
+        chipCountBreakdown: [
+          {
+            denominationId: "blue",
+            label: "Blue",
+            colorHex: "#0000ff",
+            valueCents: 500,
+            count: 3
+          }
+        ]
+      }
+    ];
+
+    state = undoLatest(state, "2026-05-10T00:00:25.000Z");
+
+    expect(state.transactions).toEqual([expect.objectContaining({ id: "original" })]);
+    expect(state.transactions[0].voidedAt).toBeUndefined();
+    expect(state.cashOutDrafts).toEqual([
+      {
+        playerId: player.id,
+        correctingTransactionId: "original",
+        lines: [expect.objectContaining({ denominationId: "blue", count: 3 })]
+      }
+    ]);
+  });
+
+  it("restores a counted cash-out draft without overwriting a newer draft", () => {
+    let state = createDefaultGameState();
+    const player = state.players[0];
+    const line = {
+      denominationId: "blue",
+      label: "Blue",
+      colorHex: "#0000ff",
+      valueCents: 500,
+      count: 2
+    };
+    state.transactions = [
+      {
+        id: "cash-out",
+        type: "bank_cash_out",
+        createdAt: "2026-05-10T00:00:20.000Z",
+        amountCents: 1000,
+        fromPlayerId: player.id,
+        chipCountBreakdown: [line]
+      }
+    ];
+
+    const restored = undoLatest(state, "2026-05-10T00:00:25.000Z");
+    expect(restored.cashOutDrafts).toEqual([{ playerId: player.id, lines: [line] }]);
+
+    state.cashOutDrafts = [
+      {
+        playerId: player.id,
+        lines: [{ ...line, count: 4 }]
+      }
+    ];
+    const preserved = undoLatest(state, "2026-05-10T00:00:25.000Z");
+    expect(preserved.cashOutDrafts[0].lines[0].count).toBe(4);
+  });
+
+  it("allows repeated undo while each exposed creation remains recent", () => {
+    let state = createDefaultGameState();
+    state.transactions = [
+      {
+        id: "first",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:10.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[0].id
+      },
+      {
+        id: "second",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:20.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[1].id
+      }
+    ];
+
+    state = undoLatest(state, "2026-05-10T00:00:25.000Z");
+    expect(state.transactions.map((transaction) => transaction.id)).toEqual(["first"]);
+    state = undoLatest(state, "2026-05-10T00:00:25.000Z");
+    expect(state.transactions).toEqual([]);
+  });
+
+  it("does not partially undo broken linked metadata", () => {
+    const state = createDefaultGameState();
+    state.transactions = [
+      {
+        id: "broken",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:20.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[0].id,
+        flippedFromTransactionId: "missing"
+      }
+    ];
+
+    expect(
+      gameReducer(state, {
+        type: "undo_recent_transaction",
+        action: {
+          kind: "create",
+          transactionId: "broken",
+          occurredAt: "2026-05-10T00:00:20.000Z"
+        },
+        requestedAt: "2026-05-10T00:00:25.000Z"
+      })
+    ).toBe(state);
   });
 
   it("does not archive players with transactions when reducing player count", () => {

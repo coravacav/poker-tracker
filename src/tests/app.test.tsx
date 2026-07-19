@@ -217,4 +217,25 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Debt coverage" })).toBeInTheDocument();
     expect(screen.getByText("Blair covers Alex")).toBeInTheDocument();
   });
+
+  it("keeps a recent transaction undoable after refreshing from persisted state", () => {
+    const state = createDefaultGameState();
+    state.transactions = [
+      {
+        id: "recent",
+        type: "bank_buy_in",
+        createdAt: new Date().toISOString(),
+        amountCents: 2000,
+        toPlayerId: state.players[0].id
+      }
+    ];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    const firstRender = render(<App />);
+    expect(screen.getByRole("button", { name: "Undo recent transaction action" })).toBeVisible();
+
+    firstRender.unmount();
+    render(<App />);
+    expect(screen.getByRole("button", { name: "Undo recent transaction action" })).toBeVisible();
+  });
 });
