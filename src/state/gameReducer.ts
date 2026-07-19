@@ -436,7 +436,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         (transaction) => transaction.id === action.transactionId
       );
 
-      if (!original || original.voidedAt) {
+      if (!original || original.voidedAt || original.type === "debt_coverage") {
         return state;
       }
 
@@ -475,6 +475,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           toPlayerId: undefined,
           bankDirection: undefined,
           category: undefined,
+          coveredByPlayerId: undefined,
+          coveredPlayerId: undefined,
           chipCountBreakdown: undefined,
           correctsTransactionId: undefined
         };
@@ -492,6 +494,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           toPlayerId: original.fromPlayerId,
           bankDirection: undefined,
           category: undefined,
+          coveredByPlayerId: undefined,
+          coveredPlayerId: undefined,
           chipCountBreakdown: undefined,
           correctsTransactionId: undefined
         };
@@ -503,7 +507,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           bankDirection: original.bankDirection === "outgoing" ? "incoming" : "outgoing",
           fromPlayerId: undefined,
           toPlayerId: undefined,
-          category: undefined
+          category: undefined,
+          coveredByPlayerId: undefined,
+          coveredPlayerId: undefined
         };
       }
 

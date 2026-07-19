@@ -80,4 +80,56 @@ describe("ledger", () => {
     expect(bank.incomingCents).toBe(500);
     expect(calculateLedgerImbalanceCents(summaries, bank)).toBe(500);
   });
+
+  it("assigns covered buy-ins to the coverer and can move a full debt", () => {
+    const transactions: Transaction[] = [
+      {
+        id: "covered-buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: "blair",
+        coveredByPlayerId: "alex"
+      },
+      {
+        id: "coverage",
+        type: "debt_coverage",
+        createdAt: "2026-05-10T00:01:00.000Z",
+        amountCents: 2000,
+        coveredPlayerId: "alex",
+        coveredByPlayerId: "blair"
+      }
+    ];
+
+    const summaries = buildPlayerSummaries(players, transactions);
+    const alex = summaries.find((summary) => summary.playerId === "alex")!;
+    const blair = summaries.find((summary) => summary.playerId === "blair")!;
+    const bank = calculateBankSummary(transactions);
+
+    expect(alex.bankBuyInsCents).toBe(2000);
+    expect(alex.debtCoveredByOthersCents).toBe(2000);
+    expect(alex.netCents).toBe(0);
+    expect(blair.bankBuyInsCents).toBe(0);
+    expect(blair.debtCoveredForOthersCents).toBe(2000);
+    expect(blair.netCents).toBe(-2000);
+    expect(bank.balanceCents).toBe(2000);
+    expect(calculateLedgerImbalanceCents(summaries, bank)).toBe(0);
+  });
+
+  it("ignores voided coverage entries", () => {
+    const transactions: Transaction[] = [
+      {
+        id: "coverage",
+        type: "debt_coverage",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 3500,
+        coveredPlayerId: "alex",
+        coveredByPlayerId: "blair",
+        voidedAt: "2026-05-10T00:01:00.000Z"
+      }
+    ];
+
+    const summaries = buildPlayerSummaries(players, transactions);
+    expect(summaries.every((summary) => summary.netCents === 0)).toBe(true);
+  });
 });

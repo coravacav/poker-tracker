@@ -102,7 +102,7 @@ describe("TransactionForm", () => {
     expect(screen.getByLabelText("Amount")).toHaveValue("5.00");
   });
 
-  it("records food as a fast player transfer category", () => {
+  it("records a covered buy-in and retires food creation", () => {
     const onAddTransaction = vi.fn(() => true);
 
     render(
@@ -121,6 +121,8 @@ describe("TransactionForm", () => {
                 bankCashOutsCents: 0,
                 sentToPlayersCents: 0,
                 receivedFromPlayersCents: 0,
+                debtCoveredByOthersCents: 0,
+                debtCoveredForOthersCents: 0,
                 netCents: -2000
               }
             ],
@@ -132,6 +134,8 @@ describe("TransactionForm", () => {
                 bankCashOutsCents: 0,
                 sentToPlayersCents: 0,
                 receivedFromPlayersCents: 0,
+                debtCoveredByOthersCents: 0,
+                debtCoveredForOthersCents: 0,
                 netCents: 1000
               }
             ]
@@ -140,26 +144,26 @@ describe("TransactionForm", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Food transfer" }));
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: "p2" } });
+    expect(screen.queryByText(/Food/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "covered_buy_in" }
+    });
+    fireEvent.change(screen.getByLabelText("Chips to"), { target: { value: "p2" } });
     fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "15" } });
 
-    expect(screen.getByLabelText("Transfer preview")).toHaveTextContent(
-      "AlexSender-$20.00+$15.00=-$5.00"
+    expect(screen.getByLabelText("Covered buy-in preview")).toHaveTextContent(
+      "AlexCoverer-$20.00-$15.00=-$35.00"
     );
-    expect(screen.getByLabelText("Transfer preview")).toHaveTextContent(
-      "BlairReceiver$10.00-$15.00=-$5.00"
-    );
+    expect(screen.getByText(/Blair receives \$15.00 in chips/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Add transaction" }));
 
     expect(onAddTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "player_transfer",
-        fromPlayerId: "p1",
+        type: "bank_buy_in",
         toPlayerId: "p2",
+        coveredByPlayerId: "p1",
         amountCents: 1500,
-        category: "food",
         note: undefined
       })
     );

@@ -49,7 +49,7 @@ function resetActiveSeatIndexes(players: Player[]): Player[] {
 }
 
 export function migratePersistedState(state: AnyPersistedGameState): GameState {
-  if (state.schemaVersion === 3) {
+  if (state.schemaVersion === 4) {
     return {
       ...state,
       settings: {
@@ -63,9 +63,24 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
     };
   }
 
+  if (state.schemaVersion === 3) {
+    return {
+      ...state,
+      schemaVersion: 4,
+      settings: {
+        ...state.settings,
+        tableSeatPlacements: normalizeSeatPlacements(
+          state.settings.tableSeatPlacements,
+          activeSeatIndexes(state.players),
+          state.settings.tableShape
+        )
+      }
+    };
+  }
+
   if (state.schemaVersion === 2) {
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       settings: {
         ...state.settings,
         chipDenominations: [],
@@ -86,7 +101,7 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
   const tableShape = shapeFromLegacyLayout(state.settings.tableSeatLayout);
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     settings: {
       gameName: state.settings.gameName,
       currencyCode: state.settings.currencyCode,

@@ -1112,8 +1112,13 @@ dd {
 }
 
 .transfer-detail-grid {
-  grid-template-columns: minmax(160px, 1fr) minmax(120px, 0.7fr) minmax(180px, 1.1fr);
+  grid-template-columns: minmax(120px, 0.7fr) minmax(180px, 1.1fr);
   margin-top: 10px;
+}
+
+.transfer-mode-segments {
+  width: fit-content;
+  margin: 0 0 12px;
 }
 
 .form-grid label,
@@ -1161,6 +1166,19 @@ dd {
 .form-grid > .transfer-preview {
   grid-column: 1 / -1;
   margin-top: 0;
+}
+
+.covered-buy-in-preview {
+  grid-column: 1 / -1;
+}
+
+.covered-buy-in-preview .transfer-preview {
+  margin-top: 0;
+}
+
+.transfer-recipient-note {
+  margin: 8px 0 0;
+  font-weight: 700;
 }
 
 .preview-card {
@@ -1357,6 +1375,19 @@ dd {
   min-height: 38px;
   padding: 8px 10px;
   background: #fff;
+}
+
+.cover-debt-button {
+  min-height: 30px;
+  padding: 4px 7px;
+  white-space: nowrap;
+}
+
+.debt-coverage-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .payment-line {
@@ -1594,6 +1625,10 @@ dd {
   }
 
   .transfer-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .debt-coverage-preview {
     grid-template-columns: 1fr;
   }
 

@@ -1,51 +1,54 @@
 import { PlusCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { centsToInputValue, parseMoneyToCents } from "../domain/money";
+import { centsToInputValue, formatCurrency, parseMoneyToCents } from "../domain/money";
 import type {
   BankDirection,
   Player,
   PlayerId,
   PlayerLedgerSummary,
   Transaction,
-  TransactionCategory,
   TransactionType
 } from "../domain/pokerTypes";
 import { validateTransaction } from "../domain/validation";
 import { createId } from "../state/seedGame";
-import { TransferPreview } from "./TransferPreview";
+import { LedgerImpactPreview, TransferPreview } from "./TransferPreview";
 import { TransferQuickAmountButtons } from "./TransferQuickAmountButtons";
 
 type TransactionFormProps = {
   defaultBuyInCents: number;
+  bankBalanceCents?: number;
   onAddTransaction: (transaction: Transaction) => boolean;
   players: Player[];
   readOnly: boolean;
   summaryByPlayerId?: Map<PlayerId, PlayerLedgerSummary>;
 };
 
-const transactionLabels: Record<TransactionType, string> = {
+type TransactionEntryType = Exclude<TransactionType, "debt_coverage"> | "covered_buy_in";
+
+const transactionLabels: Record<TransactionEntryType, string> = {
   bank_buy_in: "Chip buy-in",
+  covered_buy_in: "Covered buy-in",
   bank_cash_out: "Chip cash-out",
   player_transfer: "Player transfer",
   manual_bank_adjustment: "Chip adjustment"
 };
 
 export function TransactionForm({
+  bankBalanceCents = 0,
   defaultBuyInCents,
   onAddTransaction,
   players,
   readOnly,
   summaryByPlayerId
 }: TransactionFormProps) {
-  const [type, setType] = useState<TransactionType>("bank_buy_in");
+  const [type, setType] = useState<TransactionEntryType>("bank_buy_in");
   const [bankPlayerId, setBankPlayerId] = useState(players[0]?.id ?? "");
   const [fromPlayerId, setFromPlayerId] = useState(players[0]?.id ?? "");
   const [toPlayerId, setToPlayerId] = useState(players[0]?.id ?? "");
   const [amountInput, setAmountInput] = useState(centsToInputValue(defaultBuyInCents));
   const [note, setNote] = useState("");
   const [bankDirection, setBankDirection] = useState<BankDirection>("incoming");
-  const [category, setCategory] = useState<TransactionCategory>("poker");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,13 +73,9 @@ export function TransactionForm({
     setAmountInput(centsToInputValue(cents));
   }
 
-  function chooseCategory(nextCategory: TransactionCategory) {
-    setCategory(nextCategory);
-  }
-
   const previewAmountCents = parseMoneyToCents(amountInput);
   const showTransferPreview =
-    type === "player_transfer" &&
+    (type === "player_transfer" || type === "covered_buy_in") &&
     !!previewAmountCents &&
     previewAmountCents > 0 &&
     fromPlayerId !== toPlayerId;
@@ -96,7 +95,7 @@ export function TransactionForm({
 
     const transaction: Transaction = {
       id: createId("transaction"),
-      type,
+      type: type === "covered_buy_in" ? "bank_buy_in" : type,
       createdAt: new Date().toISOString(),
       amountCents,
       note: note.trim() || undefined
@@ -113,7 +112,12 @@ export function TransactionForm({
     if (type === "player_transfer") {
       transaction.fromPlayerId = fromPlayerId;
       transaction.toPlayerId = toPlayerId;
-      transaction.category = category;
+      transaction.category = "poker";
+    }
+
+    if (type === "covered_buy_in") {
+      transaction.toPlayerId = toPlayerId;
+      transaction.coveredByPlayerId = fromPlayerId;
     }
 
     if (type === "manual_bank_adjustment") {
@@ -150,7 +154,9 @@ export function TransactionForm({
             <select
               disabled={readOnly}
               value={type}
-              onChange={(event) => setType(event.currentTarget.value as TransactionType)}
+              onChange={(event) =>
+                setType(event.currentTarget.value as TransactionEntryType)
+              }
             >
               {Object.entries(transactionLabels).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -160,9 +166,11 @@ export function TransactionForm({
             </select>
           </label>
 
-          {(type === "bank_cash_out" || type === "player_transfer") && (
+          {(type === "bank_cash_out" ||
+            type === "player_transfer" ||
+            type === "covered_buy_in") && (
             <label>
-              <span>From</span>
+              <span>{type === "covered_buy_in" ? "Covered by" : "From"}</span>
               <select
                 disabled={readOnly}
                 value={type === "bank_cash_out" ? bankPlayerId : fromPlayerId}
@@ -183,9 +191,11 @@ export function TransactionForm({
             </label>
           )}
 
-          {(type === "bank_buy_in" || type === "player_transfer") && (
+          {(type === "bank_buy_in" ||
+            type === "player_transfer" ||
+            type === "covered_buy_in") && (
             <label>
-              <span>To</span>
+              <span>{type === "covered_buy_in" ? "Chips to" : "To"}</span>
               <select
                 disabled={readOnly}
                 value={type === "bank_buy_in" ? bankPlayerId : toPlayerId}
@@ -220,22 +230,6 @@ export function TransactionForm({
             </label>
           )}
 
-          {type === "player_transfer" && (
-            <label>
-              <span>Category</span>
-              <select
-                disabled={readOnly}
-                value={category}
-                onChange={(event) =>
-                  chooseCategory(event.currentTarget.value as TransactionCategory)
-                }
-              >
-                <option value="poker">Poker / rebuy</option>
-                <option value="food">Food</option>
-              </select>
-            </label>
-          )}
-
           <label>
             <span>Amount</span>
             <input
@@ -258,7 +252,7 @@ export function TransactionForm({
         </div>
 
         <div className="quick-amounts">
-          {type === "player_transfer" ? (
+          {type === "player_transfer" || type === "covered_buy_in" ? (
             <TransferQuickAmountButtons
               defaultBuyInCents={defaultBuyInCents}
               disabled={readOnly}
@@ -289,29 +283,44 @@ export function TransactionForm({
               </button>
             </>
           )}
-          <button
-            type="button"
-            disabled={readOnly}
-            onClick={() => {
-              setType("player_transfer");
-              chooseCategory("food");
-            }}
-          >
-            Food transfer
-          </button>
           <button className="primary-button" type="submit" disabled={readOnly}>
             Add transaction
           </button>
         </div>
 
         {showTransferPreview ? (
-          <TransferPreview
-            amountCents={previewAmountCents ?? 0}
-            fromCurrentNetCents={fromCurrentNet}
-            fromName={fromPlayer?.name ?? "From player"}
-            toCurrentNetCents={toCurrentNet}
-            toName={toPlayer?.name ?? "To player"}
-          />
+          type === "covered_buy_in" ? (
+            <>
+              <LedgerImpactPreview
+                ariaLabel="Covered buy-in preview"
+                impacts={[
+                  {
+                    currentCents: fromCurrentNet,
+                    deltaCents: -(previewAmountCents ?? 0),
+                    name: fromPlayer?.name ?? "Covering player",
+                    role: "Coverer"
+                  },
+                  {
+                    currentCents: bankBalanceCents,
+                    deltaCents: previewAmountCents ?? 0,
+                    name: "Chip Pool",
+                    role: "In play"
+                  }
+                ]}
+              />
+              <p className="muted transfer-recipient-note">
+                {toPlayer?.name ?? "Recipient"} receives {formatCurrency(previewAmountCents ?? 0)} in chips; their net is unchanged.
+              </p>
+            </>
+          ) : (
+            <TransferPreview
+              amountCents={previewAmountCents ?? 0}
+              fromCurrentNetCents={fromCurrentNet}
+              fromName={fromPlayer?.name ?? "From player"}
+              toCurrentNetCents={toCurrentNet}
+              toName={toPlayer?.name ?? "To player"}
+            />
+          )
         ) : null}
 
         {error ? <div className="notice notice-warning">{error}</div> : null}

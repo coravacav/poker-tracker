@@ -57,6 +57,7 @@ export type TransactionType =
   | "bank_buy_in"
   | "bank_cash_out"
   | "player_transfer"
+  | "debt_coverage"
   | "manual_bank_adjustment";
 
 export type BankDirection = "incoming" | "outgoing";
@@ -69,6 +70,8 @@ export type Transaction = {
   amountCents: number;
   fromPlayerId?: PlayerId;
   toPlayerId?: PlayerId;
+  coveredByPlayerId?: PlayerId;
+  coveredPlayerId?: PlayerId;
   bankDirection?: BankDirection;
   category?: TransactionCategory;
   note?: string;
@@ -85,6 +88,8 @@ export type PlayerLedgerSummary = {
   bankCashOutsCents: number;
   sentToPlayersCents: number;
   receivedFromPlayersCents: number;
+  debtCoveredByOthersCents: number;
+  debtCoveredForOthersCents: number;
   netCents: number;
 };
 
@@ -95,7 +100,7 @@ export type BankSummary = {
 };
 
 export type PersistedGameState = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   settings: GameSettings;
   players: Player[];
   transactions: Transaction[];
@@ -124,8 +129,17 @@ export type LegacyPersistedGameStateV2 = {
   transactions: Transaction[];
 };
 
+export type LegacyPersistedGameStateV3 = {
+  schemaVersion: 3;
+  settings: GameSettings;
+  players: Player[];
+  transactions: Transaction[];
+  cashOutDrafts: CashOutDraft[];
+};
+
 export type AnyPersistedGameState =
   | PersistedGameState
+  | LegacyPersistedGameStateV3
   | LegacyPersistedGameStateV2
   | LegacyPersistedGameState;
 

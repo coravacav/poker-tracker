@@ -18,7 +18,6 @@ import type {
   SeatRail,
   TableSeatPlacement,
   TableShape,
-  TransactionCategory,
   Transaction
 } from "../domain/pokerTypes";
 import {
@@ -29,11 +28,12 @@ import {
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
 import { PlayerSeat } from "./PlayerSeat";
-import { TransferPreview } from "./TransferPreview";
+import { LedgerImpactPreview, TransferPreview } from "./TransferPreview";
 import { TransferQuickAmountButtons } from "./TransferQuickAmountButtons";
 
 type PokerTableProps = {
   activePlayers: Player[];
+  bankBalanceCents: number;
   defaultBuyInCents: number;
   dispatch: Dispatch<GameAction>;
   layoutEditing: boolean;
@@ -45,10 +45,10 @@ type PokerTableProps = {
 };
 
 type TransferDraft = {
+  mode: "give_chips" | "cover_buy_in";
   fromPlayerId: PlayerId;
   toPlayerId: PlayerId;
   amountInput: string;
-  category: TransactionCategory;
   note: string;
 };
 
@@ -187,6 +187,7 @@ function buildInsertionTargets(
 
 export function PokerTable({
   activePlayers,
+  bankBalanceCents,
   defaultBuyInCents,
   dispatch,
   layoutEditing,
@@ -325,10 +326,10 @@ export function PokerTable({
       fromPlayerId;
 
     setTransferDraft({
+      mode: "give_chips",
       fromPlayerId,
       toPlayerId: fallbackToPlayerId,
       amountInput: centsToInputValue(defaultBuyInCents),
-      category: "poker",
       note: ""
     });
     setTransferError(null);
@@ -443,16 +444,28 @@ export function PokerTable({
       return;
     }
 
-    const added = onAddTransaction({
-      id: createId("transaction"),
-      type: "player_transfer",
-      createdAt: new Date().toISOString(),
-      amountCents,
-      fromPlayerId: transferDraft.fromPlayerId,
-      toPlayerId: transferDraft.toPlayerId,
-      category: transferDraft.category,
-      note: transferDraft.note
-    });
+    const added = onAddTransaction(
+      transferDraft.mode === "cover_buy_in"
+        ? {
+            id: createId("transaction"),
+            type: "bank_buy_in",
+            createdAt: new Date().toISOString(),
+            amountCents,
+            toPlayerId: transferDraft.toPlayerId,
+            coveredByPlayerId: transferDraft.fromPlayerId,
+            note: transferDraft.note.trim() || undefined
+          }
+        : {
+            id: createId("transaction"),
+            type: "player_transfer",
+            createdAt: new Date().toISOString(),
+            amountCents,
+            fromPlayerId: transferDraft.fromPlayerId,
+            toPlayerId: transferDraft.toPlayerId,
+            category: "poker",
+            note: transferDraft.note.trim() || undefined
+          }
+    );
 
     if (added) {
       setTransferDraft(null);
@@ -584,7 +597,9 @@ export function PokerTable({
           <section className="modal" role="dialog" aria-modal="true" aria-label="Player transfer">
             <div className="modal-heading">
               <div>
-                <p className="eyebrow">Rebuy transfer</p>
+                <p className="eyebrow">
+                  {transferDraft.mode === "cover_buy_in" ? "Covered buy-in" : "Player transfer"}
+                </p>
                 <h2>
                   {playerName(transferDraft.toPlayerId)} receives from{" "}
                   {playerName(transferDraft.fromPlayerId)}
@@ -600,9 +615,30 @@ export function PokerTable({
               </button>
             </div>
 
+            <div className="shape-segments transfer-mode-segments" aria-label="Transfer action">
+              <button
+                type="button"
+                aria-pressed={transferDraft.mode === "give_chips"}
+                onClick={() =>
+                  setTransferDraft({ ...transferDraft, mode: "give_chips" })
+                }
+              >
+                Give chips
+              </button>
+              <button
+                type="button"
+                aria-pressed={transferDraft.mode === "cover_buy_in"}
+                onClick={() =>
+                  setTransferDraft({ ...transferDraft, mode: "cover_buy_in" })
+                }
+              >
+                Cover buy-in
+              </button>
+            </div>
+
             <div className="form-grid two">
               <label>
-                <span>From</span>
+                <span>{transferDraft.mode === "cover_buy_in" ? "Covered by" : "From"}</span>
                 <select
                   value={transferDraft.fromPlayerId}
                   onChange={(event) =>
@@ -620,7 +656,7 @@ export function PokerTable({
                 </select>
               </label>
               <label>
-                <span>To</span>
+                <span>{transferDraft.mode === "cover_buy_in" ? "Chips to" : "To"}</span>
                 <select
                   value={transferDraft.toPlayerId}
                   onChange={(event) =>
@@ -638,33 +674,42 @@ export function PokerTable({
                 </select>
               </label>
               {showTransferPreview && transferDraft ? (
-                <TransferPreview
-                  amountCents={transferPreviewAmountCents ?? 0}
-                  fromCurrentNetCents={transferFromCurrentNet}
-                  fromName={playerName(transferDraft.fromPlayerId)}
-                  toCurrentNetCents={transferToCurrentNet}
-                  toName={playerName(transferDraft.toPlayerId)}
-                />
+                transferDraft.mode === "cover_buy_in" ? (
+                  <div className="covered-buy-in-preview">
+                    <LedgerImpactPreview
+                      ariaLabel="Covered buy-in preview"
+                      impacts={[
+                        {
+                          currentCents: transferFromCurrentNet,
+                          deltaCents: -(transferPreviewAmountCents ?? 0),
+                          name: playerName(transferDraft.fromPlayerId),
+                          role: "Coverer"
+                        },
+                        {
+                          currentCents: bankBalanceCents,
+                          deltaCents: transferPreviewAmountCents ?? 0,
+                          name: "Chip Pool",
+                          role: "In play"
+                        }
+                      ]}
+                    />
+                    <p className="muted transfer-recipient-note">
+                      {playerName(transferDraft.toPlayerId)} receives {formatCurrency(transferPreviewAmountCents ?? 0)} in chips; their net is unchanged.
+                    </p>
+                  </div>
+                ) : (
+                  <TransferPreview
+                    amountCents={transferPreviewAmountCents ?? 0}
+                    fromCurrentNetCents={transferFromCurrentNet}
+                    fromName={playerName(transferDraft.fromPlayerId)}
+                    toCurrentNetCents={transferToCurrentNet}
+                    toName={playerName(transferDraft.toPlayerId)}
+                  />
+                )
               ) : null}
             </div>
 
             <div className="form-grid transfer-detail-grid">
-              <label>
-                <span>Category</span>
-                <select
-                  value={transferDraft.category}
-                  onChange={(event) => {
-                    const nextCategory = event.currentTarget.value as TransactionCategory;
-                    setTransferDraft({
-                      ...transferDraft,
-                      category: nextCategory
-                    });
-                  }}
-                >
-                  <option value="poker">Poker / rebuy</option>
-                  <option value="food">Food</option>
-                </select>
-              </label>
               <label>
                 <span>Amount</span>
                 <input
@@ -702,17 +747,6 @@ export function PokerTable({
                   })
                 }
               />
-              <button
-                type="button"
-                onClick={() =>
-                  setTransferDraft({
-                    ...transferDraft,
-                    category: "food"
-                  })
-                }
-              >
-                Food
-              </button>
             </div>
 
             {transferError ? <div className="notice notice-warning">{transferError}</div> : null}
@@ -721,7 +755,9 @@ export function PokerTable({
                 Cancel
               </button>
               <button className="primary-button" type="button" onClick={confirmTransfer}>
-                Record transfer
+                {transferDraft.mode === "cover_buy_in"
+                  ? "Record covered buy-in"
+                  : "Record chip transfer"}
               </button>
             </div>
           </section>

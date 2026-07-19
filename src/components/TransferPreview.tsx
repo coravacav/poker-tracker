@@ -21,24 +21,20 @@ function signedClass(cents: number): string {
 }
 
 type FormulaCardProps = {
-  amountCents: number;
   currentNetCents: number;
-  deltaSign: "+" | "-";
+  deltaCents: number;
   name: string;
-  role: "Sender" | "Receiver";
+  role: string;
 };
 
 function FormulaCard({
-  amountCents,
   currentNetCents,
-  deltaSign,
+  deltaCents,
   name,
   role
 }: FormulaCardProps) {
-  const nextNetCents =
-    deltaSign === "+"
-      ? currentNetCents + amountCents
-      : currentNetCents - amountCents;
+  const nextNetCents = currentNetCents + deltaCents;
+  const deltaSign = deltaCents >= 0 ? "+" : "-";
 
   return (
     <article className="preview-card">
@@ -51,13 +47,44 @@ function FormulaCard({
           {formatCurrency(currentNetCents)}
         </strong>
         <span className="formula-operator">{deltaSign}</span>
-        <strong className="formula-delta">{formatCurrency(amountCents)}</strong>
+        <strong className="formula-delta">{formatCurrency(Math.abs(deltaCents))}</strong>
         <span className="formula-operator">=</span>
         <strong className={signedClass(nextNetCents)}>
           {formatCurrency(nextNetCents)}
         </strong>
       </div>
     </article>
+  );
+}
+
+export type LedgerImpact = {
+  currentCents: number;
+  deltaCents: number;
+  name: string;
+  role: string;
+};
+
+type LedgerImpactPreviewProps = {
+  ariaLabel?: string;
+  impacts: LedgerImpact[];
+};
+
+export function LedgerImpactPreview({
+  ariaLabel = "Ledger impact preview",
+  impacts
+}: LedgerImpactPreviewProps) {
+  return (
+    <div className="transfer-preview" aria-label={ariaLabel}>
+      {impacts.map((impact) => (
+        <FormulaCard
+          key={`${impact.role}:${impact.name}`}
+          currentNetCents={impact.currentCents}
+          deltaCents={impact.deltaCents}
+          name={impact.name}
+          role={impact.role}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -69,21 +96,22 @@ export function TransferPreview({
   toName
 }: TransferPreviewProps) {
   return (
-    <div className="transfer-preview" aria-label="Transfer preview">
-      <FormulaCard
-        amountCents={amountCents}
-        currentNetCents={fromCurrentNetCents}
-        deltaSign="+"
-        name={fromName}
-        role="Sender"
-      />
-      <FormulaCard
-        amountCents={amountCents}
-        currentNetCents={toCurrentNetCents}
-        deltaSign="-"
-        name={toName}
-        role="Receiver"
-      />
-    </div>
+    <LedgerImpactPreview
+      ariaLabel="Transfer preview"
+      impacts={[
+        {
+          currentCents: fromCurrentNetCents,
+          deltaCents: amountCents,
+          name: fromName,
+          role: "Sender"
+        },
+        {
+          currentCents: toCurrentNetCents,
+          deltaCents: -amountCents,
+          name: toName,
+          role: "Receiver"
+        }
+      ]}
+    />
   );
 }

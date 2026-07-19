@@ -7,7 +7,8 @@ import type {
   SeatRail,
   TableSeatPlacement,
   TableShape,
-  Transaction
+  Transaction,
+  TransactionType
 } from "./pokerTypes";
 import { chipCountTotalCents } from "./chipCounts";
 
@@ -67,6 +68,14 @@ export function validateTransaction(
 ): string | null {
   const playerIds = new Set(players.map((player) => player.id));
 
+  if (!TRANSACTION_TYPES.has(transaction.type)) {
+    return "Choose a valid transaction type.";
+  }
+
+  if (!Number.isSafeInteger(transaction.amountCents)) {
+    return "Amount must be a whole number of cents within the supported range.";
+  }
+
   if (transaction.amountCents < 0) {
     return "Amount cannot be negative.";
   }
@@ -85,6 +94,19 @@ export function validateTransaction(
     !playerIds.has(transaction.toPlayerId)
   ) {
     return "The chip buy-in player does not exist.";
+  }
+
+  if (
+    transaction.type === "bank_buy_in" &&
+    transaction.coveredByPlayerId !== undefined
+  ) {
+    if (!playerIds.has(transaction.coveredByPlayerId)) {
+      return "The player covering the buy-in does not exist.";
+    }
+
+    if (transaction.coveredByPlayerId === transaction.toPlayerId) {
+      return "Choose a different player to cover the buy-in.";
+    }
   }
 
   if (transaction.type === "bank_cash_out" && !transaction.fromPlayerId) {
@@ -111,6 +133,38 @@ export function validateTransaction(
     if (!playerIds.has(transaction.fromPlayerId) || !playerIds.has(transaction.toPlayerId)) {
       return "Both transfer players must exist.";
     }
+  }
+
+  if (transaction.type === "debt_coverage") {
+    if (!transaction.coveredPlayerId || !transaction.coveredByPlayerId) {
+      return "Choose both the covered player and the player covering the debt.";
+    }
+
+    if (transaction.coveredPlayerId === transaction.coveredByPlayerId) {
+      return "A player cannot cover their own debt.";
+    }
+
+    if (
+      !playerIds.has(transaction.coveredPlayerId) ||
+      !playerIds.has(transaction.coveredByPlayerId)
+    ) {
+      return "Both debt coverage players must exist.";
+    }
+  }
+
+  if (
+    transaction.coveredPlayerId !== undefined &&
+    transaction.type !== "debt_coverage"
+  ) {
+    return "Covered-player details are only valid for debt coverage.";
+  }
+
+  if (
+    transaction.coveredByPlayerId !== undefined &&
+    transaction.type !== "bank_buy_in" &&
+    transaction.type !== "debt_coverage"
+  ) {
+    return "Coverage details are only valid for covered buy-ins or debt coverage.";
   }
 
   if (
@@ -170,6 +224,14 @@ function isValidTableShape(value: unknown): value is TableShape {
   return value === "rectangle" || value === "oval" || value === "round";
 }
 
+const TRANSACTION_TYPES = new Set<TransactionType>([
+  "bank_buy_in",
+  "bank_cash_out",
+  "player_transfer",
+  "debt_coverage",
+  "manual_bank_adjustment"
+]);
+
 function isValidSeatRail(value: unknown): value is SeatRail {
   return value === "top" || value === "right" || value === "bottom" || value === "left";
 }
@@ -228,8 +290,8 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     isValidTableShape(candidate.settings?.tableShape) &&
     Array.isArray(candidate.settings?.tableSeatPlacements) &&
     candidate.settings.tableSeatPlacements.every(isValidSeatPlacement);
-  const isCurrentSettings =
-    candidate.schemaVersion === 3 &&
+  const hasCurrentSettings =
+    (candidate.schemaVersion === 3 || candidate.schemaVersion === 4) &&
     isValidTableShape(candidate.settings?.tableShape) &&
     Array.isArray(candidate.settings?.tableSeatPlacements) &&
     candidate.settings.tableSeatPlacements.every(isValidSeatPlacement) &&
@@ -250,7 +312,8 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
   return (
     (candidate.schemaVersion === 1 ||
       candidate.schemaVersion === 2 ||
-      candidate.schemaVersion === 3) &&
+      candidate.schemaVersion === 3 ||
+      candidate.schemaVersion === 4) &&
     !!candidate.settings &&
     Array.isArray(candidate.players) &&
     Array.isArray(candidate.transactions) &&
@@ -258,8 +321,8 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     typeof candidate.settings.defaultBuyInCents === "number" &&
     typeof candidate.settings.gameName === "string" &&
     typeof candidate.settings.createdAt === "string" &&
-    (isLegacySettings || isV2Settings || isCurrentSettings) &&
-    (candidate.schemaVersion !== 3 ||
+    (isLegacySettings || isV2Settings || hasCurrentSettings) &&
+    ((candidate.schemaVersion !== 3 && candidate.schemaVersion !== 4) ||
       (Array.isArray(candidate.cashOutDrafts) &&
         candidate.cashOutDrafts.every(isValidCashOutDraft) &&
         candidate.cashOutDrafts.every((draft) => persistedPlayerIds.has(draft.playerId)) &&
@@ -276,12 +339,21 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
       const basic =
         typeof transaction.id === "string" &&
         typeof transaction.type === "string" &&
+        TRANSACTION_TYPES.has(transaction.type as TransactionType) &&
+        (transaction.type !== "debt_coverage" || candidate.schemaVersion === 4) &&
         typeof transaction.createdAt === "string" &&
         typeof transaction.amountCents === "number" &&
+        Number.isSafeInteger(transaction.amountCents) &&
         (transaction.category === undefined ||
           transaction.category === "poker" ||
           transaction.category === "food");
       if (!basic) return false;
+
+      const structuralError = validateTransaction(
+        transaction as Transaction,
+        candidate.players as Player[]
+      );
+      if (structuralError) return false;
       if (
         transaction.chipCountBreakdown !== undefined &&
         (!Array.isArray(transaction.chipCountBreakdown) ||

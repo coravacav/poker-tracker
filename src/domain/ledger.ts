@@ -13,7 +13,10 @@ export function getActiveTransactions(transactions: Transaction[]): Transaction[
 export function hasPlayerTransactions(playerId: PlayerId, transactions: Transaction[]): boolean {
   return transactions.some(
     (transaction) =>
-      transaction.fromPlayerId === playerId || transaction.toPlayerId === playerId
+      transaction.fromPlayerId === playerId ||
+      transaction.toPlayerId === playerId ||
+      transaction.coveredByPlayerId === playerId ||
+      transaction.coveredPlayerId === playerId
   );
 }
 
@@ -30,13 +33,17 @@ export function buildPlayerSummaries(
       bankCashOutsCents: 0,
       sentToPlayersCents: 0,
       receivedFromPlayersCents: 0,
+      debtCoveredByOthersCents: 0,
+      debtCoveredForOthersCents: 0,
       netCents: 0
     });
   }
 
   for (const transaction of getActiveTransactions(transactions)) {
     if (transaction.type === "bank_buy_in" && transaction.toPlayerId) {
-      const summary = summaries.get(transaction.toPlayerId);
+      const summary = summaries.get(
+        transaction.coveredByPlayerId ?? transaction.toPlayerId
+      );
       if (summary) {
         summary.bankBuyInsCents += transaction.amountCents;
       }
@@ -64,6 +71,23 @@ export function buildPlayerSummaries(
         }
       }
     }
+
+    if (
+      transaction.type === "debt_coverage" &&
+      transaction.coveredPlayerId &&
+      transaction.coveredByPlayerId
+    ) {
+      const coveredSummary = summaries.get(transaction.coveredPlayerId);
+      const covererSummary = summaries.get(transaction.coveredByPlayerId);
+
+      if (coveredSummary) {
+        coveredSummary.debtCoveredByOthersCents += transaction.amountCents;
+      }
+
+      if (covererSummary) {
+        covererSummary.debtCoveredForOthersCents += transaction.amountCents;
+      }
+    }
   }
 
   return [...summaries.values()].map((summary) => ({
@@ -72,7 +96,9 @@ export function buildPlayerSummaries(
       summary.bankCashOutsCents +
       summary.sentToPlayersCents -
       summary.bankBuyInsCents -
-      summary.receivedFromPlayersCents
+      summary.receivedFromPlayersCents +
+      summary.debtCoveredByOthersCents -
+      summary.debtCoveredForOthersCents
   }));
 }
 

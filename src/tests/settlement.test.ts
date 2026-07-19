@@ -12,6 +12,8 @@ function summary(playerId: string, netCents: number): PlayerLedgerSummary {
     bankCashOutsCents: 0,
     sentToPlayersCents: 0,
     receivedFromPlayersCents: 0,
+    debtCoveredByOthersCents: 0,
+    debtCoveredForOthersCents: 0,
     netCents
   };
 }

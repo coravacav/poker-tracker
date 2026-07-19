@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SettlementPanel } from "../components/SettlementPanel";
 import type { BankSummary, Player, PlayerLedgerSummary } from "../domain/pokerTypes";
 
@@ -16,6 +16,8 @@ const summaries: PlayerLedgerSummary[] = [
     bankCashOutsCents: 0,
     sentToPlayersCents: 0,
     receivedFromPlayersCents: 0,
+    debtCoveredByOthersCents: 0,
+    debtCoveredForOthersCents: 0,
     netCents: -3000
   },
   {
@@ -24,6 +26,8 @@ const summaries: PlayerLedgerSummary[] = [
     bankCashOutsCents: 0,
     sentToPlayersCents: 0,
     receivedFromPlayersCents: 0,
+    debtCoveredByOthersCents: 0,
+    debtCoveredForOthersCents: 0,
     netCents: 1000
   },
   {
@@ -32,6 +36,8 @@ const summaries: PlayerLedgerSummary[] = [
     bankCashOutsCents: 0,
     sentToPlayersCents: 0,
     receivedFromPlayersCents: 0,
+    debtCoveredByOthersCents: 0,
+    debtCoveredForOthersCents: 0,
     netCents: 2000
   }
 ];
@@ -48,7 +54,10 @@ describe("SettlementPanel", () => {
       <SettlementPanel
         bankSummary={bankSummary}
         imbalanceCents={0}
+        onAddTransaction={vi.fn(() => true)}
         players={players}
+        readOnly={false}
+        settlementReady={true}
         summaries={summaries}
       />
     );
@@ -67,5 +76,64 @@ describe("SettlementPanel", () => {
 
     expect(paymentCheckbox).not.toBeChecked();
     expect(screen.getByText("0 of 2 payments settled")).toBeInTheDocument();
+  });
+
+  it("records one player's exact full debt against a selected coverer", () => {
+    const onAddTransaction = vi.fn(() => true);
+    render(
+      <SettlementPanel
+        bankSummary={{ incomingCents: 3000, outgoingCents: 3000, balanceCents: 0 }}
+        imbalanceCents={0}
+        onAddTransaction={onAddTransaction}
+        players={players}
+        readOnly={false}
+        settlementReady={true}
+        summaries={summaries}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cover debt" }));
+    expect(screen.getByRole("dialog", { name: "Cover full debt" })).toHaveTextContent(
+      "Cover Alex's full debt"
+    );
+    fireEvent.change(screen.getByLabelText("Covered by"), {
+      target: { value: "blair" }
+    });
+    expect(screen.getByLabelText("Debt coverage preview")).toHaveTextContent(
+      "AlexCovered player-$30.00 → $0.00"
+    );
+    expect(screen.getByLabelText("Debt coverage preview")).toHaveTextContent(
+      "BlairCoverer$10.00 → -$20.00"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Record debt coverage" }));
+    expect(onAddTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "debt_coverage",
+        amountCents: 3000,
+        coveredPlayerId: "alex",
+        coveredByPlayerId: "blair"
+      })
+    );
+  });
+
+  it("disables debt coverage until settlement is ready", () => {
+    render(
+      <SettlementPanel
+        bankSummary={bankSummary}
+        imbalanceCents={0}
+        onAddTransaction={vi.fn(() => true)}
+        players={players}
+        readOnly={false}
+        settlementReady={false}
+        summaries={summaries}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Cover debt" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cover debt" })).toHaveAttribute(
+      "title",
+      expect.stringContaining("Complete all cash-outs")
+    );
   });
 });

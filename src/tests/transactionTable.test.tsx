@@ -30,4 +30,44 @@ describe("TransactionTable chip breakdown", () => {
     fireEvent.click(screen.getByText("Chip breakdown"));
     expect(screen.getByText("2 × $5.00")).toBeInTheDocument();
   });
+
+  it("labels covered buy-ins and debt coverage while disabling debt flips", () => {
+    render(
+      <TransactionTable
+        dispatch={vi.fn()}
+        players={[
+          { id: "alex", name: "Alex", seatIndex: 0, isActive: true },
+          { id: "blair", name: "Blair", seatIndex: 1, isActive: true }
+        ]}
+        readOnly={false}
+        transactions={[
+          {
+            id: "buy-in",
+            type: "bank_buy_in",
+            createdAt: "2026-01-01",
+            amountCents: 2000,
+            toPlayerId: "blair",
+            coveredByPlayerId: "alex"
+          },
+          {
+            id: "coverage",
+            type: "debt_coverage",
+            createdAt: "2026-01-02",
+            amountCents: 1500,
+            coveredPlayerId: "blair",
+            coveredByPlayerId: "alex"
+          }
+        ]}
+        variant="compact"
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Covered buy-in" })).toBeInTheDocument();
+    expect(screen.getByText("Covered by Alex")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Debt coverage" })).toBeInTheDocument();
+    expect(screen.getByText("Alex covers Blair")).toBeInTheDocument();
+    const flipButtons = screen.getAllByTitle("Flip transaction");
+    expect(flipButtons[0]).toBeDisabled();
+    expect(flipButtons[1]).not.toBeDisabled();
+  });
 });

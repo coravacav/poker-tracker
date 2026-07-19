@@ -6,7 +6,7 @@ describe("gameReducer", () => {
   it("defaults new games to rectangle dynamic table settings", () => {
     const state = createDefaultGameState();
 
-    expect(state.schemaVersion).toBe(3);
+    expect(state.schemaVersion).toBe(4);
     expect(state.settings.chipDenominations).toEqual([]);
     expect(state.cashOutDrafts).toEqual([]);
     expect(state.settings.tableShape).toBe("rectangle");
@@ -138,6 +138,28 @@ describe("gameReducer", () => {
     expect(state.players.find((candidate) => candidate.id === player.id)?.isActive).toBe(true);
   });
 
+  it("protects players referenced only by coverage fields from archiving", () => {
+    let state = createDefaultGameState();
+    const [coverer, covered] = state.players;
+    state = gameReducer(state, {
+      type: "add_transaction",
+      transaction: {
+        id: "coverage",
+        type: "debt_coverage",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 2000,
+        coveredPlayerId: covered.id,
+        coveredByPlayerId: coverer.id
+      }
+    });
+
+    state = gameReducer(state, { type: "archive_player", playerId: coverer.id });
+    state = gameReducer(state, { type: "archive_player", playerId: covered.id });
+
+    expect(state.players.find((player) => player.id === coverer.id)?.isActive).toBe(true);
+    expect(state.players.find((player) => player.id === covered.id)?.isActive).toBe(true);
+  });
+
   it("ignores player moves to non-existent physical seat slots", () => {
     let state = createDefaultGameState();
     const player = state.players[0];
@@ -236,7 +258,7 @@ describe("gameReducer", () => {
     expect(state.players.find((player) => player.id === protectedPlayer.id)?.seatIndex).toBe(5);
   });
 
-  it("migrates v1 imports to v3 shape and dynamic placements", () => {
+  it("migrates v1 imports to v4 shape and dynamic placements", () => {
     const state = createDefaultGameState();
     const importedState = {
       schemaVersion: 1,
@@ -259,7 +281,7 @@ describe("gameReducer", () => {
       state: importedState as any
     });
 
-    expect(nextState.schemaVersion).toBe(3);
+    expect(nextState.schemaVersion).toBe(4);
     expect(nextState.settings.tableShape).toBe("round");
     expect(nextState.settings.tableSeatPlacements).toHaveLength(6);
     expect(nextState.settings.chipDenominations).toEqual([]);
@@ -437,5 +459,54 @@ describe("gameReducer", () => {
         flippedFromTransactionId: "buy-in"
       })
     );
+  });
+
+  it("clears coverage metadata when flipping a covered buy-in", () => {
+    let state = createDefaultGameState();
+    const [coverer, recipient] = state.players;
+    state = gameReducer(state, {
+      type: "add_transaction",
+      transaction: {
+        id: "covered-buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: recipient.id,
+        coveredByPlayerId: coverer.id
+      }
+    });
+
+    state = gameReducer(state, {
+      type: "flip_transaction",
+      transactionId: "covered-buy-in"
+    });
+
+    expect(state.transactions[1]).toMatchObject({
+      type: "bank_cash_out",
+      fromPlayerId: recipient.id,
+      coveredByPlayerId: undefined
+    });
+  });
+
+  it("does not flip debt coverage", () => {
+    let state = createDefaultGameState();
+    const [coverer, covered] = state.players;
+    state = gameReducer(state, {
+      type: "add_transaction",
+      transaction: {
+        id: "coverage",
+        type: "debt_coverage",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 2000,
+        coveredPlayerId: covered.id,
+        coveredByPlayerId: coverer.id
+      }
+    });
+
+    const next = gameReducer(state, {
+      type: "flip_transaction",
+      transactionId: "coverage"
+    });
+    expect(next).toBe(state);
   });
 });

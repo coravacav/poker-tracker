@@ -22,7 +22,7 @@ export function createDefaultGameState(): GameState {
   const players = createDefaultPlayers();
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     settings: {
       gameName: "Poker Night",
       currencyCode: "USD",

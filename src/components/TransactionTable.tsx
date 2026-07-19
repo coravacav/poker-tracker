@@ -22,6 +22,7 @@ const typeLabels: Record<TransactionType, string> = {
   bank_buy_in: "Buy-in",
   bank_cash_out: "Chip count",
   player_transfer: "Transfer",
+  debt_coverage: "Debt coverage",
   manual_bank_adjustment: "Chip adjustment"
 };
 
@@ -46,6 +47,10 @@ export function TransactionTable({
   }
 
   function fromLabel(transaction: Transaction): string {
+    if (transaction.type === "debt_coverage") {
+      return playerName(transaction.coveredByPlayerId);
+    }
+
     if (transaction.type === "bank_buy_in") {
       return "Chip Pool";
     }
@@ -62,6 +67,10 @@ export function TransactionTable({
   }
 
   function toLabel(transaction: Transaction): string {
+    if (transaction.type === "debt_coverage") {
+      return playerName(transaction.coveredPlayerId);
+    }
+
     if (transaction.type === "bank_buy_in") {
       return playerName(transaction.toPlayerId);
     }
@@ -97,6 +106,30 @@ export function TransactionTable({
     });
   }
 
+  function typeLabel(transaction: Transaction): string {
+    if (transaction.type === "bank_buy_in" && transaction.coveredByPlayerId) {
+      return "Covered buy-in";
+    }
+
+    return typeLabels[transaction.type];
+  }
+
+  function coverageLabel(transaction: Transaction): string | null {
+    if (transaction.type === "bank_buy_in" && transaction.coveredByPlayerId) {
+      return `Covered by ${playerName(transaction.coveredByPlayerId)}`;
+    }
+
+    if (
+      transaction.type === "debt_coverage" &&
+      transaction.coveredByPlayerId &&
+      transaction.coveredPlayerId
+    ) {
+      return `${playerName(transaction.coveredByPlayerId)} covers ${playerName(transaction.coveredPlayerId)}`;
+    }
+
+    return null;
+  }
+
   const sortedTransactions = [...transactions].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
@@ -117,19 +150,24 @@ export function TransactionTable({
                   <p className="eyebrow">
                     {new Date(transaction.createdAt).toLocaleTimeString()}
                   </p>
-                  <h3>{typeLabels[transaction.type]}</h3>
+                  <h3>{typeLabel(transaction)}</h3>
                 </div>
                 <strong>{formatCurrency(transaction.amountCents)}</strong>
               </div>
               <div className="audit-card-flow">
                 <span>{fromLabel(transaction)}</span>
-                <span>to</span>
+                <span>{transaction.type === "debt_coverage" ? "covers" : "to"}</span>
                 <span>{toLabel(transaction)}</span>
               </div>
               <div className="audit-card-meta">
                 {transaction.type === "player_transfer" ? (
                   <span className={`category-pill category-${transaction.category ?? "poker"}`}>
                     {categoryLabels[transaction.category ?? "poker"]}
+                  </span>
+                ) : null}
+                {coverageLabel(transaction) ? (
+                  <span className="category-pill category-poker">
+                    {coverageLabel(transaction)}
                   </span>
                 ) : null}
                 <span>{transaction.voidedAt ? "Voided" : "Active"}</span>
@@ -147,7 +185,11 @@ export function TransactionTable({
                 <button
                   className="icon-button"
                   type="button"
-                  disabled={readOnly || !!transaction.voidedAt}
+                  disabled={
+                    readOnly ||
+                    !!transaction.voidedAt ||
+                    transaction.type === "debt_coverage"
+                  }
                   title="Flip transaction"
                   onClick={() => flipTransaction(transaction)}
                 >
@@ -206,7 +248,7 @@ export function TransactionTable({
               sortedTransactions.map((transaction) => (
                 <tr key={transaction.id} className={transaction.voidedAt ? "voided-row" : ""}>
                   <td>{new Date(transaction.createdAt).toLocaleTimeString()}</td>
-                  <td>{typeLabels[transaction.type]}</td>
+                  <td>{typeLabel(transaction)}</td>
                   <td>{fromLabel(transaction)}</td>
                   <td>{toLabel(transaction)}</td>
                   <td>
@@ -214,9 +256,11 @@ export function TransactionTable({
                       <span className={`category-pill category-${transaction.category ?? "poker"}`}>
                         {categoryLabels[transaction.category ?? "poker"]}
                       </span>
-                    ) : (
-                      ""
-                    )}
+                    ) : coverageLabel(transaction) ? (
+                      <span className="category-pill category-poker">
+                        {coverageLabel(transaction)}
+                      </span>
+                    ) : ""}
                   </td>
                   <td>{formatCurrency(transaction.amountCents)}</td>
                   <td>
@@ -234,7 +278,11 @@ export function TransactionTable({
                       <button
                         className="icon-button"
                         type="button"
-                        disabled={readOnly || !!transaction.voidedAt}
+                          disabled={
+                            readOnly ||
+                            !!transaction.voidedAt ||
+                            transaction.type === "debt_coverage"
+                          }
                         title="Flip transaction"
                         onClick={() => flipTransaction(transaction)}
                       >

@@ -106,10 +106,36 @@ export function App() {
       return false;
     }
 
+    if (
+      transaction.type === "debt_coverage" &&
+      transaction.coveredPlayerId
+    ) {
+      if (!settlementReady) {
+        setNotice("Complete all cash-outs and balance the chip pool before covering debt.");
+        return false;
+      }
+
+      const coveredSummary = summaryByPlayerId.get(transaction.coveredPlayerId);
+      if (
+        !coveredSummary ||
+        coveredSummary.netCents >= 0 ||
+        transaction.amountCents !== Math.abs(coveredSummary.netCents)
+      ) {
+        setNotice("Balances changed. Review the current full debt before recording coverage.");
+        return false;
+      }
+    }
+
     dispatch({ type: "add_transaction", transaction });
     setNotice(null);
     return true;
   }
+
+  const settlementReady =
+    cashOutOverview.missingPlayers.length === 0 &&
+    cashOutOverview.multiplePlayerIds.size === 0 &&
+    bankSummary.balanceCents === 0 &&
+    imbalanceCents === 0;
 
   function changeMode(nextMode: AppMode) {
     setMode(nextMode);
@@ -167,6 +193,7 @@ export function App() {
               {notice ? <div className="notice notice-warning">{notice}</div> : null}
               <PokerTable
                 activePlayers={activePlayers}
+                bankBalanceCents={bankSummary.balanceCents}
                 defaultBuyInCents={state.settings.defaultBuyInCents}
                 dispatch={dispatch}
                 onAddTransaction={addTransaction}
@@ -236,7 +263,10 @@ export function App() {
             <SettlementPanel
               bankSummary={bankSummary}
               imbalanceCents={imbalanceCents}
+              onAddTransaction={addTransaction}
               players={state.players}
+              readOnly={readOnly}
+              settlementReady={settlementReady}
               summaries={settlementSummaries}
             />
           </div>
@@ -263,6 +293,7 @@ export function App() {
               </button>
             </div>
             <TransactionForm
+              bankBalanceCents={bankSummary.balanceCents}
               defaultBuyInCents={state.settings.defaultBuyInCents}
               onAddTransaction={(transaction) => {
                 const added = addTransaction(transaction);
