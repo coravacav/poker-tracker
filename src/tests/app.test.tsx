@@ -62,11 +62,25 @@ describe("App", () => {
     );
     expect(screen.getByRole("heading", { name: "Game Setup" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Players" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fast entry" })).toBeEnabled();
     expect(screen.getByRole("heading", { name: "Chip Value Key" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Table Layout" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit layout" })).not.toBeInTheDocument();
     expect(screen.queryByText("Corners")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Layout" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fast entry" }));
+    const fastEntry = screen.getByLabelText("Player names (one per line)");
+    expect(fastEntry).toBeInTheDocument();
+
+    fireEvent.change(fastEntry, { target: { value: "Alex\nBlair\nCasey" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply players" }));
+
+    expect(
+      screen.getAllByRole("textbox", { name: "Player name" }).map((input) =>
+        (input as HTMLInputElement).value
+      )
+    ).toEqual(["Alex", "Blair", "Casey"]);
   });
 
   it("changes shape and shows layout insertion targets in edit mode", () => {

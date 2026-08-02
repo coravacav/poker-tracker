@@ -36,6 +36,7 @@ export type GameAction =
   | { type: "move_player_to_seat"; playerId: PlayerId; seatIndex: number }
   | { type: "set_player_count"; count: number }
   | { type: "add_player"; name?: string }
+  | { type: "replace_active_players"; names: string[] }
   | { type: "rename_player"; playerId: PlayerId; name: string }
   | { type: "archive_player"; playerId: PlayerId }
   | { type: "reorder_players"; orderedPlayerIds: PlayerId[] }
@@ -302,6 +303,51 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           }
         ]
       });
+
+    case "replace_active_players": {
+      if (state.transactions.length > 0 || state.cashOutDrafts.length > 0) {
+        return state;
+      }
+
+      const names = action.names.map((name) => name.trim()).filter(Boolean);
+      if (names.length === 0) {
+        return state;
+      }
+
+      const activePlayers = [...state.players]
+        .filter((player) => player.isActive)
+        .sort((a, b) => a.seatIndex - b.seatIndex);
+      const activePlayerIndexById = new Map(
+        activePlayers.map((player, index) => [player.id, index])
+      );
+      const players = state.players.map((player) => {
+        if (!player.isActive) {
+          return player;
+        }
+
+        const index = activePlayerIndexById.get(player.id);
+        if (index === undefined || index >= names.length) {
+          return { ...player, isActive: false };
+        }
+
+        return {
+          ...player,
+          name: names[index],
+          seatIndex: index
+        };
+      });
+      const newPlayers = names.slice(activePlayers.length).map((name, offset) => ({
+        id: createId("player"),
+        name,
+        seatIndex: activePlayers.length + offset,
+        isActive: true
+      }));
+
+      return reconcileSeatIndexes({
+        ...state,
+        players: [...players, ...newPlayers]
+      });
+    }
 
     case "rename_player":
       return {

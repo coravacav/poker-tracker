@@ -59,6 +59,97 @@ describe("gameReducer", () => {
     ).toEqual(orderedPlayerIds);
   });
 
+  it("replaces the active roster in line order while preserving reusable players", () => {
+    const initialState = createDefaultGameState();
+    const initialIds = initialState.players.map((player) => player.id);
+
+    const state = gameReducer(initialState, {
+      type: "replace_active_players",
+      names: ["  Alex  ", "", "alex", "  Blair"]
+    });
+    const activePlayers = state.players
+      .filter((player) => player.isActive)
+      .sort((a, b) => a.seatIndex - b.seatIndex);
+
+    expect(activePlayers.map((player) => player.id)).toEqual(initialIds.slice(0, 3));
+    expect(activePlayers.map((player) => player.name)).toEqual([
+      "Alex",
+      "alex",
+      "Blair"
+    ]);
+    expect(activePlayers.map((player) => player.seatIndex)).toEqual([0, 1, 2]);
+    expect(state.players.slice(3).every((player) => !player.isActive)).toBe(true);
+    expect(state.settings.tableSeatPlacements).toHaveLength(3);
+  });
+
+  it("creates players when the replacement roster is longer", () => {
+    let state = createDefaultGameState();
+    state = gameReducer(state, { type: "set_player_count", count: 1 });
+    const reusedPlayerId = state.players.find((player) => player.isActive)!.id;
+
+    state = gameReducer(state, {
+      type: "replace_active_players",
+      names: ["Alex", "Blair", "Casey"]
+    });
+    const activePlayers = state.players
+      .filter((player) => player.isActive)
+      .sort((a, b) => a.seatIndex - b.seatIndex);
+
+    expect(activePlayers.map((player) => player.name)).toEqual([
+      "Alex",
+      "Blair",
+      "Casey"
+    ]);
+    expect(activePlayers.map((player) => player.seatIndex)).toEqual([0, 1, 2]);
+    expect(activePlayers[0].id).toBe(reusedPlayerId);
+    expect(new Set(activePlayers.map((player) => player.id)).size).toBe(3);
+  });
+
+  it("rejects an empty replacement roster", () => {
+    const state = createDefaultGameState();
+
+    expect(
+      gameReducer(state, {
+        type: "replace_active_players",
+        names: ["", "   "]
+      })
+    ).toBe(state);
+  });
+
+  it("refuses roster replacement after a transaction or cash-out draft exists", () => {
+    const transactionState = createDefaultGameState();
+    transactionState.transactions = [
+      {
+        id: "voided-buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: transactionState.players[0].id,
+        voidedAt: "2026-05-10T00:01:00.000Z",
+        voidReason: "Mistake"
+      }
+    ];
+
+    expect(
+      gameReducer(transactionState, {
+        type: "replace_active_players",
+        names: ["Alex"]
+      })
+    ).toBe(transactionState);
+
+    const draftState = createDefaultGameState();
+    draftState.cashOutDrafts = [
+      { playerId: draftState.players[0].id, lines: [] }
+    ];
+
+    expect(
+      gameReducer(draftState, {
+        type: "replace_active_players",
+        names: ["Alex"]
+      })
+    ).toBe(draftState);
+  });
+
   it("adds and voids transactions", () => {
     let state = createDefaultGameState();
     const player = state.players[0];

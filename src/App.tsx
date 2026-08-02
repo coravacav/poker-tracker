@@ -190,6 +190,9 @@ export function App() {
             />
             <PlayerDrawer
               dispatch={dispatch}
+              fastEntryDisabled={
+                state.transactions.length > 0 || state.cashOutDrafts.length > 0
+              }
               players={activePlayers}
               readOnly={readOnly}
               transactions={state.transactions}
