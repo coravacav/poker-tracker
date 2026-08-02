@@ -625,7 +625,6 @@ label span {
 }
 
 .money-field,
-.count-field,
 .layout-field {
   max-width: none;
 }
@@ -1167,6 +1166,12 @@ dd {
 .player-list {
   display: grid;
   gap: 8px;
+}
+
+.add-player-button {
+  width: 100%;
+  border-style: dashed;
+  color: var(--muted);
 }
 
 .player-heading-actions {

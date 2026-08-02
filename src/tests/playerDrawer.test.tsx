@@ -46,6 +46,72 @@ describe("PlayerDrawer", () => {
     });
   });
 
+  it("places add player after the roster and focuses the added row", () => {
+    const dispatch = vi.fn();
+    const { rerender } = renderDrawer({ dispatch });
+    const playerInputs = screen.getAllByRole("textbox", { name: "Player name" });
+    const addPlayer = screen.getByRole("button", { name: "Add player" });
+
+    expect(
+      playerInputs[playerInputs.length - 1]?.closest(".player-row")
+        ?.nextElementSibling
+    ).toBe(
+      addPlayer
+    );
+
+    fireEvent.click(addPlayer);
+    expect(dispatch).toHaveBeenCalledWith({ type: "add_player" });
+
+    const addedPlayer: Player = {
+      id: "p4",
+      name: "Player 4",
+      seatIndex: 3,
+      isActive: true
+    };
+    rerender(
+      <PlayerDrawer
+        dispatch={dispatch}
+        fastEntryDisabled={false}
+        players={[...defaultPlayers, addedPlayer]}
+        readOnly={false}
+        transactions={[]}
+      />
+    );
+
+    const updatedInputs = screen.getAllByRole("textbox", { name: "Player name" });
+    expect(updatedInputs[updatedInputs.length - 1]).toHaveFocus();
+    expect(updatedInputs[updatedInputs.length - 1]).toHaveValue("Player 4");
+  });
+
+  it("commits on Enter and advances to the next player", () => {
+    const dispatch = vi.fn();
+    renderDrawer({ dispatch });
+    const [firstPlayer, secondPlayer] = screen.getAllByRole("textbox", {
+      name: "Player name"
+    });
+
+    fireEvent.change(firstPlayer, { target: { value: "Alex" } });
+    fireEvent.keyDown(firstPlayer, { key: "Enter" });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "rename_player",
+      playerId: "p1",
+      name: "Alex"
+    });
+    expect(secondPlayer).toHaveFocus();
+  });
+
+  it("adds another player when Enter is pressed on the last row", () => {
+    const dispatch = vi.fn();
+    renderDrawer({ dispatch });
+    const playerInputs = screen.getAllByRole("textbox", { name: "Player name" });
+    const lastPlayer = playerInputs[playerInputs.length - 1];
+
+    fireEvent.keyDown(lastPlayer!, { key: "Enter" });
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "add_player" });
+  });
+
   it("opens fast entry empty for a default roster and cancels back to player rows", () => {
     renderDrawer();
 

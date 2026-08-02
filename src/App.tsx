@@ -15,8 +15,7 @@ import {
   buildPlayerSummaries,
   calculateBankSummary,
   calculateLedgerImbalanceCents,
-  getSummaryByPlayerId,
-  hasPlayerTransactions
+  getSummaryByPlayerId
 } from "./domain/ledger";
 import { getCashOutOverview } from "./domain/chipCounts";
 import type { Transaction } from "./domain/pokerTypes";
@@ -46,17 +45,6 @@ export function App() {
         .filter((player) => player.isActive)
         .sort((a, b) => a.seatIndex - b.seatIndex),
     [state.players]
-  );
-
-  const minimumPlayerCount = useMemo(
-    () =>
-      Math.max(
-        1,
-        state.players.filter((player) =>
-          hasPlayerTransactions(player.id, state.transactions)
-        ).length
-      ),
-    [state.players, state.transactions]
   );
 
   const playerSummaries = useMemo(
@@ -212,9 +200,7 @@ export function App() {
         setup={
           <div className="setup-mode">
             <TableSetupPanel
-              activePlayerCount={activePlayers.length}
               dispatch={dispatch}
-              minimumPlayerCount={minimumPlayerCount}
               readOnly={readOnly}
               setReadOnly={setReadOnly}
               state={state}

@@ -1,4 +1,4 @@
-import { Plus, ShieldCheck, ShieldOff } from "lucide-react";
+import { ShieldCheck, ShieldOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Dispatch } from "react";
 import { centsToInputValue, parseMoneyToCents } from "../domain/money";
@@ -7,9 +7,7 @@ import type { GameAction } from "../state/gameReducer";
 import { ExportImportControls } from "./ExportImportControls";
 
 type TableSetupPanelProps = {
-  activePlayerCount: number;
   dispatch: Dispatch<GameAction>;
-  minimumPlayerCount: number;
   readOnly: boolean;
   setReadOnly: (value: boolean) => void;
   state: GameState;
@@ -18,9 +16,7 @@ type TableSetupPanelProps = {
 const quickBuyInAmountsCents = [500, 1000, 2000, 5000, 10000] as const;
 
 export function TableSetupPanel({
-  activePlayerCount,
   dispatch,
-  minimumPlayerCount,
   readOnly,
   setReadOnly,
   state
@@ -104,33 +100,6 @@ export function TableSetupPanel({
           </div>
         </div>
 
-        <label className="compact-field count-field">
-          <span>Players</span>
-          <input
-            min={1}
-            type="number"
-            value={activePlayerCount}
-            onChange={(event) => {
-              const requestedCount = Number.parseInt(event.currentTarget.value, 10) || 1;
-
-              dispatch({
-                type: "set_player_count",
-                count: Math.max(minimumPlayerCount, requestedCount)
-              });
-            }}
-          />
-        </label>
-
-        <button
-          className="text-button"
-          type="button"
-          disabled={readOnly}
-          onClick={() => dispatch({ type: "add_player" })}
-        >
-          <Plus size={16} />
-          Player
-        </button>
-
         <button
           className="text-button"
           type="button"
@@ -143,11 +112,6 @@ export function TableSetupPanel({
 
         <ExportImportControls dispatch={dispatch} state={state} />
         {buyInError ? <span className="inline-error">{buyInError}</span> : null}
-        {minimumPlayerCount > 1 ? (
-          <span className="inline-hint">
-            Minimum {minimumPlayerCount} players because they have transactions.
-          </span>
-        ) : null}
       </div>
     </section>
   );

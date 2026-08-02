@@ -1,5 +1,5 @@
-import { Archive, ListPlus, MapPin } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Archive, ListPlus, MapPin, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import { hasPlayerTransactions } from "../domain/ledger";
 import type { Player, Transaction } from "../domain/pokerTypes";
@@ -24,6 +24,8 @@ export function PlayerDrawer({
   const [fastEntryOpen, setFastEntryOpen] = useState(false);
   const [fastEntryDraft, setFastEntryDraft] = useState("");
   const [fastEntryError, setFastEntryError] = useState<string | null>(null);
+  const nameInputRefs = useRef(new Map<string, HTMLInputElement>());
+  const focusAddedPlayerRef = useRef(false);
 
   useEffect(() => {
     setDraftNames((current) => {
@@ -35,6 +37,18 @@ export function PlayerDrawer({
 
       return next;
     });
+  }, [players]);
+
+  useEffect(() => {
+    if (!focusAddedPlayerRef.current) {
+      return;
+    }
+
+    focusAddedPlayerRef.current = false;
+    const newestPlayer = players[players.length - 1];
+    const input = newestPlayer ? nameInputRefs.current.get(newestPlayer.id) : undefined;
+    input?.focus();
+    input?.select();
   }, [players]);
 
   useEffect(() => {
@@ -68,6 +82,26 @@ export function PlayerDrawer({
         name: draftName
       });
     }
+  }
+
+  function addPlayer() {
+    focusAddedPlayerRef.current = true;
+    dispatch({ type: "add_player" });
+  }
+
+  function advanceFrom(player: Player) {
+    commitName(player);
+    const playerIndex = players.findIndex((candidate) => candidate.id === player.id);
+    const nextPlayer = players[playerIndex + 1];
+
+    if (nextPlayer) {
+      const input = nameInputRefs.current.get(nextPlayer.id);
+      input?.focus();
+      input?.select();
+      return;
+    }
+
+    addPlayer();
   }
 
   function openFastEntry() {
@@ -174,6 +208,13 @@ export function PlayerDrawer({
                 <label>
                   <span className="sr-only">Player name</span>
                   <input
+                    ref={(element) => {
+                      if (element) {
+                        nameInputRefs.current.set(player.id, element);
+                      } else {
+                        nameInputRefs.current.delete(player.id);
+                      }
+                    }}
                     type="text"
                     value={draftNames[player.id] ?? player.name}
                     disabled={readOnly}
@@ -185,6 +226,14 @@ export function PlayerDrawer({
                         ...current,
                         [player.id]: nextName
                       }));
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") {
+                        return;
+                      }
+
+                      event.preventDefault();
+                      advanceFrom(player);
                     }}
                   />
                 </label>
@@ -205,6 +254,15 @@ export function PlayerDrawer({
               </div>
             );
           })}
+          <button
+            className="text-button add-player-button"
+            type="button"
+            disabled={readOnly}
+            onClick={addPlayer}
+          >
+            <Plus size={16} />
+            Add player
+          </button>
         </div>
       )}
     </section>
