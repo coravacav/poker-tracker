@@ -69,6 +69,25 @@ describe("App", () => {
     expect(screen.queryByText("Corners")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Layout" })).not.toBeInTheDocument();
 
+    for (const amount of [5, 10, 20, 50, 100]) {
+      expect(
+        screen.getByRole("button", { name: `Set buy-in to $${amount}` })
+      ).toBeInTheDocument();
+    }
+
+    expect(screen.getByRole("button", { name: "Set buy-in to $20" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Set buy-in to $50" }));
+    expect(screen.getByRole("textbox", { name: "Buy-in" })).toHaveValue("50.00");
+    expect(screen.getByRole("button", { name: "Set buy-in to $50" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null").settings.defaultBuyInCents)
+      .toBe(5000);
+
     fireEvent.click(screen.getByRole("button", { name: "Fast entry" }));
     const fastEntry = screen.getByLabelText("Player names (one per line)");
     expect(fastEntry).toBeInTheDocument();

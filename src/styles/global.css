@@ -586,6 +586,30 @@ td {
   align-items: end;
 }
 
+.setup-buy-in-presets {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 4px;
+}
+
+.setup-buy-in-presets > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.setup-buy-in-presets > div {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.setup-buy-in-presets button {
+  min-width: 0;
+  font-weight: 700;
+}
+
 .compact-field {
   display: grid;
   gap: 4px;
@@ -671,6 +695,7 @@ label span {
 .icon-button,
 .text-button,
 .primary-button,
+.setup-buy-in-presets button,
 .quick-amounts button,
 .modal-actions button {
   display: inline-flex;
@@ -694,10 +719,17 @@ label span {
 
 .icon-button:hover,
 .text-button:hover,
+.setup-buy-in-presets button:hover,
 .quick-amounts button:hover,
 .modal-actions button:hover {
   border-color: var(--line-strong);
   background: var(--surface-alt);
+}
+
+.setup-buy-in-presets button[aria-pressed="true"] {
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-soft);
 }
 
 .icon-button.danger {

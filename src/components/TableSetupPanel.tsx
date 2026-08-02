@@ -15,6 +15,8 @@ type TableSetupPanelProps = {
   state: GameState;
 };
 
+const quickBuyInAmountsCents = [500, 1000, 2000, 5000, 10000] as const;
+
 export function TableSetupPanel({
   activePlayerCount,
   dispatch,
@@ -32,6 +34,12 @@ export function TableSetupPanel({
     setBuyInInput(centsToInputValue(state.settings.defaultBuyInCents));
   }, [state.settings.defaultBuyInCents]);
 
+  function setBuyIn(cents: number) {
+    setBuyInInput(centsToInputValue(cents));
+    dispatch({ type: "set_default_buy_in", amountCents: cents });
+    setBuyInError(null);
+  }
+
   function commitBuyIn() {
     const cents = parseMoneyToCents(buyInInput);
     if (!cents || cents <= 0) {
@@ -40,8 +48,7 @@ export function TableSetupPanel({
       return;
     }
 
-    dispatch({ type: "set_default_buy_in", amountCents: cents });
-    setBuyInError(null);
+    setBuyIn(cents);
   }
 
   return (
@@ -75,6 +82,27 @@ export function TableSetupPanel({
             onChange={(event) => setBuyInInput(event.currentTarget.value)}
           />
         </label>
+
+        <div className="setup-buy-in-presets" role="group" aria-label="Common buy-in amounts">
+          <span>Quick buy-in</span>
+          <div>
+            {quickBuyInAmountsCents.map((amountCents) => {
+              const amountDollars = amountCents / 100;
+
+              return (
+                <button
+                  aria-label={`Set buy-in to $${amountDollars}`}
+                  aria-pressed={state.settings.defaultBuyInCents === amountCents}
+                  key={amountCents}
+                  type="button"
+                  onClick={() => setBuyIn(amountCents)}
+                >
+                  ${amountDollars}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <label className="compact-field count-field">
           <span>Players</span>
