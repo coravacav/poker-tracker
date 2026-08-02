@@ -250,6 +250,13 @@ export function App() {
                 <button
                   className="text-button rail-action"
                   type="button"
+                  onClick={() => setAuditDrawerOpen(true)}
+                >
+                  Transaction Audit
+                </button>
+                <button
+                  className="text-button rail-action"
+                  type="button"
                   disabled={readOnly || activePlayers.length === 0}
                   onClick={addDefaultBuyInToAll}
                 >

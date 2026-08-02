@@ -199,6 +199,14 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Add Transaction" })).toBeInTheDocument();
   });
 
+  it("opens transaction audit from Play", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Transaction Audit" }));
+
+    expect(screen.getByRole("dialog", { name: "Transaction audit" })).toBeInTheDocument();
+  });
+
   it("adds the default buy-in to every active player from Play", () => {
     render(<App />);
 
