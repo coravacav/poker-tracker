@@ -290,6 +290,31 @@ td {
   padding-block: 10px;
 }
 
+.chip-key-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.fast-chip-entry,
+.fast-chip-entry label {
+  display: grid;
+  gap: 8px;
+}
+
+.fast-chip-entry textarea {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+}
+
+.fast-chip-entry-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .chip-key-rows {
   display: grid;
   gap: 8px;
@@ -1755,6 +1780,15 @@ dd {
   }
 
   .fast-player-entry-actions {
+    flex-direction: column;
+  }
+
+  .chip-key-heading-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fast-chip-entry-actions {
     flex-direction: column;
   }
 

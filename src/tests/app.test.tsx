@@ -81,6 +81,24 @@ describe("App", () => {
         (input as HTMLInputElement).value
       )
     ).toEqual(["Alex", "Blair", "Casey"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Fast chip entry" }));
+    const chipFastEntry = screen.getByLabelText(
+      "Chip colors and values (one per line)"
+    );
+    fireEvent.change(chipFastEntry, { target: { value: "Red = 5\nBlue .25" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply to editor" }));
+
+    expect(screen.getByLabelText("Red value")).toHaveValue("5.00");
+    expect(screen.getByLabelText("Blue value")).toHaveValue("0.25");
+    fireEvent.click(screen.getByRole("button", { name: "Save chip key" }));
+    expect(screen.getByText("Chip value key saved.")).toBeInTheDocument();
+
+    const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
+    expect(persisted.settings.chipDenominations).toEqual([
+      expect.objectContaining({ label: "Red", colorHex: "#ff0000", valueCents: 500 }),
+      expect.objectContaining({ label: "Blue", colorHex: "#0000ff", valueCents: 25 })
+    ]);
   });
 
   it("changes shape and shows layout insertion targets in edit mode", () => {
