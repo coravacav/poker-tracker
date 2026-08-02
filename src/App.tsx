@@ -25,6 +25,7 @@ import { filterSettlementSummariesForDisplay } from "./domain/settlement";
 import { validateTransaction } from "./domain/validation";
 import { gameReducer } from "./state/gameReducer";
 import { loadGameState, saveGameState } from "./state/persistence";
+import { createId } from "./state/seedGame";
 
 export function App() {
   const [state, dispatch] = useReducer(gameReducer, undefined, loadGameState);
@@ -137,6 +138,36 @@ export function App() {
     return true;
   }
 
+  function addDefaultBuyInToAll() {
+    if (readOnly) {
+      setNotice("Read-only mode is on. Turn it off to record transactions.");
+      return;
+    }
+
+    const createdAt = new Date().toISOString();
+    const transactions: Transaction[] = activePlayers.map((player) => ({
+      id: createId("transaction"),
+      type: "bank_buy_in",
+      createdAt,
+      amountCents: state.settings.defaultBuyInCents,
+      toPlayerId: player.id,
+      note: "Default buy-in"
+    }));
+
+    const validationError = transactions
+      .map((transaction) => validateTransaction(transaction, state.players))
+      .find((error) => error !== null);
+    if (validationError) {
+      setNotice(validationError);
+      return;
+    }
+
+    for (const transaction of transactions) {
+      dispatch({ type: "add_transaction", transaction });
+    }
+    setNotice(null);
+  }
+
   const settlementReady =
     cashOutOverview.missingPlayers.length === 0 &&
     bankSummary.balanceCents === 0 &&
@@ -229,14 +260,24 @@ export function App() {
                 variant="compact"
               />
               <IconKey layoutEditing={layoutEditing} />
-              <button
-                className="primary-button rail-action"
-                type="button"
-                disabled={readOnly}
-                onClick={() => setTransactionDrawerOpen(true)}
-              >
-                Add transaction
-              </button>
+              <div className="play-actions">
+                <button
+                  className="text-button rail-action"
+                  type="button"
+                  disabled={readOnly || activePlayers.length === 0}
+                  onClick={addDefaultBuyInToAll}
+                >
+                  Add default buy-in to all
+                </button>
+                <button
+                  className="primary-button rail-action"
+                  type="button"
+                  disabled={readOnly}
+                  onClick={() => setTransactionDrawerOpen(true)}
+                >
+                  Add transaction
+                </button>
+              </div>
             </aside>
           </div>
         }

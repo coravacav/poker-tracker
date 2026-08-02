@@ -180,6 +180,21 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Add Transaction" })).toBeInTheDocument();
   });
 
+  it("adds the default buy-in to every active player from Play", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add default buy-in to all" }));
+
+    const chipPool = screen.getByLabelText("Chip pool");
+    expect(within(chipPool).getByText("Issued").nextElementSibling).toHaveTextContent(
+      "$120.00"
+    );
+    expect(within(chipPool).getByText("In play").nextElementSibling).toHaveTextContent(
+      "$120.00"
+    );
+    expect(screen.getAllByText("owes $20.00")).toHaveLength(6);
+  });
+
   it("offers give-chips and covered-buy-in actions directly from a player card", () => {
     render(<App />);
 

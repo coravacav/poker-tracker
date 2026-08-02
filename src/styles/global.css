@@ -568,6 +568,11 @@ td {
   width: 100%;
 }
 
+.play-actions {
+  display: grid;
+  gap: 10px;
+}
+
 .setup-mode > .panel,
 .settle-mode > .panel {
   min-height: 0;
