@@ -10,6 +10,7 @@ import type { RecentTransactionAction } from "../domain/recentTransactionAction"
 export type AppMode = "setup" | "play" | "cash_out" | "settle";
 
 type AppShellProps = {
+  hideLayoutEditing?: boolean;
   layoutEditing: boolean;
   layoutEditingDisabled: boolean;
   mode: AppMode;
@@ -84,6 +85,7 @@ function RecentTransactionUndoButton({
 
 export function AppShell({
   cashOut,
+  hideLayoutEditing = false,
   layoutEditing,
   layoutEditingDisabled,
   mode,
@@ -107,7 +109,7 @@ export function AppShell({
           <h1>Poker Tracker</h1>
         </div>
         <nav className="app-nav" aria-label="Poker tracker modes">
-          {mode === "play" ? (
+          {mode === "play" && !hideLayoutEditing ? (
             <button
               type="button"
               className={`layout-edit-nav-button ${layoutEditing ? "is-active" : ""}`}

@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { AppShell, type AppMode } from "./components/AppShell";
 import { BankSummaryPanel } from "./components/BankSummary";
 import { CashOutMode } from "./components/CashOutMode";
@@ -34,6 +34,7 @@ export function App() {
   const [transactionDrawerOpen, setTransactionDrawerOpen] = useState(false);
   const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
   const [layoutEditing, setLayoutEditing] = useState(false);
+  const [compactPlayerView, setCompactPlayerView] = useState(false);
 
   useEffect(() => {
     saveGameState(state);
@@ -168,6 +169,11 @@ export function App() {
     setLayoutEditing(false);
   }
 
+  const handleCompactPlayerViewChange = useCallback((compactView: boolean) => {
+    setCompactPlayerView(compactView);
+    if (compactView) setLayoutEditing(false);
+  }, []);
+
   return (
     <>
       <AppShell
@@ -185,6 +191,7 @@ export function App() {
         }
         layoutEditing={layoutEditing}
         layoutEditingDisabled={readOnly}
+        hideLayoutEditing={compactPlayerView}
         mode={mode}
         onLayoutEditingChange={setLayoutEditing}
         onModeChange={changeMode}
@@ -222,8 +229,11 @@ export function App() {
           </div>
         }
         play={
-          <div className="play-mode">
-            <section className="play-table-area" aria-label="Poker table">
+          <div className={`play-mode ${compactPlayerView ? "is-compact-player-view" : ""}`}>
+            <section
+              className="play-table-area"
+              aria-label={compactPlayerView ? "Players" : "Poker table"}
+            >
               {notice ? <div className="notice notice-warning">{notice}</div> : null}
               <PokerTable
                 activePlayers={activePlayers}
@@ -232,6 +242,7 @@ export function App() {
                 dispatch={dispatch}
                 onAddTransaction={addTransaction}
                 layoutEditing={layoutEditing}
+                onCompactViewChange={handleCompactPlayerViewChange}
                 readOnly={readOnly}
                 tableSeatPlacements={state.settings.tableSeatPlacements}
                 tableShape={state.settings.tableShape}
@@ -245,7 +256,7 @@ export function App() {
                 imbalanceCents={imbalanceCents}
                 variant="compact"
               />
-              <IconKey layoutEditing={layoutEditing} />
+              {!compactPlayerView ? <IconKey layoutEditing={layoutEditing} /> : null}
               <div className="play-actions">
                 <button
                   className="text-button rail-action"
