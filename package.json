@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "deploy": "bun run build && wrangler deploy",
+    "deploy:preview": "bun run build && wrangler versions upload",
     "test": "vitest --run",
     "test:watch": "vitest",
     "preview": "vite preview --host 0.0.0.0"
@@ -27,6 +29,7 @@
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "wrangler": "^4.123.0"
   }
 }
