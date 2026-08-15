@@ -13,6 +13,7 @@ import { describeSignedMoney } from "../domain/money";
 import type { Player, PlayerLedgerSummary } from "../domain/pokerTypes";
 
 type PlayerSeatProps = {
+  compactView?: boolean;
   layoutEditing?: boolean;
   player: Player;
   readOnly: boolean;
@@ -25,6 +26,7 @@ type PlayerSeatProps = {
 };
 
 export function PlayerSeat({
+  compactView = false,
   layoutEditing = false,
   player,
   readOnly,
@@ -41,7 +43,7 @@ export function PlayerSeat({
   });
   const bucketDrag = useDraggable({
     id: `bucket:${player.id}`,
-    disabled: readOnly || layoutEditing
+    disabled: readOnly || layoutEditing || compactView
   });
 
   const netCents = summary?.netCents ?? 0;
@@ -57,7 +59,7 @@ export function PlayerSeat({
   return (
     <article
       ref={setSeatNodeRef}
-      className="player-seat"
+      className={`player-seat ${compactView ? "is-compact" : ""}`}
       style={{
         transform: CSS.Translate.toString(seatDrag.transform)
       }}
@@ -113,6 +115,7 @@ export function PlayerSeat({
           onClick={() => onBuyIn(player)}
         >
           <HandCoins size={16} />
+          <span className="seat-action-label" aria-hidden={!compactView}>Buy in</span>
         </button>
         <button
           className="icon-button"
@@ -122,6 +125,7 @@ export function PlayerSeat({
           onClick={() => onCashOut(player)}
         >
           <BadgeDollarSign size={16} />
+          <span className="seat-action-label" aria-hidden={!compactView}>Cash out</span>
         </button>
         <button
           className="icon-button"
@@ -131,21 +135,24 @@ export function PlayerSeat({
           onClick={() => onStartTransfer(player)}
         >
           <ArrowRightLeft size={16} />
+          <span className="seat-action-label" aria-hidden={!compactView}>Transfer</span>
         </button>
-        <button
-          ref={bucketDrag.setNodeRef}
-          className="icon-button chip-drag"
-          type="button"
-          disabled={readOnly}
-          title="Drag onto another player to record a rebuy from this player"
-          style={{
-            transform: CSS.Translate.toString(bucketDrag.transform)
-          }}
-          {...bucketDrag.attributes}
-          {...bucketDrag.listeners}
-        >
-          <CircleDollarSign size={17} />
-        </button>
+        {!compactView ? (
+          <button
+            ref={bucketDrag.setNodeRef}
+            className="icon-button chip-drag"
+            type="button"
+            disabled={readOnly}
+            title="Drag onto another player to record a rebuy from this player"
+            style={{
+              transform: CSS.Translate.toString(bucketDrag.transform)
+            }}
+            {...bucketDrag.attributes}
+            {...bucketDrag.listeners}
+          >
+            <CircleDollarSign size={17} />
+          </button>
+        ) : null}
       </div>
     </article>
   );

@@ -11,7 +11,7 @@ import {
   useSensors
 } from "@dnd-kit/core";
 import { X } from "lucide-react";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Dispatch } from "react";
 import { centsToInputValue, formatCurrency, parseMoneyToCents } from "../domain/money";
 import type {
@@ -41,6 +41,7 @@ type PokerTableProps = {
   defaultBuyInCents: number;
   dispatch: Dispatch<GameAction>;
   layoutEditing: boolean;
+  onCompactViewChange?: (compactView: boolean) => void;
   onAddTransaction: (transaction: Transaction) => boolean;
   readOnly: boolean;
   tableSeatPlacements: TableSeatPlacement[];
@@ -86,6 +87,7 @@ function positionFor(slot: TableSeatSlot): CSSProperties {
 }
 
 type SeatSlotProps = {
+  compactView: boolean;
   layoutEditing: boolean;
   isSeatDragging: boolean;
   player?: Player;
@@ -100,6 +102,7 @@ type SeatSlotProps = {
 };
 
 function SeatSlot({
+  compactView,
   layoutEditing,
   isSeatDragging,
   player,
@@ -114,17 +117,18 @@ function SeatSlot({
 }: SeatSlotProps) {
   const drop = useDroppable({
     id: `seat-slot:${slot.seatIndex}`,
-    disabled: readOnly || layoutEditing
+    disabled: readOnly || layoutEditing || compactView
   });
 
   return (
     <div
       ref={drop.setNodeRef}
-      className={`seat-slot ${drop.isOver ? "is-over" : ""}`}
-      style={positionFor(slot)}
+      className={`seat-slot ${player ? "" : "is-empty"} ${drop.isOver ? "is-over" : ""}`}
+      style={compactView ? { order: slot.seatIndex } : positionFor(slot)}
     >
       {player ? (
         <PlayerSeat
+          compactView={compactView}
           layoutEditing={layoutEditing}
           player={player}
           readOnly={readOnly}
@@ -195,6 +199,7 @@ export function PokerTable({
   defaultBuyInCents,
   dispatch,
   layoutEditing,
+  onCompactViewChange,
   onAddTransaction,
   readOnly,
   tableSeatPlacements,
@@ -216,6 +221,16 @@ export function PokerTable({
   const [activeDragType, setActiveDragType] = useState<
     "seat" | "bucket" | "table-seat" | null
   >(null);
+  const [compactView, setCompactView] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return (
+      window.innerWidth <= 600 ||
+      (window.innerWidth <= 960 &&
+        window.innerHeight <= 600 &&
+        window.innerWidth > window.innerHeight)
+    );
+  });
+  const panelRef = useRef<HTMLElement | null>(null);
   const playerSeatElementsRef = useRef(new Map<PlayerId, HTMLElement>());
   const previousPlayerRectsRef = useRef(new Map<PlayerId, DOMRect>());
   const cardAnimationsRef = useRef(new Map<PlayerId, Animation>());
@@ -228,6 +243,42 @@ export function PokerTable({
     () => getTableLayoutMetrics(tableSeatPlacements),
     [tableSeatPlacements]
   );
+  const effectiveLayoutEditing = layoutEditing && !compactView;
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const updateCompactView = () => {
+      const phoneSized =
+        window.innerWidth <= 600 ||
+        (window.innerWidth <= 960 &&
+          window.innerHeight <= 600 &&
+          window.innerWidth > window.innerHeight);
+      const tableWouldOverflow =
+        panel.clientWidth > 0 && panel.clientWidth < layoutMetrics.minWidthPx + 44;
+
+      setCompactView(phoneSized || tableWouldOverflow);
+    };
+
+    updateCompactView();
+    window.addEventListener("resize", updateCompactView);
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateCompactView);
+    resizeObserver?.observe(panel);
+
+    return () => {
+      window.removeEventListener("resize", updateCompactView);
+      resizeObserver?.disconnect();
+    };
+  }, [layoutMetrics.minWidthPx]);
+
+  useEffect(() => {
+    onCompactViewChange?.(compactView);
+  }, [compactView, onCompactViewChange]);
   const insertionTargets = useMemo(
     () => buildInsertionTargets(tableShape, tableSeatPlacements),
     [tableSeatPlacements, tableShape]
@@ -343,6 +394,7 @@ export function PokerTable({
   }
 
   function handleDragStart(event: DragStartEvent) {
+    if (compactView) return;
     const activeId = String(event.active.id);
     const [, dragType] = activeId.match(/^(seat|bucket|table-seat):(.+)$/) ?? [];
     setActiveDragType(
@@ -355,7 +407,7 @@ export function PokerTable({
   function handleDragEnd(event: DragEndEvent) {
     setActiveDragType(null);
 
-    if (readOnly || !event.over) {
+    if (compactView || readOnly || !event.over) {
       return;
     }
 
@@ -558,21 +610,39 @@ export function PokerTable({
   const tableClassName = [
     "poker-table",
     tableShapeClass,
-    layoutEditing ? "is-layout-editing" : "",
+    compactView ? "is-player-list" : "",
+    effectiveLayoutEditing ? "is-layout-editing" : "",
     activeDragType === "seat" ? "is-seat-dragging" : ""
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <section className="poker-table-panel">
+    <section
+      ref={panelRef}
+      className={`poker-table-panel ${compactView ? "is-player-list-view" : ""}`}
+    >
       <div className="table-toolbar">
         <div>
-          <p className="eyebrow">Drag seats to rearrange</p>
-          <h2>Table Layout</h2>
+          <p className="eyebrow">
+            <span className="table-view-only" aria-hidden={compactView}>
+              Drag seats to rearrange
+            </span>
+            <span className="player-list-only" aria-hidden={!compactView}>
+              Player actions
+            </span>
+          </p>
+          <h2>
+            <span className="table-view-only" aria-hidden={compactView}>
+              Table Layout
+            </span>
+            <span className="player-list-only" aria-hidden={!compactView}>
+              Players
+            </span>
+          </h2>
         </div>
         <div className="table-toolbar-controls">
-          {layoutEditing ? (
+          {effectiveLayoutEditing ? (
             <div className="shape-segments" aria-label="Table shape">
               {SHAPES.map(({ shape, label }) => (
                 <button
@@ -602,17 +672,21 @@ export function PokerTable({
       >
         <div
           className={tableClassName}
-          aria-label="Poker seating"
-          style={{
-            minWidth: `${layoutMetrics.minWidthPx}px`,
-            minHeight: `${layoutMetrics.minHeightPx}px`
-          }}
+          aria-label={compactView ? "Players" : "Poker seating"}
+          style={
+            compactView
+              ? undefined
+              : {
+                  minWidth: `${layoutMetrics.minWidthPx}px`,
+                  minHeight: `${layoutMetrics.minHeightPx}px`
+                }
+          }
         >
           <div className="felt-center">
             <span>{activePlayers.length}</span>
             <small>players</small>
           </div>
-          {layoutEditing
+          {effectiveLayoutEditing
             ? insertionTargets.map((target) => (
                 <LayoutInsertionTarget key={target.id} target={target} />
               ))
@@ -623,7 +697,8 @@ export function PokerTable({
             return (
               <SeatSlot
                 key={slot.seatIndex}
-                layoutEditing={layoutEditing}
+                compactView={compactView}
+                layoutEditing={effectiveLayoutEditing}
                 isSeatDragging={activeDragType === "seat"}
                 player={player}
                 readOnly={readOnly}
