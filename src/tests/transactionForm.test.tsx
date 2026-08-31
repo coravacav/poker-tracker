@@ -62,7 +62,7 @@ describe("TransactionForm", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Type"), {
-      target: { value: "player_transfer" }
+      target: { value: "player_gave" }
     });
     fireEvent.change(screen.getByLabelText("From"), { target: { value: "p2" } });
 
@@ -75,7 +75,7 @@ describe("TransactionForm", () => {
     expect(screen.getByLabelText("From")).toHaveValue("p1");
 
     fireEvent.change(screen.getByLabelText("Type"), {
-      target: { value: "player_transfer" }
+      target: { value: "player_gave" }
     });
     expect(screen.getByLabelText("From")).toHaveValue("p2");
     expect(screen.getByLabelText("To")).toHaveValue("p1");
@@ -92,7 +92,7 @@ describe("TransactionForm", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Type"), {
-      target: { value: "player_transfer" }
+      target: { value: "player_gave" }
     });
 
     expect(screen.getByRole("button", { name: "2 buy-ins $40.00" })).toBeInTheDocument();
@@ -102,6 +102,46 @@ describe("TransactionForm", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "1/4 buy-in $5.00" }));
     expect(screen.getByLabelText("Amount")).toHaveValue("5.00");
+  });
+
+  it("records a player owes entry with debtor and creditor directions", () => {
+    const onAddTransaction = vi.fn(() => true);
+
+    render(
+      <TransactionForm
+        defaultBuyInCents={2000}
+        onAddTransaction={onAddTransaction}
+        players={players}
+        readOnly={false}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Type"), {
+      target: { value: "player_owes" }
+    });
+    expect(screen.getByLabelText("Owes")).toHaveValue("p1");
+    expect(screen.getByLabelText("Owed to")).toHaveValue("p1");
+    fireEvent.change(screen.getByLabelText("Owed to"), { target: { value: "p2" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "12.50" } });
+
+    expect(screen.getByLabelText("Player owes preview")).toHaveTextContent(
+      "AlexOwes$0.00-$12.50=-$12.50"
+    );
+    expect(screen.getByLabelText("Player owes preview")).toHaveTextContent(
+      "BlairOwed to$0.00+$12.50=$12.50"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add transaction" }));
+
+    expect(onAddTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "player_owes",
+        fromPlayerId: "p1",
+        toPlayerId: "p2",
+        category: "food",
+        amountCents: 1250
+      })
+    );
   });
 
   it("records a covered buy-in and retires food creation", () => {
@@ -123,6 +163,8 @@ describe("TransactionForm", () => {
                 bankCashOutsCents: 0,
                 sentToPlayersCents: 0,
                 receivedFromPlayersCents: 0,
+                owedToPlayersCents: 0,
+                owedByPlayersCents: 0,
                 debtCoveredByOthersCents: 0,
                 debtCoveredForOthersCents: 0,
                 netCents: -2000
@@ -136,6 +178,8 @@ describe("TransactionForm", () => {
                 bankCashOutsCents: 0,
                 sentToPlayersCents: 0,
                 receivedFromPlayersCents: 0,
+                owedToPlayersCents: 0,
+                owedByPlayersCents: 0,
                 debtCoveredByOthersCents: 0,
                 debtCoveredForOthersCents: 0,
                 netCents: 1000

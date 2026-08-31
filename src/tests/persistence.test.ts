@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { validatePersistedState } from "../domain/validation";
-import { migratePersistedState } from "../state/persistence";
+import { loadGameState, migratePersistedState, STORAGE_KEY } from "../state/persistence";
 import { createDefaultGameState } from "../state/seedGame";
 
 describe("chip count persistence", () => {
-  it("migrates schema v2 games to v5 with an empty key and drafts", () => {
+  it("loads an existing v5 local game and assigns its stable local identity", () => {
+    const current = createDefaultGameState();
+    const { localGameId: _localGameId, ...withoutId } = current;
+    const legacy = { ...withoutId, schemaVersion: 5 as const };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    const migrated = loadGameState();
+    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.localGameId).toMatch(/^game_/);
+    expect(migrated.players).toEqual(legacy.players);
+  });
+
+  it("migrates schema v2 games to v7 with an empty key, drafts, and stable local id", () => {
     const current = createDefaultGameState();
     const { chipDenominations: _chipDenominations, ...legacySettings } = current.settings;
     const legacy = {
@@ -16,7 +28,8 @@ describe("chip count persistence", () => {
 
     expect(validatePersistedState(legacy)).toBe(true);
     const migrated = migratePersistedState(legacy);
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.localGameId).toMatch(/^game_/);
     expect(migrated.settings.chipDenominations).toEqual([]);
     expect(migrated.cashOutDrafts).toEqual([]);
   });
@@ -52,7 +65,7 @@ describe("chip count persistence", () => {
     expect(validatePersistedState(JSON.parse(JSON.stringify(state)))).toBe(true);
   });
 
-  it("migrates schema v3 games unchanged apart from the version", () => {
+  it("migrates schema v3 player transfers to explicit transaction types", () => {
     const current = createDefaultGameState();
     const legacy = {
       ...current,
@@ -72,8 +85,44 @@ describe("chip count persistence", () => {
 
     expect(validatePersistedState(legacy)).toBe(true);
     const migrated = migratePersistedState(legacy);
-    expect(migrated.schemaVersion).toBe(5);
-    expect(migrated.transactions).toEqual(legacy.transactions);
+    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.transactions).toEqual([
+      expect.objectContaining({
+        id: "food",
+        type: "player_owes",
+        fromPlayerId: current.players[1].id,
+        toPlayerId: current.players[0].id,
+        category: "food"
+      })
+    ]);
+  });
+
+  it("migrates v6 player transfers while preserving the stable local id", () => {
+    const current = createDefaultGameState();
+    const legacy = {
+      ...current,
+      schemaVersion: 6 as const,
+      transactions: [
+        {
+          id: "chips",
+          type: "player_transfer" as const,
+          createdAt: "2026-01-01",
+          amountCents: 500,
+          fromPlayerId: current.players[0].id,
+          toPlayerId: current.players[1].id,
+          category: "poker" as const
+        }
+      ]
+    };
+
+    expect(validatePersistedState(legacy)).toBe(true);
+    const migrated = migratePersistedState(legacy);
+
+    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.localGameId).toBe(current.localGameId);
+    expect(migrated.transactions[0]).toEqual(
+      expect.objectContaining({ id: "chips", type: "player_gave" })
+    );
   });
 
   it("infers partial and final kinds for legacy cash-outs and correction history", () => {

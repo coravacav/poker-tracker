@@ -6,6 +6,7 @@ type TransferPreviewProps = {
   fromName: string;
   toCurrentNetCents: number;
   toName: string;
+  mode?: "gave" | "owes";
 };
 
 function signedClass(cents: number): string {
@@ -93,23 +94,25 @@ export function TransferPreview({
   fromCurrentNetCents,
   fromName,
   toCurrentNetCents,
-  toName
+  toName,
+  mode = "gave"
 }: TransferPreviewProps) {
+  const isOwed = mode === "owes";
   return (
     <LedgerImpactPreview
-      ariaLabel="Transfer preview"
+      ariaLabel={isOwed ? "Player owes preview" : "Player gave preview"}
       impacts={[
         {
           currentCents: fromCurrentNetCents,
-          deltaCents: amountCents,
+          deltaCents: isOwed ? -amountCents : amountCents,
           name: fromName,
-          role: "Sender"
+          role: isOwed ? "Owes" : "Giver"
         },
         {
           currentCents: toCurrentNetCents,
-          deltaCents: -amountCents,
+          deltaCents: isOwed ? amountCents : -amountCents,
           name: toName,
-          role: "Receiver"
+          role: isOwed ? "Owed to" : "Receiver"
         }
       ]}
     />

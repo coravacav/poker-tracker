@@ -70,4 +70,44 @@ describe("TransactionTable chip breakdown", () => {
     expect(flipButtons[0]).toBeDisabled();
     expect(flipButtons[1]).not.toBeDisabled();
   });
+
+  it("labels player gifts and debts with their explicit direction", () => {
+    render(
+      <TransactionTable
+        dispatch={vi.fn()}
+        players={[
+          { id: "alex", name: "Alex", seatIndex: 0, isActive: true },
+          { id: "blair", name: "Blair", seatIndex: 1, isActive: true }
+        ]}
+        readOnly={false}
+        transactions={[
+          {
+            id: "gift",
+            type: "player_gave",
+            createdAt: "2026-01-01T00:00:00Z",
+            amountCents: 500,
+            fromPlayerId: "alex",
+            toPlayerId: "blair",
+            category: "poker"
+          },
+          {
+            id: "debt",
+            type: "player_owes",
+            createdAt: "2026-01-01T01:00:00Z",
+            amountCents: 300,
+            fromPlayerId: "alex",
+            toPlayerId: "blair",
+            category: "food"
+          }
+        ]}
+        variant="compact"
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Player gave" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Player owes" })).toBeInTheDocument();
+    expect(screen.getByText("owes")).toBeInTheDocument();
+    expect(screen.getByText("Food")).toBeInTheDocument();
+    expect(screen.getByText("Poker")).toBeInTheDocument();
+  });
 });

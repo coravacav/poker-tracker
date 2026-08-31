@@ -12,7 +12,7 @@ const players: Player[] = [
 ];
 
 describe("ledger", () => {
-  it("tracks chip buy-ins, chip returns, player transfers, and voids", () => {
+  it("tracks chip buy-ins, player gifts, chip returns, and voids", () => {
     const transactions: Transaction[] = [
       {
         id: "t1",
@@ -23,7 +23,7 @@ describe("ledger", () => {
       },
       {
         id: "t2",
-        type: "player_transfer",
+        type: "player_gave",
         createdAt: "2026-05-10T00:01:00.000Z",
         amountCents: 1000,
         fromPlayerId: "blair",
@@ -61,6 +61,30 @@ describe("ledger", () => {
     expect(bank.outgoingCents).toBe(3500);
     expect(bank.balanceCents).toBe(-1500);
     expect(calculateLedgerImbalanceCents(summaries, bank)).toBe(0);
+  });
+
+  it("reverses the player relationship for debts", () => {
+    const summaries = buildPlayerSummaries(players, [
+      {
+        id: "food-debt",
+        type: "player_owes",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 750,
+        fromPlayerId: "alex",
+        toPlayerId: "blair",
+        category: "food"
+      }
+    ]);
+    const alex = summaries.find((summary) => summary.playerId === "alex")!;
+    const blair = summaries.find((summary) => summary.playerId === "blair")!;
+
+    expect(alex.owedToPlayersCents).toBe(750);
+    expect(alex.owedByPlayersCents).toBe(0);
+    expect(alex.netCents).toBe(-750);
+    expect(blair.owedToPlayersCents).toBe(0);
+    expect(blair.owedByPlayersCents).toBe(750);
+    expect(blair.netCents).toBe(750);
+    expect(calculateLedgerImbalanceCents(summaries, calculateBankSummary([]))).toBe(0);
   });
 
   it("keeps manual chip adjustments visible as imbalance", () => {

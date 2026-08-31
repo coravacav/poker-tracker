@@ -16,6 +16,8 @@ const summaries: PlayerLedgerSummary[] = [
     bankCashOutsCents: 0,
     sentToPlayersCents: 0,
     receivedFromPlayersCents: 0,
+    owedToPlayersCents: 0,
+    owedByPlayersCents: 0,
     debtCoveredByOthersCents: 0,
     debtCoveredForOthersCents: 0,
     netCents: -3000
@@ -26,6 +28,8 @@ const summaries: PlayerLedgerSummary[] = [
     bankCashOutsCents: 0,
     sentToPlayersCents: 0,
     receivedFromPlayersCents: 0,
+    owedToPlayersCents: 0,
+    owedByPlayersCents: 0,
     debtCoveredByOthersCents: 0,
     debtCoveredForOthersCents: 0,
     netCents: 1000
@@ -36,6 +40,8 @@ const summaries: PlayerLedgerSummary[] = [
     bankCashOutsCents: 0,
     sentToPlayersCents: 0,
     receivedFromPlayersCents: 0,
+    owedToPlayersCents: 0,
+    owedByPlayersCents: 0,
     debtCoveredByOthersCents: 0,
     debtCoveredForOthersCents: 0,
     netCents: 2000

@@ -56,6 +56,9 @@ export type GameSettings = {
 export type TransactionType =
   | "bank_buy_in"
   | "bank_cash_out"
+  | "player_gave"
+  | "player_owes"
+  /** @deprecated Legacy tapes are normalized when they are loaded. */
   | "player_transfer"
   | "debt_coverage"
   | "manual_bank_adjustment";
@@ -90,6 +93,8 @@ export type PlayerLedgerSummary = {
   bankCashOutsCents: number;
   sentToPlayersCents: number;
   receivedFromPlayersCents: number;
+  owedToPlayersCents: number;
+  owedByPlayersCents: number;
   debtCoveredByOthersCents: number;
   debtCoveredForOthersCents: number;
   netCents: number;
@@ -102,6 +107,24 @@ export type BankSummary = {
 };
 
 export type PersistedGameState = {
+  schemaVersion: 7;
+  localGameId: string;
+  settings: GameSettings;
+  players: Player[];
+  transactions: Transaction[];
+  cashOutDrafts: CashOutDraft[];
+};
+
+export type LegacyPersistedGameStateV6 = {
+  schemaVersion: 6;
+  localGameId: string;
+  settings: GameSettings;
+  players: Player[];
+  transactions: Transaction[];
+  cashOutDrafts: CashOutDraft[];
+};
+
+export type LegacyPersistedGameStateV5 = {
   schemaVersion: 5;
   settings: GameSettings;
   players: Player[];
@@ -149,6 +172,8 @@ export type LegacyPersistedGameStateV3 = {
 
 export type AnyPersistedGameState =
   | PersistedGameState
+  | LegacyPersistedGameStateV6
+  | LegacyPersistedGameStateV5
   | LegacyPersistedGameStateV4
   | LegacyPersistedGameStateV3
   | LegacyPersistedGameStateV2

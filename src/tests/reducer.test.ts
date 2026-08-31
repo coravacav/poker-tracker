@@ -22,7 +22,8 @@ describe("gameReducer", () => {
   it("defaults new games to rectangle dynamic table settings", () => {
     const state = createDefaultGameState();
 
-    expect(state.schemaVersion).toBe(5);
+    expect(state.schemaVersion).toBe(7);
+    expect(state.localGameId).toMatch(/^game_/);
     expect(state.settings.chipDenominations).toEqual([]);
     expect(state.cashOutDrafts).toEqual([]);
     expect(state.settings.tableShape).toBe("rectangle");
@@ -607,7 +608,7 @@ describe("gameReducer", () => {
     expect(state.players.find((player) => player.id === protectedPlayer.id)?.seatIndex).toBe(5);
   });
 
-  it("migrates v1 imports to v5 shape and dynamic placements", () => {
+  it("migrates v1 imports to v7 shape and dynamic placements", () => {
     const state = createDefaultGameState();
     const importedState = {
       schemaVersion: 1,
@@ -630,7 +631,7 @@ describe("gameReducer", () => {
       state: importedState as any
     });
 
-    expect(nextState.schemaVersion).toBe(5);
+    expect(nextState.schemaVersion).toBe(7);
     expect(nextState.settings.tableShape).toBe("round");
     expect(nextState.settings.tableSeatPlacements).toHaveLength(6);
     expect(nextState.settings.chipDenominations).toEqual([]);
@@ -749,7 +750,7 @@ describe("gameReducer", () => {
     expect(state).toBe(before);
   });
 
-  it("flips a player transfer by voiding the original and adding the reversed copy", () => {
+  it("flips a player gave entry by voiding the original and adding the reversed copy", () => {
     let state = createDefaultGameState();
     const [fromPlayer, toPlayer] = state.players;
 
@@ -757,7 +758,7 @@ describe("gameReducer", () => {
       type: "add_transaction",
       transaction: {
         id: "transfer",
-        type: "player_transfer",
+        type: "player_gave",
         createdAt: "2026-05-10T00:00:00.000Z",
         amountCents: 1500,
         fromPlayerId: fromPlayer.id,
@@ -774,13 +775,44 @@ describe("gameReducer", () => {
     expect(state.transactions[0].voidReason).toBe("Flipped transaction");
     expect(state.transactions[1]).toEqual(
       expect.objectContaining({
-        type: "player_transfer",
+        type: "player_gave",
         amountCents: 1500,
         fromPlayerId: toPlayer.id,
         toPlayerId: fromPlayer.id,
         category: "food",
         note: "Food",
         flippedFromTransactionId: "transfer"
+      })
+    );
+  });
+
+  it("flips a player owes entry without changing its debt type", () => {
+    let state = createDefaultGameState();
+    const [owingPlayer, owedPlayer] = state.players;
+
+    state = gameReducer(state, {
+      type: "add_transaction",
+      transaction: {
+        id: "debt",
+        type: "player_owes",
+        createdAt: "2026-05-10T00:00:00.000Z",
+        amountCents: 1500,
+        fromPlayerId: owingPlayer.id,
+        toPlayerId: owedPlayer.id,
+        category: "food"
+      }
+    });
+
+    state = gameReducer(state, { type: "flip_transaction", transactionId: "debt" });
+
+    expect(state.transactions[1]).toEqual(
+      expect.objectContaining({
+        type: "player_owes",
+        amountCents: 1500,
+        fromPlayerId: owedPlayer.id,
+        toPlayerId: owingPlayer.id,
+        category: "food",
+        flippedFromTransactionId: "debt"
       })
     );
   });

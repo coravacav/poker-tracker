@@ -133,17 +133,27 @@ export function validateTransaction(
     return "The chip cash-out player does not exist.";
   }
 
-  if (transaction.type === "player_transfer") {
+  if (
+    transaction.type === "player_gave" ||
+    transaction.type === "player_owes" ||
+    transaction.type === "player_transfer"
+  ) {
     if (!transaction.fromPlayerId || !transaction.toPlayerId) {
-      return "Choose both players for the transfer.";
+      return transaction.type === "player_owes"
+        ? "Choose both the owing player and the player they owe."
+        : "Choose both players for the transfer.";
     }
 
     if (transaction.fromPlayerId === transaction.toPlayerId) {
-      return "A player cannot transfer to themselves.";
+      return transaction.type === "player_owes"
+        ? "A player cannot owe themselves."
+        : "A player cannot transfer to themselves.";
     }
 
     if (!playerIds.has(transaction.fromPlayerId) || !playerIds.has(transaction.toPlayerId)) {
-      return "Both transfer players must exist.";
+      return transaction.type === "player_owes"
+        ? "Both debt players must exist."
+        : "Both transfer players must exist.";
     }
   }
 
@@ -242,6 +252,8 @@ function isValidTableShape(value: unknown): value is TableShape {
 const TRANSACTION_TYPES = new Set<TransactionType>([
   "bank_buy_in",
   "bank_cash_out",
+  "player_gave",
+  "player_owes",
   "player_transfer",
   "debt_coverage",
   "manual_bank_adjustment"
@@ -275,6 +287,7 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
 
   const candidate = value as {
     schemaVersion?: unknown;
+    localGameId?: unknown;
     settings?: {
       currencyCode?: unknown;
       defaultBuyInCents?: unknown;
@@ -308,7 +321,9 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
   const hasCurrentSettings =
     (candidate.schemaVersion === 3 ||
       candidate.schemaVersion === 4 ||
-      candidate.schemaVersion === 5) &&
+      candidate.schemaVersion === 5 ||
+      candidate.schemaVersion === 6 ||
+      candidate.schemaVersion === 7) &&
     isValidTableShape(candidate.settings?.tableShape) &&
     Array.isArray(candidate.settings?.tableSeatPlacements) &&
     candidate.settings.tableSeatPlacements.every(isValidSeatPlacement) &&
@@ -331,7 +346,14 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
       candidate.schemaVersion === 2 ||
       candidate.schemaVersion === 3 ||
       candidate.schemaVersion === 4 ||
-      candidate.schemaVersion === 5) &&
+      candidate.schemaVersion === 5 ||
+      candidate.schemaVersion === 6 ||
+      candidate.schemaVersion === 7) &&
+    (candidate.schemaVersion !== 6 &&
+      candidate.schemaVersion !== 7 ||
+      (typeof candidate.localGameId === "string" &&
+        candidate.localGameId.length >= 8 &&
+        candidate.localGameId.length <= 160)) &&
     !!candidate.settings &&
     Array.isArray(candidate.players) &&
     Array.isArray(candidate.transactions) &&
@@ -342,7 +364,9 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     (isLegacySettings || isV2Settings || hasCurrentSettings) &&
     ((candidate.schemaVersion !== 3 &&
       candidate.schemaVersion !== 4 &&
-      candidate.schemaVersion !== 5) ||
+      candidate.schemaVersion !== 5 &&
+      candidate.schemaVersion !== 6 &&
+      candidate.schemaVersion !== 7) ||
       (Array.isArray(candidate.cashOutDrafts) &&
         candidate.cashOutDrafts.every(isValidCashOutDraft) &&
         candidate.cashOutDrafts.every((draft) => persistedPlayerIds.has(draft.playerId)) &&
@@ -362,7 +386,9 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
         TRANSACTION_TYPES.has(transaction.type as TransactionType) &&
         (transaction.type !== "debt_coverage" ||
           candidate.schemaVersion === 4 ||
-          candidate.schemaVersion === 5) &&
+          candidate.schemaVersion === 5 ||
+          candidate.schemaVersion === 6 ||
+          candidate.schemaVersion === 7) &&
         typeof transaction.createdAt === "string" &&
         typeof transaction.amountCents === "number" &&
         Number.isSafeInteger(transaction.amountCents) &&
@@ -371,7 +397,9 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
           transaction.category === "food");
       if (!basic) return false;
       if (
-        candidate.schemaVersion === 5 &&
+        (candidate.schemaVersion === 5 ||
+          candidate.schemaVersion === 6 ||
+          candidate.schemaVersion === 7) &&
         transaction.type === "bank_cash_out" &&
         (transaction.cashOutKind !== "partial" && transaction.cashOutKind !== "final")
       ) {

@@ -12,6 +12,7 @@ import { ChipBreakdown } from "./ChipBreakdown";
 
 type TransactionTableProps = {
   dispatch: Dispatch<GameAction>;
+  hideActions?: boolean;
   players: Player[];
   readOnly: boolean;
   transactions: Transaction[];
@@ -21,7 +22,9 @@ type TransactionTableProps = {
 const typeLabels: Record<TransactionType, string> = {
   bank_buy_in: "Buy-in",
   bank_cash_out: "Cash-out",
-  player_transfer: "Transfer",
+  player_gave: "Player gave",
+  player_owes: "Player owes",
+  player_transfer: "Player gave",
   debt_coverage: "Debt coverage",
   manual_bank_adjustment: "Chip adjustment"
 };
@@ -33,6 +36,7 @@ const categoryLabels: Record<TransactionCategory, string> = {
 
 export function TransactionTable({
   dispatch,
+  hideActions = false,
   players,
   readOnly,
   transactions,
@@ -122,6 +126,18 @@ export function TransactionTable({
     return typeLabels[transaction.type];
   }
 
+  function hasPlayerCategory(transaction: Transaction): boolean {
+    return (
+      transaction.type === "player_gave" ||
+      transaction.type === "player_owes" ||
+      transaction.type === "player_transfer"
+    );
+  }
+
+  function playerCategory(transaction: Transaction): TransactionCategory {
+    return transaction.category ?? (transaction.type === "player_owes" ? "food" : "poker");
+  }
+
   function coverageLabel(transaction: Transaction): string | null {
     if (transaction.type === "bank_buy_in" && transaction.coveredByPlayerId) {
       return `Covered by ${playerName(transaction.coveredByPlayerId)}`;
@@ -164,13 +180,19 @@ export function TransactionTable({
               </div>
               <div className="audit-card-flow">
                 <span>{fromLabel(transaction)}</span>
-                <span>{transaction.type === "debt_coverage" ? "covers" : "to"}</span>
+                <span>
+                  {transaction.type === "debt_coverage"
+                    ? "covers"
+                    : transaction.type === "player_owes"
+                      ? "owes"
+                      : "to"}
+                </span>
                 <span>{toLabel(transaction)}</span>
               </div>
               <div className="audit-card-meta">
-                {transaction.type === "player_transfer" ? (
-                  <span className={`category-pill category-${transaction.category ?? "poker"}`}>
-                    {categoryLabels[transaction.category ?? "poker"]}
+                {hasPlayerCategory(transaction) ? (
+                  <span className={`category-pill category-${playerCategory(transaction)}`}>
+                    {categoryLabels[playerCategory(transaction)]}
                   </span>
                 ) : null}
                 {coverageLabel(transaction) ? (
@@ -189,7 +211,7 @@ export function TransactionTable({
               {transaction.chipCountBreakdown !== undefined ? (
                 <ChipBreakdown lines={transaction.chipCountBreakdown} disclosure />
               ) : null}
-              <div className="table-actions">
+              {!hideActions ? <div className="table-actions">
                 <button
                   className="icon-button"
                   type="button"
@@ -212,7 +234,7 @@ export function TransactionTable({
                 >
                   <Ban size={15} />
                 </button>
-              </div>
+              </div> : null}
             </article>
           ))
         )}
@@ -260,9 +282,9 @@ export function TransactionTable({
                   <td>{fromLabel(transaction)}</td>
                   <td>{toLabel(transaction)}</td>
                   <td>
-                    {transaction.type === "player_transfer" ? (
-                      <span className={`category-pill category-${transaction.category ?? "poker"}`}>
-                        {categoryLabels[transaction.category ?? "poker"]}
+                    {hasPlayerCategory(transaction) ? (
+                      <span className={`category-pill category-${playerCategory(transaction)}`}>
+                        {categoryLabels[playerCategory(transaction)]}
                       </span>
                     ) : coverageLabel(transaction) ? (
                       <span className="category-pill category-poker">
@@ -282,7 +304,7 @@ export function TransactionTable({
                   </td>
                   <td>{transaction.voidedAt ? "Voided" : "Active"}</td>
                   <td>
-                    <div className="table-actions">
+                    {!hideActions ? <div className="table-actions">
                       <button
                         className="icon-button"
                         type="button"
@@ -305,7 +327,7 @@ export function TransactionTable({
                       >
                         <Ban size={15} />
                       </button>
-                    </div>
+                    </div> : null}
                   </td>
                 </tr>
               ))

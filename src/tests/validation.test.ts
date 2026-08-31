@@ -136,4 +136,48 @@ describe("coverage validation", () => {
       )
     ).toMatch(/only valid/);
   });
+
+  it("accepts both explicit player relationship transaction types", () => {
+    expect(
+      validateTransaction(
+        {
+          id: "gave",
+          type: "player_gave",
+          createdAt: "2026-01-01",
+          amountCents: 2000,
+          fromPlayerId: "alex",
+          toPlayerId: "blair",
+          category: "poker"
+        },
+        players
+      )
+    ).toBeNull();
+    expect(
+      validateTransaction(
+        {
+          id: "owes",
+          type: "player_owes",
+          createdAt: "2026-01-01",
+          amountCents: 2000,
+          fromPlayerId: "alex",
+          toPlayerId: "blair",
+          category: "food"
+        },
+        players
+      )
+    ).toBeNull();
+    expect(
+      validateTransaction(
+        {
+          id: "self-debt",
+          type: "player_owes",
+          createdAt: "2026-01-01",
+          amountCents: 2000,
+          fromPlayerId: "alex",
+          toPlayerId: "alex"
+        },
+        players
+      )
+    ).toMatch(/cannot owe themselves/);
+  });
 });

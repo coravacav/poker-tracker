@@ -143,7 +143,7 @@ describe("chip counts", () => {
 
     transactions.push({
       id: "poker-transfer",
-      type: "player_transfer",
+      type: "player_gave",
       category: "poker",
       createdAt: "2026-01-01T07:00:00Z",
       amountCents: 100,
@@ -151,5 +151,36 @@ describe("chip counts", () => {
       toPlayerId: "p1"
     });
     expect(isPlayerCashOutComplete(transactions, "p1")).toBe(false);
+  });
+
+  it("does not reopen a cash-out for a player owes entry", () => {
+    const transactions: Transaction[] = [
+      {
+        id: "buy",
+        type: "bank_buy_in",
+        createdAt: "2026-01-01T00:00:00Z",
+        amountCents: 2000,
+        toPlayerId: "p1"
+      },
+      {
+        id: "final",
+        type: "bank_cash_out",
+        cashOutKind: "final",
+        createdAt: "2026-01-01T01:00:00Z",
+        amountCents: 2000,
+        fromPlayerId: "p1"
+      },
+      {
+        id: "food-debt",
+        type: "player_owes",
+        category: "food",
+        createdAt: "2026-01-01T02:00:00Z",
+        amountCents: 300,
+        fromPlayerId: "p1",
+        toPlayerId: "p2"
+      }
+    ];
+
+    expect(isPlayerCashOutComplete(transactions, "p1")).toBe(true);
   });
 });

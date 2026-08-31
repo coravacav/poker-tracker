@@ -40,7 +40,7 @@ describe("App", () => {
       "Rename",
       "Buy-in",
       "Cash out",
-      "Transfer",
+      "Transaction",
       "Drag transfer"
     ]) {
       expect(within(iconKey).getByText(label)).toBeInTheDocument();
@@ -273,14 +273,15 @@ describe("App", () => {
   it("offers give-chips and covered-buy-in actions directly from a player card", () => {
     render(<App />);
 
-    fireEvent.click(screen.getAllByTitle("Start player transfer")[0]);
-    const dialog = screen.getByRole("dialog", { name: "Player transfer" });
-    expect(within(dialog).getByRole("button", { name: "Give chips" })).toHaveAttribute(
+    fireEvent.click(screen.getAllByTitle("Start player transaction")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Player transaction" });
+    expect(within(dialog).getByRole("button", { name: "Player gave" })).toHaveAttribute(
       "aria-pressed",
       "true"
     );
-    expect(within(dialog).getByRole("button", { name: "Record chip transfer" }))
+    expect(within(dialog).getByRole("button", { name: "Record player gave" }))
       .toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Player owes" })).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cover buy-in" }));
     expect(within(dialog).getByLabelText("Covered by")).toBeInTheDocument();

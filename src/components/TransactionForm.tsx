@@ -24,13 +24,16 @@ type TransactionFormProps = {
   summaryByPlayerId?: Map<PlayerId, PlayerLedgerSummary>;
 };
 
-type TransactionEntryType = Exclude<TransactionType, "debt_coverage"> | "covered_buy_in";
+type TransactionEntryType =
+  | Exclude<TransactionType, "debt_coverage" | "player_transfer">
+  | "covered_buy_in";
 
 const transactionLabels: Record<TransactionEntryType, string> = {
   bank_buy_in: "Chip buy-in",
   covered_buy_in: "Covered buy-in",
   bank_cash_out: "Partial cash-out",
-  player_transfer: "Player transfer",
+  player_gave: "Player gave",
+  player_owes: "Player owes",
   manual_bank_adjustment: "Chip adjustment"
 };
 
@@ -74,8 +77,9 @@ export function TransactionForm({
   }
 
   const previewAmountCents = parseMoneyToCents(amountInput);
+  const isPlayerTransaction = type === "player_gave" || type === "player_owes";
   const showTransferPreview =
-    (type === "player_transfer" || type === "covered_buy_in") &&
+    (isPlayerTransaction || type === "covered_buy_in") &&
     !!previewAmountCents &&
     previewAmountCents > 0 &&
     fromPlayerId !== toPlayerId;
@@ -110,10 +114,10 @@ export function TransactionForm({
       transaction.cashOutKind = "partial";
     }
 
-    if (type === "player_transfer") {
+    if (type === "player_gave" || type === "player_owes") {
       transaction.fromPlayerId = fromPlayerId;
       transaction.toPlayerId = toPlayerId;
-      transaction.category = "poker";
+      transaction.category = type === "player_owes" ? "food" : "poker";
     }
 
     if (type === "covered_buy_in") {
@@ -168,10 +172,16 @@ export function TransactionForm({
           </label>
 
           {(type === "bank_cash_out" ||
-            type === "player_transfer" ||
+            isPlayerTransaction ||
             type === "covered_buy_in") && (
             <label>
-              <span>{type === "covered_buy_in" ? "Covered by" : "From"}</span>
+              <span>
+                {type === "covered_buy_in"
+                  ? "Covered by"
+                  : type === "player_owes"
+                    ? "Owes"
+                    : "From"}
+              </span>
               <select
                 disabled={readOnly}
                 value={type === "bank_cash_out" ? bankPlayerId : fromPlayerId}
@@ -193,10 +203,16 @@ export function TransactionForm({
           )}
 
           {(type === "bank_buy_in" ||
-            type === "player_transfer" ||
+            isPlayerTransaction ||
             type === "covered_buy_in") && (
             <label>
-              <span>{type === "covered_buy_in" ? "Chips to" : "To"}</span>
+              <span>
+                {type === "covered_buy_in"
+                  ? "Chips to"
+                  : type === "player_owes"
+                    ? "Owed to"
+                    : "To"}
+              </span>
               <select
                 disabled={readOnly}
                 value={type === "bank_buy_in" ? bankPlayerId : toPlayerId}
@@ -259,7 +275,7 @@ export function TransactionForm({
         ) : null}
 
         <div className="quick-amounts">
-          {type === "player_transfer" || type === "covered_buy_in" || type === "bank_cash_out" ? (
+          {isPlayerTransaction || type === "covered_buy_in" || type === "bank_cash_out" ? (
             <TransferQuickAmountButtons
               defaultBuyInCents={defaultBuyInCents}
               disabled={readOnly}
@@ -326,6 +342,7 @@ export function TransactionForm({
               fromName={fromPlayer?.name ?? "From player"}
               toCurrentNetCents={toCurrentNet}
               toName={toPlayer?.name ?? "To player"}
+              mode={type === "player_owes" ? "owes" : "gave"}
             />
           )
         ) : null}

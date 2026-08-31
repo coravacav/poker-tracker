@@ -10,8 +10,9 @@ import {
   createDefaultSeatPlacements,
   normalizeSeatPlacements
 } from "../domain/tableLayout";
+import { normalizeLegacyPlayerTransactions } from "../domain/playerTransactions";
 import { validatePersistedState } from "../domain/validation";
-import { createDefaultGameState } from "./seedGame";
+import { createDefaultGameState, createId } from "./seedGame";
 
 export const STORAGE_KEY = "poker-tracker:v1:current-game";
 
@@ -108,16 +109,20 @@ function classifyLegacyCashOuts(transactions: Transaction[]): Transaction[] {
   );
 }
 
-function finishMigration(state: Omit<GameState, "schemaVersion">): GameState {
+function finishMigration(
+  state: Omit<GameState, "schemaVersion" | "localGameId">,
+  localGameId = createId("game")
+): GameState {
   return {
     ...state,
-    schemaVersion: 5,
-    transactions: classifyLegacyCashOuts(state.transactions)
+    schemaVersion: 7,
+    localGameId,
+    transactions: normalizeLegacyPlayerTransactions(classifyLegacyCashOuts(state.transactions))
   };
 }
 
 export function migratePersistedState(state: AnyPersistedGameState): GameState {
-  if (state.schemaVersion === 5) {
+  if (state.schemaVersion === 7) {
     return {
       ...state,
       settings: {
@@ -127,8 +132,44 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
           activeSeatIndexes(state.players),
           state.settings.tableShape
         )
-      }
+      },
+      transactions: normalizeLegacyPlayerTransactions(state.transactions)
     };
+  }
+
+  if (state.schemaVersion === 6) {
+    return finishMigration(
+      {
+        settings: {
+          ...state.settings,
+          tableSeatPlacements: normalizeSeatPlacements(
+            state.settings.tableSeatPlacements,
+            activeSeatIndexes(state.players),
+            state.settings.tableShape
+          )
+        },
+        players: state.players,
+        transactions: state.transactions,
+        cashOutDrafts: state.cashOutDrafts
+      },
+      state.localGameId
+    );
+  }
+
+  if (state.schemaVersion === 5) {
+    return finishMigration({
+      settings: {
+        ...state.settings,
+        tableSeatPlacements: normalizeSeatPlacements(
+          state.settings.tableSeatPlacements,
+          activeSeatIndexes(state.players),
+          state.settings.tableShape
+        )
+      },
+      players: state.players,
+      transactions: state.transactions,
+      cashOutDrafts: state.cashOutDrafts
+    });
   }
 
   if (state.schemaVersion === 4) {
@@ -226,4 +267,13 @@ export function saveGameState(state: GameState): void {
   }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+export function trySaveGameState(state: GameState): boolean {
+  try {
+    saveGameState(state);
+    return true;
+  } catch {
+    return false;
+  }
 }

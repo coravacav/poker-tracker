@@ -33,7 +33,10 @@ function affectsPlayerChipStack(transaction: Transaction, playerId: PlayerId): b
   if (transaction.voidedAt) return false;
   if (transaction.type === "bank_buy_in") return transaction.toPlayerId === playerId;
   if (transaction.type === "bank_cash_out") return transaction.fromPlayerId === playerId;
-  if (transaction.type === "player_transfer" && transaction.category !== "food") {
+  if (
+    (transaction.type === "player_gave" || transaction.type === "player_transfer") &&
+    transaction.category !== "food"
+  ) {
     return transaction.fromPlayerId === playerId || transaction.toPlayerId === playerId;
   }
   return false;

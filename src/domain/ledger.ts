@@ -33,6 +33,8 @@ export function buildPlayerSummaries(
       bankCashOutsCents: 0,
       sentToPlayersCents: 0,
       receivedFromPlayersCents: 0,
+      owedToPlayersCents: 0,
+      owedByPlayersCents: 0,
       debtCoveredByOthersCents: 0,
       debtCoveredForOthersCents: 0,
       netCents: 0
@@ -56,7 +58,7 @@ export function buildPlayerSummaries(
       }
     }
 
-    if (transaction.type === "player_transfer") {
+    if (transaction.type === "player_gave" || transaction.type === "player_transfer") {
       if (transaction.fromPlayerId) {
         const fromSummary = summaries.get(transaction.fromPlayerId);
         if (fromSummary) {
@@ -69,6 +71,23 @@ export function buildPlayerSummaries(
         if (toSummary) {
           toSummary.receivedFromPlayersCents += transaction.amountCents;
         }
+      }
+    }
+
+    if (
+      transaction.type === "player_owes" &&
+      transaction.fromPlayerId &&
+      transaction.toPlayerId
+    ) {
+      const owingSummary = summaries.get(transaction.fromPlayerId);
+      const owedSummary = summaries.get(transaction.toPlayerId);
+
+      if (owingSummary) {
+        owingSummary.owedToPlayersCents += transaction.amountCents;
+      }
+
+      if (owedSummary) {
+        owedSummary.owedByPlayersCents += transaction.amountCents;
       }
     }
 
@@ -97,6 +116,8 @@ export function buildPlayerSummaries(
       summary.sentToPlayersCents -
       summary.bankBuyInsCents -
       summary.receivedFromPlayersCents +
+      summary.owedByPlayersCents -
+      summary.owedToPlayersCents +
       summary.debtCoveredByOthersCents -
       summary.debtCoveredForOthersCents
   }));

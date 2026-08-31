@@ -8,6 +8,7 @@ import {
   moveSeatPlacement,
   normalizeSeatPlacements
 } from "../domain/tableLayout";
+import { normalizeLegacyPlayerTransaction, normalizeLegacyPlayerTransactions } from "../domain/playerTransactions";
 import type {
   AnyPersistedGameState,
   CashOutDraft,
@@ -41,6 +42,7 @@ export type GameAction =
   | { type: "archive_player"; playerId: PlayerId }
   | { type: "reorder_players"; orderedPlayerIds: PlayerId[] }
   | { type: "add_transaction"; transaction: Transaction }
+  | { type: "add_transactions"; transactions: Transaction[] }
   | { type: "save_cash_out_draft"; draft: CashOutDraft }
   | { type: "clear_cash_out_draft"; playerId: PlayerId }
   | { type: "start_cash_out_correction"; playerId: PlayerId; transactionId: TransactionId }
@@ -388,7 +390,19 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "add_transaction":
       return {
         ...state,
-        transactions: [...state.transactions, action.transaction]
+        transactions: [
+          ...state.transactions,
+          normalizeLegacyPlayerTransaction(action.transaction)
+        ]
+      };
+
+    case "add_transactions":
+      return {
+        ...state,
+        transactions: [
+          ...state.transactions,
+          ...normalizeLegacyPlayerTransactions(action.transactions)
+        ]
       };
 
     case "save_cash_out_draft":
@@ -521,7 +535,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       let flippedTransaction: Transaction | null = null;
 
-      if (original.type === "player_transfer") {
+      if (
+        original.type === "player_gave" ||
+        original.type === "player_owes" ||
+        original.type === "player_transfer"
+      ) {
         if (!original.fromPlayerId || !original.toPlayerId) {
           return state;
         }

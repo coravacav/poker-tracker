@@ -40,6 +40,7 @@ type PokerTableProps = {
   bankBalanceCents: number;
   defaultBuyInCents: number;
   dispatch: Dispatch<GameAction>;
+  hideActions?: boolean;
   layoutEditing: boolean;
   onCompactViewChange?: (compactView: boolean) => void;
   onAddTransaction: (transaction: Transaction) => boolean;
@@ -50,7 +51,7 @@ type PokerTableProps = {
 };
 
 type TransferDraft = {
-  mode: "give_chips" | "cover_buy_in";
+  mode: "player_gave" | "player_owes" | "cover_buy_in";
   fromPlayerId: PlayerId;
   toPlayerId: PlayerId;
   amountInput: string;
@@ -91,6 +92,7 @@ type SeatSlotProps = {
   layoutEditing: boolean;
   isSeatDragging: boolean;
   player?: Player;
+  hideActions: boolean;
   readOnly: boolean;
   slot: TableSeatSlot;
   summary?: PlayerLedgerSummary;
@@ -106,6 +108,7 @@ function SeatSlot({
   layoutEditing,
   isSeatDragging,
   player,
+  hideActions,
   readOnly,
   slot,
   summary,
@@ -131,6 +134,7 @@ function SeatSlot({
           compactView={compactView}
           layoutEditing={layoutEditing}
           player={player}
+          hideActions={hideActions}
           readOnly={readOnly}
           summary={summary}
           onBuyIn={onBuyIn}
@@ -199,6 +203,7 @@ export function PokerTable({
   defaultBuyInCents,
   dispatch,
   layoutEditing,
+  hideActions = false,
   onCompactViewChange,
   onAddTransaction,
   readOnly,
@@ -384,7 +389,7 @@ export function PokerTable({
       fromPlayerId;
 
     setTransferDraft({
-      mode: "give_chips",
+      mode: "player_gave",
       fromPlayerId,
       toPlayerId: fallbackToPlayerId,
       amountInput: centsToInputValue(defaultBuyInCents),
@@ -549,12 +554,12 @@ export function PokerTable({
           }
         : {
             id: createId("transaction"),
-            type: "player_transfer",
+            type: transferDraft.mode,
             createdAt: new Date().toISOString(),
             amountCents,
             fromPlayerId: transferDraft.fromPlayerId,
             toPlayerId: transferDraft.toPlayerId,
-            category: "poker",
+            category: transferDraft.mode === "player_owes" ? "food" : "poker",
             note: transferDraft.note.trim() || undefined
           }
     );
@@ -701,6 +706,7 @@ export function PokerTable({
                 layoutEditing={effectiveLayoutEditing}
                 isSeatDragging={activeDragType === "seat"}
                 player={player}
+                hideActions={hideActions}
                 readOnly={readOnly}
                 slot={slot}
                 summary={player ? summaryByPlayerId.get(player.id) : undefined}
@@ -822,15 +828,22 @@ export function PokerTable({
 
       {transferDraft ? (
         <div className="modal-backdrop" role="presentation">
-          <section className="modal" role="dialog" aria-modal="true" aria-label="Player transfer">
+          <section className="modal" role="dialog" aria-modal="true" aria-label="Player transaction">
             <div className="modal-heading">
               <div>
                 <p className="eyebrow">
-                  {transferDraft.mode === "cover_buy_in" ? "Covered buy-in" : "Player transfer"}
+                  {transferDraft.mode === "cover_buy_in"
+                    ? "Covered buy-in"
+                    : transferDraft.mode === "player_owes"
+                      ? "Player owes"
+                      : "Player gave"}
                 </p>
                 <h2>
-                  {playerName(transferDraft.toPlayerId)} receives from{" "}
-                  {playerName(transferDraft.fromPlayerId)}
+                  {transferDraft.mode === "cover_buy_in"
+                    ? `${playerName(transferDraft.toPlayerId)} receives from ${playerName(transferDraft.fromPlayerId)}`
+                    : transferDraft.mode === "player_owes"
+                      ? `${playerName(transferDraft.fromPlayerId)} owes ${playerName(transferDraft.toPlayerId)}`
+                      : `${playerName(transferDraft.toPlayerId)} receives from ${playerName(transferDraft.fromPlayerId)}`}
                 </h2>
               </div>
               <button
@@ -846,12 +859,21 @@ export function PokerTable({
             <div className="shape-segments transfer-mode-segments" aria-label="Transfer action">
               <button
                 type="button"
-                aria-pressed={transferDraft.mode === "give_chips"}
+                aria-pressed={transferDraft.mode === "player_gave"}
                 onClick={() =>
-                  setTransferDraft({ ...transferDraft, mode: "give_chips" })
+                  setTransferDraft({ ...transferDraft, mode: "player_gave" })
                 }
               >
-                Give chips
+                Player gave
+              </button>
+              <button
+                type="button"
+                aria-pressed={transferDraft.mode === "player_owes"}
+                onClick={() =>
+                  setTransferDraft({ ...transferDraft, mode: "player_owes" })
+                }
+              >
+                Player owes
               </button>
               <button
                 type="button"
@@ -866,7 +888,13 @@ export function PokerTable({
 
             <div className="form-grid two">
               <label>
-                <span>{transferDraft.mode === "cover_buy_in" ? "Covered by" : "From"}</span>
+                <span>
+                  {transferDraft.mode === "cover_buy_in"
+                    ? "Covered by"
+                    : transferDraft.mode === "player_owes"
+                      ? "Owes"
+                      : "From"}
+                </span>
                 <select
                   value={transferDraft.fromPlayerId}
                   onChange={(event) =>
@@ -884,7 +912,13 @@ export function PokerTable({
                 </select>
               </label>
               <label>
-                <span>{transferDraft.mode === "cover_buy_in" ? "Chips to" : "To"}</span>
+                <span>
+                  {transferDraft.mode === "cover_buy_in"
+                    ? "Chips to"
+                    : transferDraft.mode === "player_owes"
+                      ? "Owed to"
+                      : "To"}
+                </span>
                 <select
                   value={transferDraft.toPlayerId}
                   onChange={(event) =>
@@ -932,6 +966,7 @@ export function PokerTable({
                     fromName={playerName(transferDraft.fromPlayerId)}
                     toCurrentNetCents={transferToCurrentNet}
                     toName={playerName(transferDraft.toPlayerId)}
+                    mode={transferDraft.mode === "player_owes" ? "owes" : "gave"}
                   />
                 )
               ) : null}
@@ -985,7 +1020,9 @@ export function PokerTable({
               <button className="primary-button" type="button" onClick={confirmTransfer}>
                 {transferDraft.mode === "cover_buy_in"
                   ? "Record covered buy-in"
-                  : "Record chip transfer"}
+                  : transferDraft.mode === "player_owes"
+                    ? "Record player owes"
+                    : "Record player gave"}
               </button>
             </div>
           </section>
