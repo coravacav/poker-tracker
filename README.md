@@ -1,0 +1,81 @@
+# Poker Tracker
+
+A local-first poker chip and bank ledger. Ordinary games live in the browser and work without an account, internet connection, or Convex. A host can explicitly promote the current game to a temporary Convex room for read-only realtime guest viewing.
+
+This tracks chips, transactions, cash-outs, and settlement. It is not a card/deck engine and does not support real-money play.
+
+## Local development
+
+Requirements: Bun and a Convex account for the optional sharing flow.
+
+```sh
+bun install
+bunx convex dev
+```
+
+The Convex command creates/selects a development deployment, writes the ignored `.env.local`, generates `convex/_generated`, and watches backend changes. In another terminal:
+
+```sh
+bun run dev
+```
+
+Useful checks:
+
+```sh
+bun run typecheck
+bun run test
+bun run build
+```
+
+If a deployment is already configured, regenerate types with `bun run convex:codegen`. The production backend command is `bunx convex deploy`; run it only as an intentional release step.
+
+## Environment variables
+
+- `VITE_CONVEX_URL`: public Convex deployment URL embedded in the Vite build. Without it, local games still work and the Share button explains that sharing is unavailable.
+- `CONVEX_DEPLOYMENT`: development deployment selector managed by the Convex CLI.
+
+Neither value is a host or guest room credential. Do not commit `.env.local`, deploy keys, or room capabilities.
+
+## Local and shared behavior
+
+- Local games use `poker-tracker:v1:current-game` in `localStorage`. Schema v6 adds a stable `localGameId`; older saves migrate in place.
+- Sharing is explicit. Convex receives a bounded snapshot only when the host chooses **Share game**.
+- While active, Convex is authoritative. The host sends versioned reducer actions, waits for server acceptance, and only then caches the accepted state locally. Financial actions are not optimistic or queued offline.
+- Host recovery credentials use a separate local-storage record. A tab-scoped controller ID ensures only one host tab can edit; another tab may explicitly take control.
+- Guests receive a revocable, tab-scoped capability in `sessionStorage`. Guest room snapshots never write to normal local-game storage.
+- Stopping sharing marks the room ended and confirms its final authoritative snapshot before replacing the host’s local state. If that write fails or the response cannot be confirmed, recovery metadata remains and the host sees **Recovery needed** with a retry action.
+
+QR codes contain the guest invitation URL, not host authority. The invitation secret is in the URL fragment so it is not sent in ordinary HTTP requests. Pairing and realtime updates still use Convex over the internet; this is not LAN-only or peer-to-peer transport.
+
+## Snapshot boundary and retention
+
+The first slice stores one bounded game snapshot per room:
+
+- 700,000 encoded bytes maximum
+- 24 players maximum
+- 5,000 transactions maximum
+- 10,000 accepted actions maximum
+- 50 non-revoked guest sessions maximum
+
+These limits preserve headroom below Convex’s 1 MB document limit. Before raising them, move transactions and other growing collections into normalized, room-indexed tables. Ended rooms are currently retained for guest notification and recovery; scheduled expiry/deletion is intentionally deferred. A later retention policy should expire abandoned active rooms and delete ended-room data after a documented recovery window.
+
+## Security boundaries and MVP limitations
+
+- Room IDs do not authorize writes. Host, invitation, and guest capabilities are cryptographically random and stored in Convex only as SHA-256 verifiers.
+- Every mutation checks the host capability and active controller server-side. Guest queries require a non-revoked guest capability and return a projection without host cash-out drafts.
+- Public functions validate arguments; room/action/guest limits provide basic abuse boundaries.
+- There are no accounts, IP-based creation limits, CAPTCHA, guest-management UI, or automated cleanup yet. Anyone holding a current invite may join as a read-only guest until the room ends. A compromised host browser storage exposes its active host capability.
+
+## Convex usage
+
+The host and each guest keep one narrow room subscription. Connected-guest tracking uses the Convex presence component. Convex bills subscription reruns and presence traffic as function calls, so projections should remain room-scoped and new realtime subscriptions should be added sparingly, especially on the free tier.
+
+## Hosting at poker.stefanbt.com
+
+The Vite build is already served as Cloudflare Worker static assets, with SPA fallback configured in `wrangler.jsonc`. For a later release:
+
+1. Set `VITE_CONVEX_URL` to the intended deployed Convex URL during the frontend build.
+2. Build and publish the Worker through the existing release process.
+3. Attach `poker.stefanbt.com` as the Worker custom domain in Cloudflare.
+
+Invite routing uses URL fragments, so direct loads and refreshes do not require additional server routes.

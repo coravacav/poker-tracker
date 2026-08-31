@@ -60,6 +60,7 @@ export function TableSetupPanel({
         <label className="compact-field">
           <span>Game</span>
           <input
+            disabled={readOnly}
             type="text"
             value={state.settings.gameName}
             onChange={(event) =>
@@ -71,6 +72,7 @@ export function TableSetupPanel({
         <label className="compact-field money-field">
           <span>Buy-in</span>
           <input
+            disabled={readOnly}
             inputMode="decimal"
             type="text"
             value={buyInInput}
@@ -90,6 +92,7 @@ export function TableSetupPanel({
                   aria-label={`Set buy-in to $${amountDollars}`}
                   aria-pressed={state.settings.defaultBuyInCents === amountCents}
                   key={amountCents}
+                  disabled={readOnly}
                   type="button"
                   onClick={() => setBuyIn(amountCents)}
                 >
@@ -110,7 +113,7 @@ export function TableSetupPanel({
           {readOnly ? "Read-only" : "Editable"}
         </button>
 
-        <ExportImportControls dispatch={dispatch} state={state} />
+        <ExportImportControls dispatch={dispatch} readOnly={readOnly} state={state} />
         {buyInError ? <span className="inline-error">{buyInError}</span> : null}
       </div>
     </section>

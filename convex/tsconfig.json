@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "strict": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM"]
+  },
+  "include": ["./**/*", "../src/domain/**/*", "../src/state/**/*", "../src/session/roomProtocol.ts"],
+  "exclude": ["./_generated", "./**/*.test.ts"]
+}

@@ -16,6 +16,7 @@ type PlayerSeatProps = {
   compactView?: boolean;
   layoutEditing?: boolean;
   player: Player;
+  hideActions?: boolean;
   readOnly: boolean;
   summary?: PlayerLedgerSummary;
   onBuyIn: (player: Player) => void;
@@ -29,6 +30,7 @@ export function PlayerSeat({
   compactView = false,
   layoutEditing = false,
   player,
+  hideActions = false,
   readOnly,
   summary,
   onBuyIn,
@@ -92,7 +94,7 @@ export function PlayerSeat({
 
       <div className="seat-name-row">
         <h3>{player.name}</h3>
-        {!layoutEditing ? (
+        {!layoutEditing && !hideActions ? (
           <button
             className="icon-button"
             type="button"
@@ -106,7 +108,7 @@ export function PlayerSeat({
       </div>
       <p className={`seat-net ${netClass}`}>{describeSignedMoney(netCents)}</p>
 
-      <div className="seat-actions">
+      {!hideActions ? <div className="seat-actions">
         <button
           className="icon-button"
           type="button"
@@ -131,11 +133,11 @@ export function PlayerSeat({
           className="icon-button"
           type="button"
           disabled={readOnly || layoutEditing}
-          title="Start player transfer"
+          title="Start player transaction"
           onClick={() => onStartTransfer(player)}
         >
           <ArrowRightLeft size={16} />
-          <span className="seat-action-label" aria-hidden={!compactView}>Transfer</span>
+          <span className="seat-action-label" aria-hidden={!compactView}>Transaction</span>
         </button>
         {!compactView ? (
           <button
@@ -153,7 +155,7 @@ export function PlayerSeat({
             <CircleDollarSign size={17} />
           </button>
         ) : null}
-      </div>
+      </div> : null}
     </article>
   );
 }

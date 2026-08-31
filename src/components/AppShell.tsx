@@ -19,6 +19,9 @@ type AppShellProps = {
   onUndoRecentTransaction: (action: RecentTransactionAction) => void;
   readOnly: boolean;
   recentTransactionAction: RecentTransactionAction | null;
+  guest?: boolean;
+  ledgerLabel?: string;
+  sessionControls?: ReactNode;
   cashOut: ReactNode;
   play: ReactNode;
   setup: ReactNode;
@@ -85,6 +88,8 @@ function RecentTransactionUndoButton({
 
 export function AppShell({
   cashOut,
+  guest = false,
+  ledgerLabel = "Local ledger",
   hideLayoutEditing = false,
   layoutEditing,
   layoutEditingDisabled,
@@ -95,6 +100,7 @@ export function AppShell({
   play,
   readOnly,
   recentTransactionAction,
+  sessionControls,
   setup,
   settle
 }: AppShellProps) {
@@ -105,11 +111,12 @@ export function AppShell({
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">Local ledger</p>
+          <p className="eyebrow">{ledgerLabel}</p>
           <h1>Poker Tracker</h1>
         </div>
+        {sessionControls}
         <nav className="app-nav" aria-label="Poker tracker modes">
-          {mode === "play" && !hideLayoutEditing ? (
+          {mode === "play" && !hideLayoutEditing && !guest ? (
             <button
               type="button"
               className={`layout-edit-nav-button ${layoutEditing ? "is-active" : ""}`}
@@ -120,7 +127,7 @@ export function AppShell({
               Edit layout
             </button>
           ) : null}
-          {recentTransactionAction ? (
+          {recentTransactionAction && !guest ? (
             <RecentTransactionUndoButton
               key={`${recentTransactionAction.kind}:${recentTransactionAction.transactionId}:${recentTransactionAction.occurredAt}`}
               action={recentTransactionAction}
@@ -129,7 +136,7 @@ export function AppShell({
             />
           ) : null}
           <div className="mode-tabs">
-            {modeLabels.map((option) => (
+            {modeLabels.filter((option) => !guest || option.mode === "play" || option.mode === "settle").map((option) => (
               <button
                 key={option.mode}
                 type="button"

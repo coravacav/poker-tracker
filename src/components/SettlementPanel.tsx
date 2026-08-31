@@ -17,6 +17,7 @@ import { createId } from "../state/seedGame";
 type SettlementPanelProps = {
   bankSummary: BankSummary;
   imbalanceCents: number;
+  hideActions?: boolean;
   players: Player[];
   readOnly: boolean;
   settlementReady: boolean;
@@ -31,6 +32,7 @@ function settlementPaymentKey(payment: SettlementPayment): string {
 export function SettlementPanel({
   bankSummary,
   imbalanceCents,
+  hideActions = false,
   players,
   readOnly,
   settlementReady,
@@ -185,14 +187,16 @@ export function SettlementPanel({
                     }`}
                     key={paymentKey}
                   >
-                    <input
-                      type="checkbox"
-                      checked={isSettled}
-                      aria-label={`Mark ${fromPlayerName} to ${toPlayerName} ${amount} as ${
-                        isSettled ? "unpaid" : "paid"
-                      }`}
-                      onChange={() => toggleSettlementPayment(payment)}
-                    />
+                    {!hideActions ? (
+                      <input
+                        type="checkbox"
+                        checked={isSettled}
+                        aria-label={`Mark ${fromPlayerName} to ${toPlayerName} ${amount} as ${
+                          isSettled ? "unpaid" : "paid"
+                        }`}
+                        onChange={() => toggleSettlementPayment(payment)}
+                      />
+                    ) : null}
                     <span>{fromPlayerName}</span>
                     <ArrowRight size={15} aria-hidden="true" />
                     <span>{toPlayerName}</span>
@@ -221,7 +225,7 @@ export function SettlementPanel({
                 >
                   {formatCurrency(summary.netCents)}
                 </strong>
-                {summary.netCents < 0 ? (
+                {summary.netCents < 0 && !hideActions ? (
                   <button
                     className="text-button cover-debt-button"
                     type="button"

@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { Dispatch, ReactNode } from "react";
 import { AppShell, type AppMode } from "./components/AppShell";
 import { BankSummaryPanel } from "./components/BankSummary";
 import { CashOutMode } from "./components/CashOutMode";
@@ -11,6 +12,12 @@ import { SettlementPanel } from "./components/SettlementPanel";
 import { TableSetupPanel } from "./components/TableSetupPanel";
 import { TransactionForm } from "./components/TransactionForm";
 import { TransactionTable } from "./components/TransactionTable";
+import { GuestJoinScreen } from "./components/GuestJoinScreen";
+import {
+  GuestSessionControls,
+  HostSharingControls,
+  LocalShareButton
+} from "./components/SharingControls";
 import {
   buildPlayerSummaries,
   calculateBankSummary,
@@ -18,27 +25,137 @@ import {
   getSummaryByPlayerId
 } from "./domain/ledger";
 import { getCashOutOverview } from "./domain/chipCounts";
-import type { Transaction } from "./domain/pokerTypes";
+import type { GameState, Transaction } from "./domain/pokerTypes";
 import { getLatestTransactionAction } from "./domain/recentTransactionAction";
 import { filterSettlementSummariesForDisplay } from "./domain/settlement";
 import { validateTransaction } from "./domain/validation";
-import { gameReducer } from "./state/gameReducer";
-import { loadGameState, saveGameState } from "./state/persistence";
+import type { GameAction } from "./state/gameReducer";
 import { createId } from "./state/seedGame";
+import { useGameSession } from "./session/useGameSession";
+import type { RoomTransport } from "./session/types";
 
-export function App() {
-  const [state, dispatch] = useReducer(gameReducer, undefined, loadGameState);
+export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
+  const gameSession = useGameSession(roomTransport);
+  const { session } = gameSession;
+
+  if (session.mode === "joining") {
+    return (
+      <GuestJoinScreen
+        error={session.error}
+        joining={session.joining}
+        onCancel={gameSession.dismissInvite}
+        onJoin={(displayName) => void gameSession.joinGame(displayName)}
+        roomName={session.preview.name}
+        status={session.preview.status}
+      />
+    );
+  }
+
+  if (session.mode === "invalid_invite") {
+    return (
+      <GuestJoinScreen
+        error={session.message}
+        joining={false}
+        onCancel={gameSession.dismissInvite}
+        onJoin={() => undefined}
+        status="invalid"
+      />
+    );
+  }
+
+  if (session.mode === "guest" && !session.room) {
+    return (
+      <GuestJoinScreen
+        error={session.error}
+        joining={false}
+        onCancel={gameSession.leaveGuest}
+        onJoin={() => undefined}
+        status={session.error ? (session.connected ? "invalid" : "reconnecting") : "loading"}
+      />
+    );
+  }
+
+  let sessionControls: ReactNode;
+  let sessionNotice: string | null = null;
+  if (session.mode === "local") {
+    sessionControls = <LocalShareButton onShare={() => void gameSession.shareGame()} />;
+    sessionNotice = session.notice;
+  } else if (session.mode === "creating_room") {
+    sessionControls = <span className="session-status">Creating room…</span>;
+    sessionNotice = session.error;
+  } else if (session.mode === "guest") {
+    sessionControls = (
+      <GuestSessionControls
+        connected={session.connected}
+        displayName={session.credentials.displayName}
+        ended={session.room?.status !== "active"}
+        onLeave={gameSession.leaveGuest}
+      />
+    );
+    sessionNotice = session.room?.status === "ended" ? "The host ended this shared session." : session.error;
+  } else if (session.recovery) {
+    sessionControls = (
+      <HostSharingControls
+        connected={session.connected}
+        error={session.error}
+        onClaimHost={() => void gameSession.claimHost()}
+        onEnd={() => void gameSession.endSharing()}
+        onRetryRecovery={gameSession.retryRecovery}
+        pending={session.pending}
+        recovery={session.recovery}
+        recoveryRequired={session.mode === "recovery_required"}
+        room={session.room}
+      />
+    );
+    sessionNotice = session.error;
+  }
+
+  return (
+    <GameApp
+      dispatch={gameSession.dispatch}
+      forcedReadOnly={gameSession.forcedReadOnly}
+      guest={gameSession.isGuest}
+      ledgerLabel={
+        gameSession.isGuest
+          ? "Shared read-only ledger"
+          : session.mode === "local"
+            ? "Local ledger"
+            : "Shared host ledger"
+      }
+      sessionControls={sessionControls}
+      sessionNotice={sessionNotice}
+      state={gameSession.state}
+    />
+  );
+}
+
+type GameAppProps = {
+  state: GameState;
+  dispatch: Dispatch<GameAction>;
+  forcedReadOnly: boolean;
+  guest: boolean;
+  ledgerLabel: string;
+  sessionControls?: ReactNode;
+  sessionNotice: string | null;
+};
+
+function GameApp({
+  state,
+  dispatch,
+  forcedReadOnly,
+  guest,
+  ledgerLabel,
+  sessionControls,
+  sessionNotice
+}: GameAppProps) {
   const [mode, setMode] = useState<AppMode>("play");
-  const [readOnly, setReadOnly] = useState(false);
+  const [manualReadOnly, setManualReadOnly] = useState(false);
+  const readOnly = forcedReadOnly || manualReadOnly;
   const [notice, setNotice] = useState<string | null>(null);
   const [transactionDrawerOpen, setTransactionDrawerOpen] = useState(false);
   const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
   const [layoutEditing, setLayoutEditing] = useState(false);
   const [compactPlayerView, setCompactPlayerView] = useState(false);
-
-  useEffect(() => {
-    saveGameState(state);
-  }, [state]);
 
   const activePlayers = useMemo(
     () =>
@@ -92,7 +209,7 @@ export function App() {
 
   function addTransaction(transaction: Transaction): boolean {
     if (readOnly) {
-      setNotice("Read-only mode is on. Turn it off to record transactions.");
+      setNotice(guest ? "Guests have a read-only view." : "Reconnect before changing the shared game.");
       return false;
     }
 
@@ -129,7 +246,7 @@ export function App() {
 
   function addDefaultBuyInToAll() {
     if (readOnly) {
-      setNotice("Read-only mode is on. Turn it off to record transactions.");
+      setNotice(guest ? "Guests have a read-only view." : "Reconnect before changing the shared game.");
       return;
     }
 
@@ -151,9 +268,7 @@ export function App() {
       return;
     }
 
-    for (const transaction of transactions) {
-      dispatch({ type: "add_transaction", transaction });
-    }
+    dispatch({ type: "add_transactions", transactions });
     setNotice(null);
   }
 
@@ -189,6 +304,8 @@ export function App() {
             transactions={state.transactions}
           />
         }
+        guest={guest}
+        ledgerLabel={ledgerLabel}
         layoutEditing={layoutEditing}
         layoutEditingDisabled={readOnly}
         hideLayoutEditing={compactPlayerView}
@@ -204,12 +321,13 @@ export function App() {
         }
         readOnly={readOnly}
         recentTransactionAction={recentTransactionAction}
+        sessionControls={sessionControls}
         setup={
           <div className="setup-mode">
             <TableSetupPanel
               dispatch={dispatch}
               readOnly={readOnly}
-              setReadOnly={setReadOnly}
+              setReadOnly={setManualReadOnly}
               state={state}
             />
             <PlayerDrawer
@@ -234,12 +352,15 @@ export function App() {
               className="play-table-area"
               aria-label={compactPlayerView ? "Players" : "Poker table"}
             >
-              {notice ? <div className="notice notice-warning">{notice}</div> : null}
+              {notice || sessionNotice ? (
+                <div className="notice notice-warning">{notice ?? sessionNotice}</div>
+              ) : null}
               <PokerTable
                 activePlayers={activePlayers}
                 bankBalanceCents={bankSummary.balanceCents}
                 defaultBuyInCents={state.settings.defaultBuyInCents}
                 dispatch={dispatch}
+                hideActions={guest}
                 onAddTransaction={addTransaction}
                 layoutEditing={layoutEditing}
                 onCompactViewChange={handleCompactPlayerViewChange}
@@ -256,7 +377,7 @@ export function App() {
                 imbalanceCents={imbalanceCents}
                 variant="compact"
               />
-              {!compactPlayerView ? <IconKey layoutEditing={layoutEditing} /> : null}
+              {!compactPlayerView && !guest ? <IconKey layoutEditing={layoutEditing} /> : null}
               <div className="play-actions">
                 <button
                   className="text-button rail-action"
@@ -265,22 +386,22 @@ export function App() {
                 >
                   Transaction Audit
                 </button>
-                <button
+                {!guest ? <button
                   className="text-button rail-action"
                   type="button"
                   disabled={readOnly || activePlayers.length === 0}
                   onClick={addDefaultBuyInToAll}
                 >
                   Add default buy-in to all
-                </button>
-                <button
+                </button> : null}
+                {!guest ? <button
                   className="primary-button rail-action"
                   type="button"
                   disabled={readOnly}
                   onClick={() => setTransactionDrawerOpen(true)}
                 >
                   Add transaction
-                </button>
+                </button> : null}
               </div>
             </aside>
           </div>
@@ -326,6 +447,7 @@ export function App() {
             ) : null}
             <SettlementPanel
               bankSummary={bankSummary}
+              hideActions={guest}
               imbalanceCents={imbalanceCents}
               onAddTransaction={addTransaction}
               players={state.players}
@@ -395,6 +517,7 @@ export function App() {
             </div>
             <TransactionTable
               dispatch={dispatch}
+              hideActions={guest}
               players={state.players}
               readOnly={readOnly}
               transactions={state.transactions}

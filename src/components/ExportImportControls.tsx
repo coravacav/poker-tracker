@@ -7,10 +7,11 @@ import { validatePersistedState } from "../domain/validation";
 
 type ExportImportControlsProps = {
   dispatch: Dispatch<GameAction>;
+  readOnly?: boolean;
   state: GameState;
 };
 
-export function ExportImportControls({ dispatch, state }: ExportImportControlsProps) {
+export function ExportImportControls({ dispatch, readOnly = false, state }: ExportImportControlsProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,12 +67,13 @@ export function ExportImportControls({ dispatch, state }: ExportImportControlsPr
       <button
         className="icon-button"
         type="button"
+        disabled={readOnly}
         onClick={() => inputRef.current?.click()}
         title="Import JSON"
       >
         <Upload size={17} />
       </button>
-      <button className="icon-button danger" type="button" onClick={resetGame} title="Reset game">
+      <button className="icon-button danger" type="button" disabled={readOnly} onClick={resetGame} title="Reset game">
         <RotateCcw size={17} />
       </button>
       <input
