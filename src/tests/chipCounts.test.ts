@@ -48,6 +48,7 @@ describe("chip counts", () => {
 
     expect([...overview.completedPlayerIds]).toEqual(["p1"]);
     expect(overview.missingPlayers.map((player) => player.id)).toEqual(["p2"]);
+    expect(overview.cashOutsCompleteForSettlement).toBe(false);
     expect([...overview.manualFinalPlayerIds]).toEqual(["p1"]);
     expect(overview.projectedTotalCents).toBe(3500);
     expect(overview.projectedRemainingCents).toBe(500);
@@ -82,6 +83,31 @@ describe("chip counts", () => {
     expect(overview.projectedTotalCents).toBe(4000);
     expect(overview.projectedRemainingCents).toBe(0);
     expect(overview.manualFinalPlayerIds.size).toBe(0);
+  });
+
+  it("accepts recorded partial cash-outs when the chip pool is empty", () => {
+    const players: Player[] = [
+      { id: "p1", name: "Alex", seatIndex: 0, isActive: true },
+      { id: "p2", name: "Blair", seatIndex: 1, isActive: true }
+    ];
+    const transactions: Transaction[] = [
+      { id: "buy-1", type: "bank_buy_in", createdAt: "2026-01-01", amountCents: 4000, toPlayerId: "p1" },
+      { id: "buy-2", type: "bank_buy_in", createdAt: "2026-01-01", amountCents: 4000, toPlayerId: "p2" },
+      { id: "partial-1", type: "bank_cash_out", cashOutKind: "partial", createdAt: "2026-01-02", amountCents: 4000, fromPlayerId: "p1" },
+      { id: "partial-2", type: "bank_cash_out", cashOutKind: "partial", createdAt: "2026-01-02", amountCents: 4000, fromPlayerId: "p2" }
+    ];
+
+    const overview = getCashOutOverview(
+      players,
+      transactions,
+      [],
+      denominations,
+      { incomingCents: 8000, outgoingCents: 8000, balanceCents: 0 }
+    );
+
+    expect(overview.completedPlayerIds.size).toBe(0);
+    expect(overview.missingPlayers.map((player) => player.id)).toEqual(["p1", "p2"]);
+    expect(overview.cashOutsCompleteForSettlement).toBe(true);
   });
 
   it("reopens completion after later chip activity and ignores non-chip activity", () => {

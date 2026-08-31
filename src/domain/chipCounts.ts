@@ -16,6 +16,7 @@ export type ChipCountAggregate = ChipDenomination & {
 export type CashOutOverview = {
   completedPlayerIds: Set<PlayerId>;
   missingPlayers: Player[];
+  cashOutsCompleteForSettlement: boolean;
   manualFinalPlayerIds: Set<PlayerId>;
   recordedTotalCents: number;
   projectedTotalCents: number;
@@ -215,9 +216,17 @@ export function getCashOutOverview(
     }
   }
 
+  const hasRecordedPartialCashOut = activeCashOuts.some(
+    (transaction) => transaction.cashOutKind === "partial" && transaction.amountCents > 0
+  );
+  const cashOutsCompleteForSettlement =
+    completedPlayerIds.size === players.length ||
+    (hasRecordedPartialCashOut && bankSummary.balanceCents === 0);
+
   return {
     completedPlayerIds,
     missingPlayers: players.filter((player) => !completedPlayerIds.has(player.id)),
+    cashOutsCompleteForSettlement,
     manualFinalPlayerIds,
     recordedTotalCents,
     projectedTotalCents,

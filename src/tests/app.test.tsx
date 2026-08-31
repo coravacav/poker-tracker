@@ -188,6 +188,54 @@ describe("App", () => {
     expect(screen.getByRole("dialog", { name: "Transaction audit" })).toBeInTheDocument();
   });
 
+  it("accepts a zero chip pool after partial cash-outs recorded from Play", () => {
+    const state = createDefaultGameState();
+    state.players = state.players.slice(0, 2);
+    const [alex, blair] = state.players;
+    state.transactions = [
+      {
+        id: "alex-buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: alex.id
+      },
+      {
+        id: "blair-buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-01-01T00:01:00.000Z",
+        amountCents: 2000,
+        toPlayerId: blair.id
+      },
+      {
+        id: "alex-partial-cash-out",
+        type: "bank_cash_out",
+        cashOutKind: "partial",
+        createdAt: "2026-01-01T01:00:00.000Z",
+        amountCents: 1000,
+        fromPlayerId: alex.id
+      },
+      {
+        id: "blair-partial-cash-out",
+        type: "bank_cash_out",
+        cashOutKind: "partial",
+        createdAt: "2026-01-01T01:01:00.000Z",
+        amountCents: 3000,
+        fromPlayerId: blair.id
+      }
+    ];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Settle" }));
+
+    expect(screen.queryByText(/Missing cash-outs/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No chips remain in play; recorded partial cash-outs cover the pool.")
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cover debt" })).toBeEnabled();
+  });
+
   it("opens transaction entry as a Play drawer instead of permanent page content", () => {
     render(<App />);
 

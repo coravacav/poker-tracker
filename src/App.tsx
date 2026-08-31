@@ -158,7 +158,7 @@ export function App() {
   }
 
   const settlementReady =
-    cashOutOverview.missingPlayers.length === 0 &&
+    cashOutOverview.cashOutsCompleteForSettlement &&
     bankSummary.balanceCents === 0 &&
     imbalanceCents === 0;
 
@@ -305,9 +305,16 @@ export function App() {
             </section>
             {cashOutOverview.missingPlayers.length > 0 || bankSummary.balanceCents !== 0 ? (
               <div className="settle-warnings">
-                {cashOutOverview.missingPlayers.length > 0 ? (
+                {cashOutOverview.missingPlayers.length > 0 &&
+                !cashOutOverview.cashOutsCompleteForSettlement ? (
                   <div className="notice notice-warning">
                     Missing cash-outs: {cashOutOverview.missingPlayers.map((player) => player.name).join(", ")}.
+                  </div>
+                ) : null}
+                {cashOutOverview.missingPlayers.length > 0 &&
+                cashOutOverview.cashOutsCompleteForSettlement ? (
+                  <div className="notice notice-ok">
+                    No chips remain in play; recorded partial cash-outs cover the pool.
                   </div>
                 ) : null}
                 {bankSummary.balanceCents !== 0 ? (
