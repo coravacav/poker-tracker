@@ -21,6 +21,7 @@ type AppShellProps = {
   recentTransactionAction: RecentTransactionAction | null;
   guest?: boolean;
   ledgerLabel?: string;
+  notifications?: ReactNode;
   sessionControls?: ReactNode;
   cashOut: ReactNode;
   play: ReactNode;
@@ -90,6 +91,7 @@ export function AppShell({
   cashOut,
   guest = false,
   ledgerLabel = "Local ledger",
+  notifications,
   hideLayoutEditing = false,
   layoutEditing,
   layoutEditingDisabled,
@@ -115,6 +117,7 @@ export function AppShell({
           <h1>Poker Tracker</h1>
         </div>
         {sessionControls}
+        {notifications}
         <nav className="app-nav" aria-label="Poker tracker modes">
           {mode === "play" && !hideLayoutEditing && !guest ? (
             <button

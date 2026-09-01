@@ -26,7 +26,7 @@ describe("TransactionTable chip breakdown", () => {
       />
     );
 
-    expect(screen.getByText("Corrects transaction old")).toBeInTheDocument();
+    expect(screen.getByText("Corrects a previous cash-out")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Chip breakdown"));
     expect(screen.getByText("2 × $5.00")).toBeInTheDocument();
   });
@@ -66,7 +66,7 @@ describe("TransactionTable chip breakdown", () => {
     expect(screen.getByText("Covered by Alex")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Debt coverage" })).toBeInTheDocument();
     expect(screen.getByText("Alex covers Blair")).toBeInTheDocument();
-    const flipButtons = screen.getAllByTitle("Flip transaction");
+    const flipButtons = screen.getAllByRole("button", { name: /Reverse transaction/ });
     expect(flipButtons[0]).toBeDisabled();
     expect(flipButtons[1]).not.toBeDisabled();
   });

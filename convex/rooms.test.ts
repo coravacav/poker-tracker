@@ -136,6 +136,68 @@ describe("shared room authority", () => {
     expect(latest.state.transactions).toHaveLength(1);
   });
 
+  it("shares audit events and gives each room participant an unread notification", async () => {
+    const { test, snapshot } = await createRoom();
+    await test.mutation(api.rooms.join, {
+      publicId,
+      inviteSecret,
+      guestSecret,
+      displayName: "Observer"
+    });
+
+    await test.mutation(api.rooms.applyAction, {
+      publicId,
+      hostSecret,
+      controllerId,
+      expectedVersion: 0,
+      clientActionId: "action_shared_audit_12345",
+      action: {
+        type: "add_transaction" as const,
+        transaction: {
+          id: "client-transaction-id",
+          type: "player_gave" as const,
+          createdAt: "2000-01-01T00:00:00.000Z",
+          amountCents: 2000,
+          fromPlayerId: snapshot.players[0].id,
+          toPlayerId: snapshot.players[1].id,
+          category: "poker" as const
+        }
+      }
+    });
+
+    const hostView = await test.query(api.rooms.hostView, {
+      publicId,
+      hostSecret,
+      controllerId
+    });
+    const guestView = await test.query(api.rooms.guestView, { publicId, guestSecret });
+
+    expect(hostView.activity.unreadNotificationCount).toBe(1);
+    expect(guestView.activity.unreadNotificationCount).toBe(1);
+    expect(hostView.activity.events[0].summary).toContain("gave");
+    expect(guestView.activity.notifications[0].summary).toContain("gave");
+
+    await test.mutation(api.rooms.acknowledgeGuestNotifications, {
+      publicId,
+      guestSecret,
+      throughVersion: guestView.version
+    });
+    await test.mutation(api.rooms.acknowledgeHostNotifications, {
+      publicId,
+      hostSecret,
+      throughVersion: hostView.version
+    });
+
+    const readGuestView = await test.query(api.rooms.guestView, { publicId, guestSecret });
+    const readHostView = await test.query(api.rooms.hostView, {
+      publicId,
+      hostSecret,
+      controllerId
+    });
+    expect(readGuestView.activity.unreadNotificationCount).toBe(0);
+    expect(readHostView.activity.unreadNotificationCount).toBe(0);
+  });
+
   it("ends a room at its authoritative state and rejects further mutations", async () => {
     const { test } = await createRoom();
     const ended = await test.mutation(api.rooms.end, {

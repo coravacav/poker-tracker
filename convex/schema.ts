@@ -34,5 +34,33 @@ export default defineSchema({
     clientActionId: v.string(),
     resultingVersion: v.number(),
     processedAt: v.number()
-  }).index("by_room_id_and_client_action_id", ["roomId", "clientActionId"])
+  }).index("by_room_id_and_client_action_id", ["roomId", "clientActionId"]),
+
+  roomAuditEvents: defineTable({
+    roomId: v.id("rooms"),
+    eventId: v.string(),
+    version: v.number(),
+    actionType: v.string(),
+    kind: v.union(
+      v.literal("transaction"),
+      v.literal("cash_out"),
+      v.literal("correction"),
+      v.literal("game")
+    ),
+    summary: v.string(),
+    transactionIds: v.array(v.string()),
+    playerIds: v.array(v.string()),
+    actorLabel: v.string(),
+    createdAt: v.number(),
+    notify: v.boolean()
+  })
+    .index("by_room_id_and_created_at", ["roomId", "createdAt"])
+    .index("by_room_id_and_version", ["roomId", "version"]),
+
+  roomNotificationCursors: defineTable({
+    roomId: v.id("rooms"),
+    recipientKey: v.string(),
+    lastReadVersion: v.number(),
+    updatedAt: v.number()
+  }).index("by_room_id_and_recipient_key", ["roomId", "recipientKey"])
 });

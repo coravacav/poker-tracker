@@ -1,6 +1,42 @@
 import type { GameState } from "../domain/pokerTypes";
 import type { GameAction } from "../state/gameReducer";
 
+export type SharedAuditEventKind =
+  | "transaction"
+  | "cash_out"
+  | "correction"
+  | "game";
+
+export type SharedAuditEvent = {
+  id: string;
+  version: number;
+  actionType: string;
+  kind: SharedAuditEventKind;
+  summary: string;
+  transactionIds: string[];
+  playerIds: string[];
+  actorLabel: string;
+  createdAt: number;
+  notify: boolean;
+};
+
+export type SharedNotification = {
+  id: string;
+  eventId: string;
+  title: string;
+  summary: string;
+  playerIds: string[];
+  createdAt: number;
+  version: number;
+  read: boolean;
+};
+
+export type SharedActivity = {
+  events: SharedAuditEvent[];
+  notifications: SharedNotification[];
+  unreadNotificationCount: number;
+};
+
 export type RoomStatus = "active" | "ended" | "expired";
 
 export type RoomProjection = {
@@ -10,6 +46,7 @@ export type RoomProjection = {
   state: GameState;
   version: number;
   endedAt: number | null;
+  activity?: SharedActivity;
 };
 
 export type HostRoomProjection = RoomProjection & {
@@ -82,6 +119,16 @@ export type RoomTransport = {
     clientActionId: string;
     action: GameAction;
   }) => Promise<RoomProjection & { duplicate: boolean; resultingVersion: number }>;
+  acknowledgeHostNotifications: (args: {
+    publicId: string;
+    hostSecret: string;
+    throughVersion: number;
+  }) => Promise<void>;
+  acknowledgeGuestNotifications: (args: {
+    publicId: string;
+    guestSecret: string;
+    throughVersion: number;
+  }) => Promise<void>;
   claimHost: (publicId: string, hostSecret: string, controllerId: string) => Promise<void>;
   endRoom: (args: {
     publicId: string;

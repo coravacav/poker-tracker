@@ -9,6 +9,7 @@ import { IconKey } from "./components/IconKey";
 import { PlayerDrawer } from "./components/PlayerDrawer";
 import { PokerTable } from "./components/PokerTable";
 import { SettlementPanel } from "./components/SettlementPanel";
+import { SharedNotifications } from "./components/SharedNotifications";
 import { TableSetupPanel } from "./components/TableSetupPanel";
 import { TransactionForm } from "./components/TransactionForm";
 import { TransactionTable } from "./components/TransactionTable";
@@ -32,7 +33,7 @@ import { validateTransaction } from "./domain/validation";
 import type { GameAction } from "./state/gameReducer";
 import { createId } from "./state/seedGame";
 import { useGameSession } from "./session/useGameSession";
-import type { RoomTransport } from "./session/types";
+import type { RoomTransport, SharedActivity } from "./session/types";
 
 export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
   const gameSession = useGameSession(roomTransport);
@@ -110,6 +111,14 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
     sessionNotice = session.error;
   }
 
+  const sharedActivity: SharedActivity | undefined =
+    (session.mode === "guest" ||
+      session.mode === "hosting" ||
+      session.mode === "ending" ||
+      session.mode === "recovery_required")
+      ? session.room?.activity
+      : undefined;
+
   return (
     <GameApp
       dispatch={gameSession.dispatch}
@@ -124,6 +133,8 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       }
       sessionControls={sessionControls}
       sessionNotice={sessionNotice}
+      sharedActivity={sharedActivity}
+      onMarkNotificationsRead={gameSession.markNotificationsRead}
       state={gameSession.state}
     />
   );
@@ -137,6 +148,8 @@ type GameAppProps = {
   ledgerLabel: string;
   sessionControls?: ReactNode;
   sessionNotice: string | null;
+  sharedActivity?: SharedActivity;
+  onMarkNotificationsRead: () => void;
 };
 
 function GameApp({
@@ -145,8 +158,10 @@ function GameApp({
   forcedReadOnly,
   guest,
   ledgerLabel,
+  onMarkNotificationsRead,
   sessionControls,
-  sessionNotice
+  sessionNotice,
+  sharedActivity
 }: GameAppProps) {
   const [mode, setMode] = useState<AppMode>("play");
   const [manualReadOnly, setManualReadOnly] = useState(false);
@@ -306,6 +321,15 @@ function GameApp({
         }
         guest={guest}
         ledgerLabel={ledgerLabel}
+        notifications={
+          sharedActivity ? (
+            <SharedNotifications
+              activity={sharedActivity}
+              onMarkRead={() => void onMarkNotificationsRead()}
+              players={state.players}
+            />
+          ) : null
+        }
         layoutEditing={layoutEditing}
         layoutEditingDisabled={readOnly}
         hideLayoutEditing={compactPlayerView}
@@ -520,6 +544,7 @@ function GameApp({
               hideActions={guest}
               players={state.players}
               readOnly={readOnly}
+              sharedEvents={sharedActivity?.events}
               transactions={state.transactions}
               variant="compact"
             />

@@ -64,6 +64,8 @@ function fakeTransport(state = createDefaultGameState()) {
       };
       return { ...room, duplicate: false, resultingVersion: room.version };
     }),
+    acknowledgeHostNotifications: vi.fn(async () => undefined),
+    acknowledgeGuestNotifications: vi.fn(async () => undefined),
     claimHost: vi.fn(async () => undefined),
     endRoom
   };

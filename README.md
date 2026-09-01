@@ -59,6 +59,8 @@ The first slice stores one bounded game snapshot per room:
 
 These limits preserve headroom below Convex’s 1 MB document limit. Before raising them, move transactions and other growing collections into normalized, room-indexed tables. Ended rooms are currently retained for guest notification and recovery; scheduled expiry/deletion is intentionally deferred. A later retention policy should expire abandoned active rooms and delete ended-room data after a documented recovery window.
 
+Shared rooms retain the 500 most recent audit events. The host and every guest have an independent notification read cursor; new guests start caught up, while later transfers, cash-outs, and corrections appear for all current participants.
+
 ## Security boundaries and MVP limitations
 
 - Room IDs do not authorize writes. Host, invitation, and guest capabilities are cryptographically random and stored in Convex only as SHA-256 verifiers.

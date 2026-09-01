@@ -553,6 +553,38 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     }
   }, [transport]);
 
+  const markNotificationsRead = useCallback(async () => {
+    const current = sessionRef.current;
+    try {
+      const hostSession =
+        current.mode === "hosting" ||
+        current.mode === "ending" ||
+        current.mode === "recovery_required";
+      if (hostSession && current.recovery && current.room) {
+        await transport.acknowledgeHostNotifications({
+          publicId: current.recovery.publicId,
+          hostSecret: current.recovery.hostSecret,
+          throughVersion: current.room.version
+        });
+      } else if (current.mode === "guest" && current.room) {
+        await transport.acknowledgeGuestNotifications({
+          publicId: current.credentials.publicId,
+          guestSecret: current.credentials.guestSecret,
+          throughVersion: current.room.version
+        });
+      }
+    } catch (error) {
+      setSession((next) =>
+        next.mode === "guest" ||
+        next.mode === "hosting" ||
+        next.mode === "ending" ||
+        next.mode === "recovery_required"
+          ? { ...next, error: roomErrorMessage(error) }
+          : next
+      );
+    }
+  }, [transport]);
+
   const leaveGuest = useCallback(() => {
     clearGuestSession();
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
@@ -590,6 +622,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     endSharing,
     retryRecovery,
     claimHost,
+    markNotificationsRead,
     leaveGuest,
     dismissInvite
   };

@@ -1,6 +1,6 @@
 import { Presence } from "@convex-dev/presence";
 import { ConvexError, v } from "convex/values";
-import type { GameState } from "../src/domain/pokerTypes";
+import type { GameState, Transaction } from "../src/domain/pokerTypes";
 import {
   applyHostedAction,
   MAX_ROOM_ACTIONS,
@@ -15,6 +15,10 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 
 const presence = new Presence(components.presence);
 
+const HOST_RECIPIENT_KEY = "host";
+const MAX_SHARED_AUDIT_EVENTS = 500;
+const MAX_PUBLIC_SHARED_AUDIT_EVENTS = 200;
+
 type RoomErrorCode =
   | "INVALID_ARGUMENT"
   | "INVALID_CAPABILITY"
@@ -24,6 +28,29 @@ type RoomErrorCode =
   | "VERSION_CONFLICT"
   | "DUPLICATE_CONTROLLER"
   | "ROOM_LIMIT_REACHED";
+
+type AuditEventKind = "transaction" | "cash_out" | "correction" | "game";
+
+type AuditEventDraft = {
+  eventId: string;
+  version: number;
+  actionType: string;
+  kind: AuditEventKind;
+  summary: string;
+  transactionIds: string[];
+  playerIds: string[];
+  actorLabel: string;
+  createdAt: number;
+  notify: boolean;
+};
+
+function isPrivateAuditAction(type: string): boolean {
+  return [
+    "save_cash_out_draft",
+    "clear_cash_out_draft",
+    "start_cash_out_correction"
+  ].includes(type);
+}
 
 function fail(code: RoomErrorCode, message: string): never {
   throw new ConvexError({ code, message });
@@ -54,6 +81,282 @@ function sameHash(left: string, right: string): boolean {
     difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
   }
   return difference === 0;
+}
+
+function formatAmount(amountCents: number): string {
+  return `$${(amountCents / 100).toFixed(2)}`;
+}
+
+function playerName(state: GameState, playerId: string | undefined): string {
+  if (!playerId) return "Chip Pool";
+  return state.players.find((player) => player.id === playerId)?.name ?? "Unknown player";
+}
+
+function transactionPlayerIds(transaction: Transaction): string[] {
+  return [
+    transaction.fromPlayerId,
+    transaction.toPlayerId,
+    transaction.coveredByPlayerId,
+    transaction.coveredPlayerId
+  ].filter((playerId): playerId is string => typeof playerId === "string");
+}
+
+function describeTransaction(transaction: Transaction, state: GameState): string {
+  const amount = formatAmount(transaction.amountCents);
+
+  if (transaction.type === "bank_buy_in") {
+    const recipient = playerName(state, transaction.toPlayerId);
+    if (transaction.coveredByPlayerId) {
+      return `${playerName(state, transaction.coveredByPlayerId)} covered ${recipient}'s buy-in of ${amount}`;
+    }
+    return `${recipient} bought in for ${amount}`;
+  }
+
+  if (transaction.type === "bank_cash_out") {
+    const verb = transaction.cashOutKind === "final" ? "cashed out" : "partially cashed out";
+    return `${playerName(state, transaction.fromPlayerId)} ${verb} ${amount}`;
+  }
+
+  if (transaction.type === "player_gave" || transaction.type === "player_transfer") {
+    return `${playerName(state, transaction.fromPlayerId)} gave ${playerName(state, transaction.toPlayerId)} ${amount}`;
+  }
+
+  if (transaction.type === "player_owes") {
+    return `${playerName(state, transaction.fromPlayerId)} owes ${playerName(state, transaction.toPlayerId)} ${amount}`;
+  }
+
+  if (transaction.type === "debt_coverage") {
+    return `${playerName(state, transaction.coveredByPlayerId)} covered ${playerName(state, transaction.coveredPlayerId)}'s debt of ${amount}`;
+  }
+
+  return `Chip pool ${transaction.bankDirection === "outgoing" ? "decreased" : "increased"} by ${amount}`;
+}
+
+function changedTransactions(before: GameState, after: GameState): Transaction[] {
+  const beforeById = new Map(before.transactions.map((transaction) => [transaction.id, transaction]));
+  const afterById = new Map(after.transactions.map((transaction) => [transaction.id, transaction]));
+  const ids = new Set([...beforeById.keys(), ...afterById.keys()]);
+
+  return [...ids]
+    .filter((id) => JSON.stringify(beforeById.get(id)) !== JSON.stringify(afterById.get(id)))
+    .map((id) => afterById.get(id) ?? beforeById.get(id))
+    .filter((transaction): transaction is Transaction => transaction !== undefined);
+}
+
+function actionType(action: unknown): string {
+  if (!action || typeof action !== "object" || typeof (action as { type?: unknown }).type !== "string") {
+    return "unknown";
+  }
+  return (action as { type: string }).type;
+}
+
+function actionPlayerIds(action: unknown): string[] {
+  if (!action || typeof action !== "object") return [];
+  const candidate = action as Record<string, unknown>;
+  return [
+    candidate.playerId,
+    candidate.fromPlayerId,
+    candidate.toPlayerId,
+    candidate.coveredPlayerId,
+    candidate.coveredByPlayerId
+  ].filter((playerId): playerId is string => typeof playerId === "string");
+}
+
+function auditSummary(
+  action: unknown,
+  before: GameState,
+  after: GameState,
+  changed: Transaction[]
+): string {
+  const type = actionType(action);
+  const added = changed.filter(
+    (transaction) => !before.transactions.some((candidate) => candidate.id === transaction.id)
+  );
+  const firstAdded = added[0];
+
+  if (type === "add_transaction" && firstAdded) return describeTransaction(firstAdded, after);
+  if (type === "add_transactions") {
+    return added.length === 1
+      ? describeTransaction(firstAdded!, after)
+      : `Added ${added.length} transactions`;
+  }
+  if (type === "record_cash_out" && firstAdded) return describeTransaction(firstAdded, after);
+  if (type === "replace_cash_out" && firstAdded) {
+    return `Corrected ${describeTransaction(firstAdded, after)}`;
+  }
+  if (type === "flip_transaction" && firstAdded) {
+    return `Reversed ${describeTransaction(firstAdded, after)}`;
+  }
+  if (type === "void_transaction" && changed[0]) {
+    return `Voided ${describeTransaction(changed[0], after)}`;
+  }
+  if (type === "undo_recent_transaction" && changed[0]) {
+    return `Undid ${describeTransaction(changed[0], before)}`;
+  }
+
+  const candidate = action && typeof action === "object" ? action as Record<string, unknown> : {};
+  const firstPlayerId = typeof candidate.playerId === "string" ? candidate.playerId : undefined;
+  const firstPlayer = playerName(after, firstPlayerId);
+
+  switch (type) {
+    case "set_game_name":
+      return `Renamed the game to ${typeof candidate.name === "string" ? candidate.name.trim() || "Poker Night" : "Poker Night"}`;
+    case "set_default_buy_in":
+      return `Changed the default buy-in to ${formatAmount(typeof candidate.amountCents === "number" ? candidate.amountCents : 0)}`;
+    case "set_chip_denominations":
+      return "Updated the chip value key";
+    case "set_table_shape":
+      return `Changed the table shape to ${typeof candidate.shape === "string" ? candidate.shape : "custom"}`;
+    case "move_table_seat":
+      return "Updated the table layout";
+    case "move_player_to_seat":
+      return `${firstPlayer} moved to a different seat`;
+    case "set_player_count":
+      return `Changed the player count to ${typeof candidate.count === "number" ? candidate.count : "a new value"}`;
+    case "add_player":
+      return `Added ${firstPlayer}`;
+    case "replace_active_players":
+      return `Updated the player list (${after.players.filter((player) => player.isActive).length} active)`;
+    case "rename_player":
+      return `Renamed ${firstPlayer}`;
+    case "archive_player":
+      return `Archived ${firstPlayer}`;
+    case "reorder_players":
+      return "Reordered the players";
+    case "save_cash_out_draft":
+      return `Updated the cash-out draft for ${firstPlayer}`;
+    case "clear_cash_out_draft":
+      return `Cleared the cash-out draft for ${firstPlayer}`;
+    case "start_cash_out_correction":
+      return `Started a cash-out correction for ${firstPlayer}`;
+    default:
+      return `Updated the shared game (${type})`;
+  }
+}
+
+function auditKind(type: string, changed: Transaction[]): AuditEventKind {
+  if (["flip_transaction", "void_transaction", "undo_recent_transaction"].includes(type)) {
+    return "correction";
+  }
+  if (["record_cash_out", "replace_cash_out", "save_cash_out_draft", "clear_cash_out_draft", "start_cash_out_correction"].includes(type)) {
+    return "cash_out";
+  }
+  if (changed.length > 0 || ["add_transaction", "add_transactions"].includes(type)) {
+    return "transaction";
+  }
+  return "game";
+}
+
+function buildAuditEvent(
+  before: GameState,
+  after: GameState,
+  action: unknown,
+  version: number,
+  createdAt: number
+): AuditEventDraft | null {
+  const type = actionType(action);
+  if (isPrivateAuditAction(type)) return null;
+  const changed = changedTransactions(before, after);
+  const kind = auditKind(type, changed);
+  const transactionIds = changed.map((transaction) => transaction.id);
+  const playerIds = [
+    ...actionPlayerIds(action),
+    ...changed.flatMap(transactionPlayerIds)
+  ].filter((playerId, index, all) => all.indexOf(playerId) === index);
+
+  return {
+    eventId: `event_${crypto.randomUUID()}`,
+    version,
+    actionType: type,
+    kind,
+    summary: auditSummary(action, before, after, changed),
+    transactionIds,
+    playerIds,
+    actorLabel: "Host",
+    createdAt,
+    notify: kind !== "game"
+  };
+}
+
+async function appendAuditEvent(ctx: MutationCtx, roomId: Doc<"rooms">["_id"], event: AuditEventDraft) {
+  await ctx.db.insert("roomAuditEvents", { roomId, ...event });
+  const retained = await ctx.db
+    .query("roomAuditEvents")
+    .withIndex("by_room_id_and_created_at", (index) => index.eq("roomId", roomId))
+    .order("desc")
+    .take(MAX_SHARED_AUDIT_EVENTS + 1);
+  for (const staleEvent of retained.slice(MAX_SHARED_AUDIT_EVENTS)) {
+    await ctx.db.delete(staleEvent._id);
+  }
+}
+
+function notificationTitle(kind: AuditEventKind): string {
+  if (kind === "transaction") return "Transaction recorded";
+  if (kind === "cash_out") return "Cash-out updated";
+  if (kind === "correction") return "Ledger correction";
+  return "Shared game updated";
+}
+
+async function activityForRecipient(
+  ctx: QueryCtx | MutationCtx,
+  room: Doc<"rooms">,
+  recipientKey: string
+) {
+  const events = await ctx.db
+    .query("roomAuditEvents")
+    .withIndex("by_room_id_and_created_at", (index) => index.eq("roomId", room._id))
+    .order("desc")
+    .take(MAX_PUBLIC_SHARED_AUDIT_EVENTS);
+  const cursor = await ctx.db
+    .query("roomNotificationCursors")
+    .withIndex("by_room_id_and_recipient_key", (index) =>
+      index.eq("roomId", room._id).eq("recipientKey", recipientKey)
+    )
+    .unique();
+  const lastReadVersion = cursor?.lastReadVersion ?? 0;
+  const publicEvents = events.map((event) => ({
+    id: event.eventId,
+    version: event.version,
+    actionType: event.actionType,
+    kind: event.kind,
+    summary: event.summary,
+    transactionIds: event.transactionIds,
+    playerIds: event.playerIds,
+    actorLabel: event.actorLabel,
+    createdAt: event.createdAt,
+    notify: event.notify
+  }));
+  const notifications = events
+    .filter((event) => event.notify)
+    .map((event) => ({
+      id: `notification_${event.eventId}`,
+      eventId: event.eventId,
+      title: notificationTitle(event.kind),
+      summary: event.summary,
+      playerIds: event.playerIds,
+      createdAt: event.createdAt,
+      version: event.version,
+      read: event.version <= lastReadVersion
+    }));
+
+  return {
+    events: publicEvents,
+    notifications,
+    unreadNotificationCount: notifications.filter((notification) => !notification.read).length
+  };
+}
+
+async function publicRoomWithActivity<T extends Record<string, unknown> = Record<never, never>>(
+  ctx: QueryCtx | MutationCtx,
+  room: Doc<"rooms">,
+  state: GameState,
+  recipientKey: string,
+  extra = {} as T
+) {
+  return publicRoom(room, state, {
+    ...extra,
+    activity: await activityForRecipient(ctx, room, recipientKey)
+  });
 }
 
 async function roomByPublicId(ctx: QueryCtx | MutationCtx, publicId: string) {
@@ -155,7 +458,7 @@ export const create = mutation({
     }
 
     const now = Date.now();
-    await ctx.db.insert("rooms", {
+    const roomId = await ctx.db.insert("rooms", {
       publicId: args.publicId,
       status: "active",
       name,
@@ -167,6 +470,24 @@ export const create = mutation({
       hostSecretHash: await hashSecret(args.hostSecret),
       inviteSecretHash: await hashSecret(args.inviteSecret),
       hostControllerId: args.controllerId
+    });
+    await ctx.db.insert("roomNotificationCursors", {
+      roomId,
+      recipientKey: HOST_RECIPIENT_KEY,
+      lastReadVersion: 0,
+      updatedAt: now
+    });
+    await appendAuditEvent(ctx, roomId, {
+      eventId: `event_${crypto.randomUUID()}`,
+      version: 0,
+      actionType: "create_room",
+      kind: "game",
+      summary: "Created shared room",
+      transactionIds: [],
+      playerIds: [],
+      actorLabel: "Host",
+      createdAt: now,
+      notify: false
     });
     return {
       publicId: args.publicId,
@@ -228,6 +549,7 @@ export const join = mutation({
       )
       .unique();
     const now = Date.now();
+    let guestId = existingGuest?._id;
     if (existingGuest && existingGuest.revokedAt === undefined) {
       await ctx.db.patch(existingGuest._id, { displayName });
     } else {
@@ -238,14 +560,38 @@ export const join = mutation({
       if (guests.filter((guest) => guest.revokedAt === undefined).length >= MAX_ROOM_GUESTS) {
         fail("ROOM_LIMIT_REACHED", "This room has reached its guest limit.");
       }
-      await ctx.db.insert("roomGuests", {
+      guestId = await ctx.db.insert("roomGuests", {
         roomId: room._id,
         displayName,
         guestSecretHash,
         joinedAt: now
       });
     }
-    return publicRoom(room, sanitizeGuestState(room.state as GameState), { displayName });
+    if (!guestId) {
+      fail("INVALID_CAPABILITY", "Guest session could not be created.");
+    }
+    const guestRecipientKey = String(guestId);
+    const existingCursor = await ctx.db
+      .query("roomNotificationCursors")
+      .withIndex("by_room_id_and_recipient_key", (index) =>
+        index.eq("roomId", room._id).eq("recipientKey", guestRecipientKey)
+      )
+      .unique();
+    if (!existingCursor) {
+      await ctx.db.insert("roomNotificationCursors", {
+        roomId: room._id,
+        recipientKey: guestRecipientKey,
+        lastReadVersion: room.version,
+        updatedAt: now
+      });
+    }
+    return await publicRoomWithActivity(
+      ctx,
+      room,
+      sanitizeGuestState(room.state as GameState),
+      guestRecipientKey,
+      { displayName }
+    );
   }
 });
 
@@ -254,9 +600,13 @@ export const guestView = query({
   returns: v.any(),
   handler: async (ctx, args) => {
     const { room, guest } = await requireGuest(ctx, args.publicId, args.guestSecret);
-    return publicRoom(room, sanitizeGuestState(room.state as GameState), {
-      displayName: guest.displayName
-    });
+    return await publicRoomWithActivity(
+      ctx,
+      room,
+      sanitizeGuestState(room.state as GameState),
+      String(guest._id),
+      { displayName: guest.displayName }
+    );
   }
 });
 
@@ -279,7 +629,7 @@ export const hostView = query({
     const room = await requireHost(ctx, args.publicId, args.hostSecret);
     const guests = await presence.listRoom(ctx, room.publicId, true, MAX_ROOM_GUESTS);
     const guestCount = guests.length;
-    return publicRoom(room, room.state as GameState, {
+    return await publicRoomWithActivity(ctx, room, room.state as GameState, HOST_RECIPIENT_KEY, {
       guestCount,
       controllerStatus:
         room.hostControllerId === args.controllerId
@@ -331,7 +681,7 @@ export const applyAction = mutation({
       .unique();
     if (processed) {
       return {
-        ...publicRoom(room, room.state as GameState),
+        ...(await publicRoomWithActivity(ctx, room, room.state as GameState, HOST_RECIPIENT_KEY)),
         duplicate: true,
         resultingVersion: processed.resultingVersion
       };
@@ -344,14 +694,16 @@ export const applyAction = mutation({
     }
 
     const now = Date.now();
+    const beforeState = room.state as GameState;
     const applied = applyHostedAction(
-      room.state as GameState,
+      beforeState,
       args.action,
       new Date(now).toISOString(),
       () => `transaction_${crypto.randomUUID()}`
     );
     if ("error" in applied) fail("INVALID_ARGUMENT", applied.error);
     const version = room.version + 1;
+    const auditEvent = buildAuditEvent(beforeState, applied.state, args.action, version, now);
     await ctx.db.patch(room._id, {
       state: applied.state,
       name: applied.state.settings.gameName.trim().slice(0, 80) || "Poker Night",
@@ -364,18 +716,96 @@ export const applyAction = mutation({
       resultingVersion: version,
       processedAt: now
     });
+    if (auditEvent) await appendAuditEvent(ctx, room._id, auditEvent);
     return {
-      ...publicRoom(
+      ...(await publicRoomWithActivity(
+        ctx,
         {
           ...room,
           version,
           name: applied.state.settings.gameName.trim().slice(0, 80) || "Poker Night"
         },
-        applied.state
-      ),
+        applied.state,
+        HOST_RECIPIENT_KEY
+      )),
       duplicate: false,
       resultingVersion: version
     };
+  }
+});
+
+export const acknowledgeHostNotifications = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    throughVersion: v.number()
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const room = await requireHost(ctx, args.publicId, args.hostSecret);
+    if (!Number.isSafeInteger(args.throughVersion) || args.throughVersion < 0) {
+      fail("INVALID_ARGUMENT", "Notification version is invalid.");
+    }
+    const throughVersion = Math.min(args.throughVersion, room.version);
+    const cursor = await ctx.db
+      .query("roomNotificationCursors")
+      .withIndex("by_room_id_and_recipient_key", (index) =>
+        index.eq("roomId", room._id).eq("recipientKey", HOST_RECIPIENT_KEY)
+      )
+      .unique();
+    const now = Date.now();
+    if (cursor) {
+      await ctx.db.patch(cursor._id, {
+        lastReadVersion: Math.max(cursor.lastReadVersion, throughVersion),
+        updatedAt: now
+      });
+    } else {
+      await ctx.db.insert("roomNotificationCursors", {
+        roomId: room._id,
+        recipientKey: HOST_RECIPIENT_KEY,
+        lastReadVersion: throughVersion,
+        updatedAt: now
+      });
+    }
+    return null;
+  }
+});
+
+export const acknowledgeGuestNotifications = mutation({
+  args: {
+    publicId: v.string(),
+    guestSecret: v.string(),
+    throughVersion: v.number()
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { room, guest } = await requireGuest(ctx, args.publicId, args.guestSecret);
+    if (!Number.isSafeInteger(args.throughVersion) || args.throughVersion < 0) {
+      fail("INVALID_ARGUMENT", "Notification version is invalid.");
+    }
+    const throughVersion = Math.min(args.throughVersion, room.version);
+    const recipientKey = String(guest._id);
+    const cursor = await ctx.db
+      .query("roomNotificationCursors")
+      .withIndex("by_room_id_and_recipient_key", (index) =>
+        index.eq("roomId", room._id).eq("recipientKey", recipientKey)
+      )
+      .unique();
+    const now = Date.now();
+    if (cursor) {
+      await ctx.db.patch(cursor._id, {
+        lastReadVersion: Math.max(cursor.lastReadVersion, throughVersion),
+        updatedAt: now
+      });
+    } else {
+      await ctx.db.insert("roomNotificationCursors", {
+        roomId: room._id,
+        recipientKey,
+        lastReadVersion: throughVersion,
+        updatedAt: now
+      });
+    }
+    return null;
   }
 });
 
@@ -400,7 +830,9 @@ export const end = mutation({
       )
       .unique();
     if (processed && room.status === "ended") {
-      return publicRoom(room, room.state as GameState, { duplicate: true });
+      return await publicRoomWithActivity(ctx, room, room.state as GameState, HOST_RECIPIENT_KEY, {
+        duplicate: true
+      });
     }
     if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
     if (room.hostControllerId !== args.controllerId) {
@@ -411,12 +843,29 @@ export const end = mutation({
     }
     const endedAt = Date.now();
     await ctx.db.patch(room._id, { status: "ended", endedAt });
+    await appendAuditEvent(ctx, room._id, {
+      eventId: `event_${crypto.randomUUID()}`,
+      version: room.version,
+      actionType: "end_room",
+      kind: "game",
+      summary: "Ended shared room",
+      transactionIds: [],
+      playerIds: [],
+      actorLabel: "Host",
+      createdAt: endedAt,
+      notify: false
+    });
     await ctx.db.insert("processedActions", {
       roomId: room._id,
       clientActionId: args.clientActionId,
       resultingVersion: room.version,
       processedAt: endedAt
     });
-    return publicRoom({ ...room, status: "ended", endedAt }, room.state as GameState);
+    return await publicRoomWithActivity(
+      ctx,
+      { ...room, status: "ended", endedAt },
+      room.state as GameState,
+      HOST_RECIPIENT_KEY
+    );
   }
 });
