@@ -39,6 +39,7 @@ Neither value is a host or guest room credential. Do not commit `.env.local`, de
 ## Local and shared behavior
 
 - Local games use `poker-tracker:v1:current-game` in `localStorage`. Schema v6 adds a stable `localGameId`; older saves migrate in place.
+- On a first visit or after more than 24 hours away, the local start page offers a saved-game continuation or a new game. Returning from a hidden or unfocused tab uses the same check; shared-room and recovery sessions keep their existing routing.
 - Sharing is explicit. Convex receives a bounded snapshot only when the host chooses **Share game**.
 - While active, Convex is authoritative. The host sends versioned reducer actions, waits for server acceptance, and only then caches the accepted state locally. Financial actions are not optimistic or queued offline.
 - Host recovery credentials use a separate local-storage record. A tab-scoped controller ID ensures only one host tab can edit; another tab may explicitly take control.

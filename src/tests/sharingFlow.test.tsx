@@ -4,6 +4,7 @@ import { App } from "../App";
 import type { GameState } from "../domain/pokerTypes";
 import { gameReducer } from "../state/gameReducer";
 import { STORAGE_KEY } from "../state/persistence";
+import { LAST_VISIT_KEY } from "../session/localEntry";
 import { createDefaultGameState } from "../state/seedGame";
 import type {
   GuestRoomProjection,
@@ -94,6 +95,7 @@ function fakeTransport(state = createDefaultGameState()) {
 describe("realtime sharing UI", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem(LAST_VISIT_KEY, String(Date.now()));
     sessionStorage.clear();
     window.history.replaceState(null, "", "/");
   });

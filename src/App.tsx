@@ -15,6 +15,7 @@ import { TransactionForm } from "./components/TransactionForm";
 import { TransactionTable } from "./components/TransactionTable";
 import { SessionHistoryPanel } from "./components/SessionHistoryPanel";
 import { GuestJoinScreen } from "./components/GuestJoinScreen";
+import { StartPage } from "./components/StartPage";
 import {
   GuestSessionControls,
   HostSharingControls,
@@ -74,6 +75,16 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onCancel={gameSession.leaveGuest}
         onJoin={() => undefined}
         status={session.error ? (session.connected ? "invalid" : "reconnecting") : "loading"}
+      />
+    );
+  }
+
+  if (session.mode === "local" && gameSession.localEntry) {
+    return (
+      <StartPage
+        entry={gameSession.localEntry}
+        onContinue={gameSession.continueLocalGame}
+        onStartNew={gameSession.startNewLocalGame}
       />
     );
   }
@@ -148,6 +159,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       }
       roomHistory={gameSession.roomHistory}
       state={gameSession.state}
+      initialMode={gameSession.localEntryDestination}
     />
   );
 }
@@ -164,6 +176,7 @@ type GameAppProps = {
   onMarkNotificationsRead: () => void;
   onSubmitGuestTransaction: (transaction: Transaction) => void;
   roomHistory: RoomHistoryProjection[];
+  initialMode: AppMode;
 };
 
 function GameApp({
@@ -177,9 +190,10 @@ function GameApp({
   roomHistory,
   sessionControls,
   sessionNotice,
-  sharedActivity
+  sharedActivity,
+  initialMode
 }: GameAppProps) {
-  const [mode, setMode] = useState<AppMode>("play");
+  const [mode, setMode] = useState<AppMode>(() => initialMode);
   const [manualReadOnly, setManualReadOnly] = useState(false);
   const readOnly = forcedReadOnly || manualReadOnly;
   const [notice, setNotice] = useState<string | null>(null);

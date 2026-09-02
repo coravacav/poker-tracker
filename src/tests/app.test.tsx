@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { App } from "../App";
 import { createDefaultGameState } from "../state/seedGame";
 import { STORAGE_KEY } from "../state/persistence";
+import { LAST_VISIT_KEY } from "../session/localEntry";
 
 describe("App", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem(LAST_VISIT_KEY, String(Date.now()));
   });
 
   it("defaults to Play mode with the table, chip pool, and icon key visible", () => {

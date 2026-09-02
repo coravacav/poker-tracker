@@ -241,24 +241,26 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
   });
 }
 
-export function loadGameState(): GameState {
+export function loadSavedGameState(): GameState | null {
   if (typeof localStorage === "undefined") {
-    return createDefaultGameState();
-  }
-
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) {
-    return createDefaultGameState();
+    return null;
   }
 
   try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      return null;
+    }
+
     const parsed = JSON.parse(stored) as unknown;
-    return validatePersistedState(parsed)
-      ? migratePersistedState(parsed)
-      : createDefaultGameState();
+    return validatePersistedState(parsed) ? migratePersistedState(parsed) : null;
   } catch {
-    return createDefaultGameState();
+    return null;
   }
+}
+
+export function loadGameState(): GameState {
+  return loadSavedGameState() ?? createDefaultGameState();
 }
 
 export function saveGameState(state: GameState): void {

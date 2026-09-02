@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import type { GameState, Transaction } from "../domain/pokerTypes";
+import { archiveGame } from "../domain/sessionHistory";
 import { validatePersistedState } from "../domain/validation";
 import { gameReducer, type GameAction } from "../state/gameReducer";
 import {
@@ -16,6 +17,13 @@ import {
   parseInviteRoute,
   type InviteRoute
 } from "./capabilities";
+import {
+  loadInitialLocalEntry,
+  readLastVisitAt,
+  shouldShowLocalEntry,
+  writeLastVisitAt,
+  type LocalEntry
+} from "./localEntry";
 import {
   convexRoomTransport,
   roomErrorMessage,
@@ -70,6 +78,7 @@ type HostState = {
 type LocalState = { mode: "local"; notice: string | null };
 type InvalidState = { mode: "invalid_invite"; message: string };
 type SessionState = LocalState | InviteState | GuestState | HostState | InvalidState;
+export type LocalEntryDestination = "play" | "setup";
 
 function normalizeRoomState(value: unknown): GameState | null {
   if (
@@ -129,11 +138,21 @@ function initialSession(localGameId: string): SessionState {
 export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const [localState, localDispatch] = useReducer(gameReducer, undefined, loadGameState);
   const [session, setSession] = useState<SessionState>(() => initialSession(localState.localGameId));
+  const [localEntry, setLocalEntry] = useState<LocalEntry | null>(() => {
+    const initial = initialSession(localState.localGameId);
+    return initial.mode === "local" ? loadInitialLocalEntry() : null;
+  });
+  const [localEntryDestination, setLocalEntryDestination] =
+    useState<LocalEntryDestination>("play");
   const [roomHistory, setRoomHistory] = useState<RoomHistoryProjection[]>([]);
   const sessionRef = useRef(session);
+  const localStateRef = useRef(localState);
+  const localEntryRef = useRef(localEntry);
   const mutationPending = useRef(false);
   const historyCredentialSavedRef = useRef(new Set<string>());
   sessionRef.current = session;
+  localStateRef.current = localState;
+  localEntryRef.current = localEntry;
 
   const refreshRoomHistory = useCallback(async () => {
     if (!transport.configured) {
@@ -179,8 +198,86 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   }, [session]);
 
   useEffect(() => {
-    if (session.mode === "local") saveGameState(localState);
-  }, [localState, session.mode]);
+    if (session.mode === "local" && !localEntry) saveGameState(localState);
+  }, [localEntry, localState, session.mode]);
+
+  useEffect(() => {
+    const recordActiveVisit = () => {
+      const current = sessionRef.current;
+      if (current.mode === "local") {
+        if (!localEntryRef.current) writeLastVisitAt();
+        return;
+      }
+
+      if (
+        current.mode === "guest" ||
+        current.mode === "hosting" ||
+        current.mode === "creating_room" ||
+        current.mode === "ending" ||
+        current.mode === "recovery_required"
+      ) {
+        writeLastVisitAt();
+      }
+    };
+
+    const evaluateReturn = () => {
+      const current = sessionRef.current;
+      if (current.mode === "local") {
+        if (localEntryRef.current) return;
+
+        const now = Date.now();
+        const lastVisitAt = readLastVisitAt();
+        if (shouldShowLocalEntry(lastVisitAt, now)) {
+          setLocalEntry({
+            reason: lastVisitAt === null ? "first_visit" : "stale_return",
+            savedGame: localStateRef.current
+          });
+          setLocalEntryDestination("play");
+          return;
+        }
+
+        writeLastVisitAt(now);
+        return;
+      }
+
+      if (
+        current.mode === "guest" ||
+        current.mode === "hosting" ||
+        current.mode === "creating_room" ||
+        current.mode === "ending" ||
+        current.mode === "recovery_required"
+      ) {
+        writeLastVisitAt();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        evaluateReturn();
+      } else {
+        recordActiveVisit();
+      }
+    };
+
+    const onFocus = () => evaluateReturn();
+    const onBlur = () => recordActiveVisit();
+    const onPageHide = () => recordActiveVisit();
+
+    evaluateReturn();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("pagehide", onPageHide);
+    const activeVisitInterval = window.setInterval(recordActiveVisit, 60_000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("pagehide", onPageHide);
+      window.clearInterval(activeVisitInterval);
+    };
+  }, [session.mode]);
 
   useEffect(() => {
     if (session.mode === "local" || session.mode === "invalid_invite") return;
@@ -761,12 +858,43 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const leaveGuest = useCallback(() => {
     clearGuestSession();
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    setLocalEntryDestination("play");
     setSession({ mode: "local", notice: null });
   }, []);
 
   const dismissInvite = useCallback(() => {
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    setLocalEntryDestination("play");
     setSession({ mode: "local", notice: null });
+  }, []);
+
+  const continueLocalGame = useCallback(() => {
+    if (sessionRef.current.mode !== "local" || !localEntryRef.current) return;
+    writeLastVisitAt();
+    setLocalEntryDestination("play");
+    setLocalEntry(null);
+  }, []);
+
+  const startNewLocalGame = useCallback(() => {
+    if (sessionRef.current.mode !== "local" || !localEntryRef.current) return;
+
+    const currentState = localStateRef.current;
+    if (currentState.transactions.length > 0 && !archiveGame(currentState)) {
+      setLocalEntry((current) =>
+        current
+          ? {
+              ...current,
+              error: "Could not save the current game to Player History. Your game is still intact."
+            }
+          : current
+      );
+      return;
+    }
+
+    localDispatch({ type: "reset_game" });
+    writeLastVisitAt();
+    setLocalEntryDestination("setup");
+    setLocalEntry(null);
   }, []);
 
   const state =
@@ -803,6 +931,10 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     revokeGuest,
     leaveGuest,
     dismissInvite,
+    localEntry,
+    localEntryDestination,
+    continueLocalGame,
+    startNewLocalGame,
     roomHistory,
     refreshRoomHistory
   };
