@@ -1,7 +1,9 @@
 import { Copy, Radio, RefreshCw, Share2, StopCircle, UserRound, WifiOff, X } from "lucide-react";
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { formatCurrency } from "../domain/money";
 import type { HostRecovery, HostRoomProjection } from "../session/types";
+import type { Id } from "../../convex/_generated/dataModel";
 
 type HostSharingControlsProps = {
   recovery: HostRecovery;
@@ -13,6 +15,10 @@ type HostSharingControlsProps = {
   onClaimHost: () => void;
   onEnd: () => void;
   onRetryRecovery: () => void;
+  onDecideGuestTransaction: (
+    requestId: Id<"roomGuestRequests">,
+    decision: "approved" | "rejected"
+  ) => void;
 };
 
 export function LocalShareButton({ onShare }: { onShare: () => void }) {
@@ -33,7 +39,8 @@ export function HostSharingControls({
   error,
   onClaimHost,
   onEnd,
-  onRetryRecovery
+  onRetryRecovery,
+  onDecideGuestTransaction
 }: HostSharingControlsProps) {
   const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -83,6 +90,25 @@ export function HostSharingControls({
                 </span>
               </label>
               <div className="guest-count"><UserRound size={16} /> {room?.guestCount ?? 0} connected guests</div>
+              {(room?.guestRequests?.length ?? 0) > 0 ? (
+                <div className="guest-request-list">
+                  <h3>Guest requests</h3>
+                  {room?.guestRequests?.map((request) => (
+                    <article key={request.id} className="guest-request-item">
+                      <div>
+                        <strong>{request.displayName ?? "Guest"}</strong>
+                        <span>
+                          {request.transaction.type.replace(/_/g, " ")} · {formatCurrency(request.transaction.amountCents)}
+                        </span>
+                      </div>
+                      <div>
+                        <button className="text-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "rejected")}>Reject</button>
+                        <button className="primary-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "approved")}>Approve</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
               {!connected ? <div className="notice notice-warning">Host edits are paused until the room reconnects.</div> : null}
               {duplicate ? (
                 <div className="notice notice-warning">

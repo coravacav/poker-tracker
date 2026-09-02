@@ -56,6 +56,8 @@ function fakeTransport(state = createDefaultGameState()) {
       };
     },
     heartbeat: vi.fn(async () => undefined),
+    submitGuestTransaction: vi.fn(async () => "request_test" as never),
+    decideGuestTransaction: vi.fn(async () => undefined),
     applyAction: vi.fn(async ({ action }) => {
       room = {
         ...room,

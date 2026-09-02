@@ -50,6 +50,12 @@ export const convexRoomTransport: RoomTransport = {
   async heartbeat(publicId, guestSecret, sessionId) {
     await getClient().mutation(roomApi.heartbeat, { publicId, guestSecret, sessionId });
   },
+  async submitGuestTransaction(args) {
+    return await getClient().mutation(roomApi.submitGuestTransaction, clean(args));
+  },
+  async decideGuestTransaction(args) {
+    await getClient().mutation(roomApi.decideGuestTransaction, clean(args));
+  },
   async applyAction(args) {
     return await getClient().mutation(roomApi.applyAction, clean(args));
   },

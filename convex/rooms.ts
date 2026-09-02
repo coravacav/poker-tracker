@@ -359,6 +359,44 @@ async function publicRoomWithActivity<T extends Record<string, unknown> = Record
   });
 }
 
+async function pendingGuestRequests(ctx: QueryCtx | MutationCtx, room: Doc<"rooms">) {
+  const requests = await ctx.db
+    .query("roomGuestRequests")
+    .withIndex("by_room_id_and_status", (index) =>
+      index.eq("roomId", room._id).eq("status", "pending")
+    )
+    .order("desc")
+    .take(50);
+
+  return await Promise.all(
+    requests.map(async (request) => {
+      const guest = await ctx.db.get("roomGuests", request.guestId);
+      return {
+        id: request._id,
+        displayName: guest?.displayName ?? "Guest",
+        transaction: request.transaction,
+        status: request.status,
+        createdAt: request.createdAt
+      };
+    })
+  );
+}
+
+async function guestRequestsForGuest(ctx: QueryCtx | MutationCtx, guest: Doc<"roomGuests">) {
+  return (await ctx.db
+    .query("roomGuestRequests")
+    .withIndex("by_guest_id", (index) => index.eq("guestId", guest._id))
+    .order("desc")
+    .take(20))
+    .map((request) => ({
+      id: request._id,
+      transaction: request.transaction,
+      status: request.status,
+      createdAt: request.createdAt,
+      decidedAt: request.decidedAt ?? null
+    }));
+}
+
 async function roomByPublicId(ctx: QueryCtx | MutationCtx, publicId: string) {
   return await ctx.db
     .query("rooms")
@@ -605,8 +643,48 @@ export const guestView = query({
       room,
       sanitizeGuestState(room.state as GameState),
       String(guest._id),
-      { displayName: guest.displayName }
+      {
+        displayName: guest.displayName,
+        guestRequests: await guestRequestsForGuest(ctx, guest)
+      }
     );
+  }
+});
+
+export const submitGuestTransaction = mutation({
+  args: {
+    publicId: v.string(),
+    guestSecret: v.string(),
+    transaction: v.any()
+  },
+  returns: v.id("roomGuestRequests"),
+  handler: async (ctx, args) => {
+    const { room, guest } = await requireGuest(ctx, args.publicId, args.guestSecret);
+    if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
+    const candidate = applyHostedAction(
+      room.state as GameState,
+      { type: "add_transaction", transaction: args.transaction },
+      new Date().toISOString(),
+      () => `transaction_${crypto.randomUUID()}`
+    );
+    if ("error" in candidate) fail("INVALID_ARGUMENT", candidate.error);
+
+    const pending = await ctx.db
+      .query("roomGuestRequests")
+      .withIndex("by_guest_id", (index) => index.eq("guestId", guest._id))
+      .order("desc")
+      .take(25);
+    if (pending.filter((request) => request.status === "pending").length >= 10) {
+      fail("ROOM_LIMIT_REACHED", "Wait for the host to review your pending requests.");
+    }
+
+    return await ctx.db.insert("roomGuestRequests", {
+      roomId: room._id,
+      guestId: guest._id,
+      transaction: args.transaction,
+      status: "pending",
+      createdAt: Date.now()
+    });
   }
 });
 
@@ -631,11 +709,66 @@ export const hostView = query({
     const guestCount = guests.length;
     return await publicRoomWithActivity(ctx, room, room.state as GameState, HOST_RECIPIENT_KEY, {
       guestCount,
+      guestRequests: await pendingGuestRequests(ctx, room),
       controllerStatus:
         room.hostControllerId === args.controllerId
           ? ("active" as const)
           : ("duplicate" as const)
     });
+  }
+});
+
+export const decideGuestTransaction = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    controllerId: v.string(),
+    requestId: v.id("roomGuestRequests"),
+    decision: v.union(v.literal("approved"), v.literal("rejected")),
+    expectedVersion: v.number()
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const room = await requireHost(ctx, args.publicId, args.hostSecret);
+    if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
+    if (room.hostControllerId !== args.controllerId) {
+      fail("DUPLICATE_CONTROLLER", "Another tab controls this hosted room.");
+    }
+    const request = await ctx.db.get("roomGuestRequests", args.requestId);
+    if (!request || request.roomId !== room._id || request.status !== "pending") {
+      fail("INVALID_ARGUMENT", "This guest request is no longer pending.");
+    }
+    if (args.decision === "rejected") {
+      await ctx.db.patch(request._id, { status: "rejected", decidedAt: Date.now() });
+      return null;
+    }
+    if (args.expectedVersion !== room.version) {
+      fail("VERSION_CONFLICT", `Room changed; reload version ${room.version}.`);
+    }
+    const now = Date.now();
+    const action = { type: "add_transaction", transaction: request.transaction };
+    const applied = applyHostedAction(
+      room.state as GameState,
+      action,
+      new Date(now).toISOString(),
+      () => `transaction_${crypto.randomUUID()}`
+    );
+    if ("error" in applied) fail("INVALID_ARGUMENT", applied.error);
+    const version = room.version + 1;
+    const auditEvent = buildAuditEvent(room.state as GameState, applied.state, action, version, now);
+    await ctx.db.patch(room._id, {
+      state: applied.state,
+      version,
+      acceptedActionCount: room.acceptedActionCount + 1
+    });
+    await ctx.db.patch(request._id, { status: "approved", decidedAt: now });
+    if (auditEvent) {
+      await appendAuditEvent(ctx, room._id, {
+        ...auditEvent,
+        actorLabel: "Host-approved guest request"
+      });
+    }
+    return null;
   }
 });
 

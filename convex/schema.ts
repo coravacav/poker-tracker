@@ -62,5 +62,20 @@ export default defineSchema({
     recipientKey: v.string(),
     lastReadVersion: v.number(),
     updatedAt: v.number()
-  }).index("by_room_id_and_recipient_key", ["roomId", "recipientKey"])
+  }).index("by_room_id_and_recipient_key", ["roomId", "recipientKey"]),
+
+  roomGuestRequests: defineTable({
+    roomId: v.id("rooms"),
+    guestId: v.id("roomGuests"),
+    transaction: v.any(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    createdAt: v.number(),
+    decidedAt: v.optional(v.number())
+  })
+    .index("by_room_id_and_status", ["roomId", "status"])
+    .index("by_guest_id", ["guestId"])
 });

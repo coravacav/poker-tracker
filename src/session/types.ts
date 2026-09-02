@@ -1,5 +1,6 @@
-import type { GameState } from "../domain/pokerTypes";
+import type { GameState, Transaction } from "../domain/pokerTypes";
 import type { GameAction } from "../state/gameReducer";
+import type { Id } from "../../convex/_generated/dataModel";
 
 export type SharedAuditEventKind =
   | "transaction"
@@ -52,10 +53,21 @@ export type RoomProjection = {
 export type HostRoomProjection = RoomProjection & {
   guestCount: number;
   controllerStatus: "active" | "duplicate";
+  guestRequests?: GuestTransactionRequest[];
 };
 
 export type GuestRoomProjection = RoomProjection & {
   displayName: string;
+  guestRequests?: GuestTransactionRequest[];
+};
+
+export type GuestTransactionRequest = {
+  id: Id<"roomGuestRequests">;
+  displayName?: string;
+  transaction: Transaction;
+  status: "pending" | "approved" | "rejected";
+  createdAt: number;
+  decidedAt?: number | null;
 };
 
 export type HostRecovery = {
@@ -111,6 +123,19 @@ export type RoomTransport = {
     onError: (error: Error) => void
   ) => () => void;
   heartbeat: (publicId: string, guestSecret: string, sessionId: string) => Promise<void>;
+  submitGuestTransaction: (args: {
+    publicId: string;
+    guestSecret: string;
+    transaction: Transaction;
+  }) => Promise<string>;
+  decideGuestTransaction: (args: {
+    publicId: string;
+    hostSecret: string;
+    controllerId: string;
+    requestId: Id<"roomGuestRequests">;
+    decision: "approved" | "rejected";
+    expectedVersion: number;
+  }) => Promise<void>;
   applyAction: (args: {
     publicId: string;
     hostSecret: string;

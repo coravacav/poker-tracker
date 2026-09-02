@@ -1976,6 +1976,36 @@ dd {
   gap: 8px;
 }
 
+.guest-request-list {
+  display: grid;
+  gap: 8px;
+}
+
+.guest-request-list h3 {
+  margin: 0;
+}
+
+.guest-request-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.guest-request-item > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guest-request-item span {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
 @media print {
   .app-header,
   .settle-toolbar,

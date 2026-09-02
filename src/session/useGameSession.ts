@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Dispatch } from "react";
-import type { GameState } from "../domain/pokerTypes";
+import type { GameState, Transaction } from "../domain/pokerTypes";
 import { validatePersistedState } from "../domain/validation";
 import { gameReducer, type GameAction } from "../state/gameReducer";
 import {
@@ -33,6 +33,7 @@ import type {
   HostRoomProjection,
   RoomTransport
 } from "./types";
+import type { Id } from "../../convex/_generated/dataModel";
 
 type InviteState = {
   mode: "joining";
@@ -377,7 +378,12 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       setSession({
         mode: "hosting",
         recovery,
-        room: { ...normalizedRoom, guestCount: 0, controllerStatus: "active" },
+        room: {
+          ...normalizedRoom,
+          guestCount: 0,
+          guestRequests: [],
+          controllerStatus: "active"
+        },
         connected: transport.connectionState(),
         pending: false,
         error: null
@@ -585,6 +591,50 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     }
   }, [transport]);
 
+  const submitGuestTransaction = useCallback(async (transaction: Transaction) => {
+    const current = sessionRef.current;
+    if (current.mode !== "guest" || !current.room) return;
+    try {
+      await transport.submitGuestTransaction({
+        publicId: current.credentials.publicId,
+        guestSecret: current.credentials.guestSecret,
+        transaction
+      });
+      setSession((next) =>
+        next.mode === "guest"
+          ? { ...next, error: "Request sent to the host for approval." }
+          : next
+      );
+    } catch (error) {
+      setSession((next) =>
+        next.mode === "guest" ? { ...next, error: roomErrorMessage(error) } : next
+      );
+    }
+  }, [transport]);
+
+  const decideGuestTransaction = useCallback(async (
+    requestId: Id<"roomGuestRequests">,
+    decision: "approved" | "rejected"
+  ) => {
+    const current = sessionRef.current;
+    if (current.mode !== "hosting" || !current.recovery || !current.room) return;
+    try {
+      await transport.decideGuestTransaction({
+        publicId: current.recovery.publicId,
+        hostSecret: current.recovery.hostSecret,
+        controllerId: getHostControllerId(() => createCapability(18)),
+        requestId,
+        decision,
+        expectedVersion: current.room.version
+      });
+      setSession({ ...current, error: null });
+    } catch (error) {
+      setSession((next) =>
+        next.mode === "hosting" ? { ...next, error: roomErrorMessage(error) } : next
+      );
+    }
+  }, [transport]);
+
   const leaveGuest = useCallback(() => {
     clearGuestSession();
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
@@ -623,6 +673,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     retryRecovery,
     claimHost,
     markNotificationsRead,
+    submitGuestTransaction,
+    decideGuestTransaction,
     leaveGuest,
     dismissInvite
   };

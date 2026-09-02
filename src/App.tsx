@@ -102,6 +102,9 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onClaimHost={() => void gameSession.claimHost()}
         onEnd={() => void gameSession.endSharing()}
         onRetryRecovery={gameSession.retryRecovery}
+        onDecideGuestTransaction={(requestId, decision) =>
+          void gameSession.decideGuestTransaction(requestId, decision)
+        }
         pending={session.pending}
         recovery={session.recovery}
         recoveryRequired={session.mode === "recovery_required"}
@@ -135,6 +138,9 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       sessionNotice={sessionNotice}
       sharedActivity={sharedActivity}
       onMarkNotificationsRead={gameSession.markNotificationsRead}
+      onSubmitGuestTransaction={(transaction) =>
+        void gameSession.submitGuestTransaction(transaction)
+      }
       state={gameSession.state}
     />
   );
@@ -150,6 +156,7 @@ type GameAppProps = {
   sessionNotice: string | null;
   sharedActivity?: SharedActivity;
   onMarkNotificationsRead: () => void;
+  onSubmitGuestTransaction: (transaction: Transaction) => void;
 };
 
 function GameApp({
@@ -159,6 +166,7 @@ function GameApp({
   guest,
   ledgerLabel,
   onMarkNotificationsRead,
+  onSubmitGuestTransaction,
   sessionControls,
   sessionNotice,
   sharedActivity
@@ -418,14 +426,22 @@ function GameApp({
                 >
                   Add default buy-in to all
                 </button> : null}
-                {!guest ? <button
+                {guest ? (
+                  <button
+                    className="primary-button rail-action"
+                    type="button"
+                    onClick={() => setTransactionDrawerOpen(true)}
+                  >
+                    Request transaction
+                  </button>
+                ) : <button
                   className="primary-button rail-action"
                   type="button"
                   disabled={readOnly}
                   onClick={() => setTransactionDrawerOpen(true)}
                 >
                   Add transaction
-                </button> : null}
+                </button>}
               </div>
             </aside>
           </div>
@@ -507,14 +523,16 @@ function GameApp({
               bankBalanceCents={bankSummary.balanceCents}
               defaultBuyInCents={state.settings.defaultBuyInCents}
               onAddTransaction={(transaction) => {
-                const added = addTransaction(transaction);
+                const added = guest
+                  ? (onSubmitGuestTransaction(transaction), true)
+                  : addTransaction(transaction);
                 if (added) {
                   setTransactionDrawerOpen(false);
                 }
                 return added;
               }}
               players={activePlayers}
-              readOnly={readOnly}
+              readOnly={guest ? false : readOnly}
               summaryByPlayerId={summaryByPlayerId}
             />
           </section>
