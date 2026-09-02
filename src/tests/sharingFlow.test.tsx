@@ -112,6 +112,19 @@ describe("realtime sharing UI", () => {
     expect((invite as HTMLInputElement).value).toContain(createArgs.inviteSecret);
   });
 
+  it("shows a generic message when sharing is unavailable", async () => {
+    const fake = fakeTransport();
+    fake.transport.configured = false;
+    render(<App roomTransport={fake.transport} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Share game" }));
+
+    expect(
+      await screen.findByText("Game sharing is unavailable right now. Please try again later.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/VITE_|Convex|configured/i)).not.toBeInTheDocument();
+  });
+
   it("joins as a named read-only guest without overwriting the local game", async () => {
     const local = createDefaultGameState();
     local.settings.gameName = "Local game";

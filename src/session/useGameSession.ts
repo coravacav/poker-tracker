@@ -16,7 +16,11 @@ import {
   parseInviteRoute,
   type InviteRoute
 } from "./capabilities";
-import { convexRoomTransport, roomErrorMessage } from "./convexRoomTransport";
+import {
+  convexRoomTransport,
+  roomErrorMessage,
+  SHARING_UNAVAILABLE_MESSAGE
+} from "./convexRoomTransport";
 import {
   clearGuestSession,
   clearHostRecovery,
@@ -201,7 +205,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
           ? {
               ...current,
               preview: { status: "invalid" },
-              error: "Realtime sharing is not configured on this installation."
+              error: SHARING_UNAVAILABLE_MESSAGE
             }
           : current
       );
@@ -321,7 +325,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     if (!transport.configured) {
       setSession((current) =>
         current.mode === "guest"
-          ? { ...current, error: "Realtime sharing is not configured on this installation." }
+          ? { ...current, error: SHARING_UNAVAILABLE_MESSAGE }
           : current
       );
       return;
@@ -370,7 +374,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const shareGame = useCallback(async () => {
     if (sessionRef.current.mode !== "local") return;
     if (!transport.configured) {
-      setSession({ mode: "local", notice: "Set VITE_CONVEX_URL before sharing a game." });
+      setSession({ mode: "local", notice: SHARING_UNAVAILABLE_MESSAGE });
       return;
     }
     setSession({

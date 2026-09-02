@@ -5,6 +5,12 @@ import type { RoomTransport } from "./types";
 const roomApi = api.rooms;
 let client: ConvexClient | null = null;
 
+export const SHARING_UNAVAILABLE_MESSAGE =
+  "Game sharing is unavailable right now. Please try again later.";
+
+const SHARING_REQUEST_FAILED_MESSAGE =
+  "Something went wrong with game sharing. Please try again.";
+
 function deploymentUrl(): string | null {
   const value = import.meta.env.VITE_CONVEX_URL?.trim();
   return value || null;
@@ -12,7 +18,7 @@ function deploymentUrl(): string | null {
 
 function getClient(): ConvexClient {
   const url = deploymentUrl();
-  if (!url) throw new Error("Realtime sharing is not configured on this installation.");
+  if (!url) throw new Error(SHARING_UNAVAILABLE_MESSAGE);
   client ??= new ConvexClient(url, { unsavedChangesWarning: false });
   return client;
 }
@@ -102,5 +108,7 @@ export function roomErrorMessage(error: unknown): string {
       if (typeof message === "string") return message;
     }
   }
-  return error instanceof Error ? error.message : "Realtime room request failed.";
+  return error instanceof Error && error.message === SHARING_UNAVAILABLE_MESSAGE
+    ? SHARING_UNAVAILABLE_MESSAGE
+    : SHARING_REQUEST_FAILED_MESSAGE;
 }
