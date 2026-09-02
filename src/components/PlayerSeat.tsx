@@ -49,6 +49,7 @@ export function PlayerSeat({
   });
 
   const netCents = summary?.netCents ?? 0;
+  const hasBoughtIn = (summary?.bankBuyInsCents ?? 0) > 0;
   const netClass = netCents > 0 ? "positive" : netCents < 0 ? "negative" : "neutral";
   const setSeatNodeRef = useCallback(
     (element: HTMLElement | null) => {
@@ -113,11 +114,11 @@ export function PlayerSeat({
           className="icon-button"
           type="button"
           disabled={readOnly || layoutEditing}
-          title="Record default buy-in"
+          title={hasBoughtIn ? "Record one-tap default rebuy" : "Record default buy-in"}
           onClick={() => onBuyIn(player)}
         >
           <HandCoins size={16} />
-          <span className="seat-action-label" aria-hidden={!compactView}>Buy in</span>
+          <span className="seat-action-label" aria-hidden={!compactView}>{hasBoughtIn ? "Rebuy" : "Buy in"}</span>
         </button>
         <button
           className="icon-button"

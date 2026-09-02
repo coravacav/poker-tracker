@@ -28,6 +28,7 @@ import {
 import { getCashOutOverview } from "./domain/chipCounts";
 import type { GameState, Transaction } from "./domain/pokerTypes";
 import { getLatestTransactionAction } from "./domain/recentTransactionAction";
+import { latestRepeatableTransaction, repeatTransaction } from "./domain/quickEntry";
 import { filterSettlementSummariesForDisplay } from "./domain/settlement";
 import { validateTransaction } from "./domain/validation";
 import type { GameAction } from "./state/gameReducer";
@@ -232,6 +233,10 @@ function GameApp({
     () => getLatestTransactionAction(state.transactions),
     [state.transactions]
   );
+  const repeatableTransaction = useMemo(
+    () => latestRepeatableTransaction(state.transactions),
+    [state.transactions]
+  );
 
   function addTransaction(transaction: Transaction): boolean {
     if (readOnly) {
@@ -429,6 +434,20 @@ function GameApp({
                 >
                   Add default buy-in to all
                 </button> : null}
+                {!guest && repeatableTransaction ? (
+                  <button
+                    className="text-button rail-action"
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => addTransaction(repeatTransaction(
+                      repeatableTransaction,
+                      createId("transaction"),
+                      new Date().toISOString()
+                    ))}
+                  >
+                    Repeat last transaction
+                  </button>
+                ) : null}
                 {guest ? (
                   <button
                     className="primary-button rail-action"
