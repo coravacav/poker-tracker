@@ -1,8 +1,9 @@
-import type { GuestSession, HostRecovery } from "./types";
+import type { GuestSession, HostRecovery, RoomHistoryCredential } from "./types";
 
 export const HOST_RECOVERY_KEY = "poker-tracker:v1:hosted-room";
 export const GUEST_SESSION_KEY = "poker-tracker:v1:guest-room";
 export const HOST_CONTROLLER_KEY = "poker-tracker:v1:host-controller";
+export const ROOM_HISTORY_KEY = "poker-tracker:v1:room-history";
 
 function parseStored<T>(storage: Storage | undefined, key: string): T | null {
   if (!storage) return null;
@@ -72,6 +73,36 @@ export function saveGuestSession(value: GuestSession): void {
 
 export function clearGuestSession(): void {
   if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(GUEST_SESSION_KEY);
+}
+
+export function loadRoomHistoryCredentials(): RoomHistoryCredential[] {
+  const values = parseStored<unknown>(
+    typeof localStorage === "undefined" ? undefined : localStorage,
+    ROOM_HISTORY_KEY
+  );
+  if (!Array.isArray(values)) return [];
+  return values.filter((value): value is RoomHistoryCredential => {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as Partial<RoomHistoryCredential>;
+    return candidate.schemaVersion === 1 &&
+      isString(candidate.publicId) &&
+      (candidate.role === "host" || candidate.role === "guest") &&
+      isString(candidate.secret) &&
+      isString(candidate.roomName) &&
+      typeof candidate.joinedAt === "number";
+  }).slice(0, 50);
+}
+
+export function saveRoomHistoryCredential(value: RoomHistoryCredential): void {
+  if (typeof localStorage === "undefined") return;
+  const existing = loadRoomHistoryCredentials().filter(
+    (credential) => !(credential.publicId === value.publicId && credential.role === value.role)
+  );
+  try {
+    localStorage.setItem(ROOM_HISTORY_KEY, JSON.stringify([value, ...existing].slice(0, 50)));
+  } catch {
+    // The active session still works when optional history storage is unavailable.
+  }
 }
 
 export function getHostControllerId(createId: () => string): string {

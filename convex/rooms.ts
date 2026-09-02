@@ -11,7 +11,7 @@ import {
 } from "../src/session/roomProtocol";
 import { components } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 
 const presence = new Presence(components.presence);
 
@@ -505,6 +505,7 @@ export const create = mutation({
       version: 0,
       acceptedActionCount: 0,
       createdAt: now,
+      lastActivityAt: now,
       hostSecretHash: await hashSecret(args.hostSecret),
       inviteSecretHash: await hashSecret(args.inviteSecret),
       joiningOpen: true,
@@ -656,6 +657,33 @@ export const guestView = query({
   }
 });
 
+export const historyView = query({
+  args: {
+    publicId: v.string(),
+    role: v.union(v.literal("host"), v.literal("guest")),
+    secret: v.string()
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    if (args.role === "host") {
+      const room = await requireHost(ctx, args.publicId, args.secret);
+      return {
+        ...publicRoom(room, room.state as GameState),
+        role: "host" as const,
+        createdAt: room.createdAt,
+        displayName: null
+      };
+    }
+    const { room, guest } = await requireGuest(ctx, args.publicId, args.secret);
+    return {
+      ...publicRoom(room, sanitizeGuestState(room.state as GameState)),
+      role: "guest" as const,
+      createdAt: room.createdAt,
+      displayName: guest.displayName
+    };
+  }
+});
+
 export const submitGuestTransaction = mutation({
   args: {
     publicId: v.string(),
@@ -767,7 +795,8 @@ export const rotateInvite = mutation({
     }
     await ctx.db.patch(room._id, {
       inviteSecretHash: await hashSecret(args.inviteSecret),
-      joiningOpen: true
+      joiningOpen: true,
+      lastActivityAt: Date.now()
     });
     return null;
   }
@@ -832,7 +861,8 @@ export const decideGuestTransaction = mutation({
     await ctx.db.patch(room._id, {
       state: applied.state,
       version,
-      acceptedActionCount: room.acceptedActionCount + 1
+      acceptedActionCount: room.acceptedActionCount + 1,
+      lastActivityAt: now
     });
     await ctx.db.patch(request._id, { status: "approved", decidedAt: now });
     if (auditEvent) {
@@ -854,7 +884,7 @@ export const claimHost = mutation({
     if (!validIdentifier(args.controllerId)) {
       fail("INVALID_ARGUMENT", "Host controller identity is invalid.");
     }
-    await ctx.db.patch(room._id, { hostControllerId: args.controllerId });
+    await ctx.db.patch(room._id, { hostControllerId: args.controllerId, lastActivityAt: Date.now() });
     return null;
   }
 });
@@ -914,7 +944,8 @@ export const applyAction = mutation({
       state: applied.state,
       name: applied.state.settings.gameName.trim().slice(0, 80) || "Poker Night",
       version,
-      acceptedActionCount: room.acceptedActionCount + 1
+      acceptedActionCount: room.acceptedActionCount + 1,
+      lastActivityAt: now
     });
     await ctx.db.insert("processedActions", {
       roomId: room._id,
@@ -1048,7 +1079,7 @@ export const end = mutation({
       fail("VERSION_CONFLICT", `Room changed; reload version ${room.version}.`);
     }
     const endedAt = Date.now();
-    await ctx.db.patch(room._id, { status: "ended", endedAt });
+    await ctx.db.patch(room._id, { status: "ended", endedAt, lastActivityAt: endedAt });
     await appendAuditEvent(ctx, room._id, {
       eventId: `event_${crypto.randomUUID()}`,
       version: room.version,
@@ -1073,5 +1104,61 @@ export const end = mutation({
       room.state as GameState,
       HOST_RECIPIENT_KEY
     );
+  }
+});
+
+const ACTIVE_ROOM_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
+const ENDED_DETAIL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const CLEANUP_BATCH_SIZE = 10;
+const CLEANUP_DOCUMENTS_PER_ROOM = 25;
+
+export const runRoomLifecycle = internalMutation({
+  args: {},
+  returns: v.object({ expiredRooms: v.number(), prunedDocuments: v.number() }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const staleActiveRooms = await ctx.db
+      .query("rooms")
+      .withIndex("by_status_and_last_activity_at", (index) =>
+        index.eq("status", "active").lt("lastActivityAt", now - ACTIVE_ROOM_IDLE_MS)
+      )
+      .take(CLEANUP_BATCH_SIZE);
+    for (const room of staleActiveRooms) {
+      await ctx.db.patch(room._id, { status: "expired", endedAt: now, lastActivityAt: now });
+    }
+
+    const oldEndedRooms = await ctx.db
+      .query("rooms")
+      .withIndex("by_status_and_last_activity_at", (index) =>
+        index.eq("status", "ended").lt("lastActivityAt", now - ENDED_DETAIL_RETENTION_MS)
+      )
+      .take(CLEANUP_BATCH_SIZE);
+    const oldExpiredRooms = await ctx.db
+      .query("rooms")
+      .withIndex("by_status_and_last_activity_at", (index) =>
+        index.eq("status", "expired").lt("lastActivityAt", now - ENDED_DETAIL_RETENTION_MS)
+      )
+      .take(CLEANUP_BATCH_SIZE);
+
+    let prunedDocuments = 0;
+    for (const room of [...oldEndedRooms, ...oldExpiredRooms]) {
+      const processed = await ctx.db
+        .query("processedActions")
+        .withIndex("by_room_id_and_client_action_id", (index) => index.eq("roomId", room._id))
+        .take(CLEANUP_DOCUMENTS_PER_ROOM);
+      const events = await ctx.db
+        .query("roomAuditEvents")
+        .withIndex("by_room_id_and_created_at", (index) => index.eq("roomId", room._id))
+        .take(CLEANUP_DOCUMENTS_PER_ROOM);
+      const cursors = await ctx.db
+        .query("roomNotificationCursors")
+        .withIndex("by_room_id_and_recipient_key", (index) => index.eq("roomId", room._id))
+        .take(CLEANUP_DOCUMENTS_PER_ROOM);
+      for (const document of [...processed, ...events, ...cursors]) {
+        await ctx.db.delete(document._id);
+        prunedDocuments += 1;
+      }
+    }
+    return { expiredRooms: staleActiveRooms.length, prunedDocuments };
   }
 });

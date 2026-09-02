@@ -100,6 +100,22 @@ export type GuestSession = {
   displayName: string;
 };
 
+export type RoomHistoryCredential = {
+  schemaVersion: 1;
+  publicId: string;
+  role: "host" | "guest";
+  secret: string;
+  roomName: string;
+  joinedAt: number;
+  displayName?: string;
+};
+
+export type RoomHistoryProjection = RoomProjection & {
+  role: "host" | "guest";
+  createdAt: number;
+  displayName: string | null;
+};
+
 export type RoomTransport = {
   configured: boolean;
   connectionState: () => boolean;
@@ -161,6 +177,9 @@ export type RoomTransport = {
     hostSecret: string;
     guestId: Id<"roomGuests">;
   }) => Promise<void>;
+  getRoomHistory: (
+    credentials: RoomHistoryCredential[]
+  ) => Promise<RoomHistoryProjection[]>;
   applyAction: (args: {
     publicId: string;
     hostSecret: string;

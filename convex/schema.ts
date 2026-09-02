@@ -11,6 +11,7 @@ export default defineSchema({
     version: v.number(),
     acceptedActionCount: v.number(),
     createdAt: v.number(),
+    lastActivityAt: v.optional(v.number()),
     endedAt: v.optional(v.number()),
     hostSecretHash: v.string(),
     inviteSecretHash: v.string(),
@@ -18,7 +19,8 @@ export default defineSchema({
     hostControllerId: v.string()
   })
     .index("by_public_id", ["publicId"])
-    .index("by_local_game_id_and_status", ["localGameId", "status"]),
+    .index("by_local_game_id_and_status", ["localGameId", "status"])
+    .index("by_status_and_last_activity_at", ["status", "lastActivityAt"]),
 
   roomGuests: defineTable({
     roomId: v.id("rooms"),

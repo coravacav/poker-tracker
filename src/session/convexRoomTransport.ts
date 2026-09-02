@@ -65,6 +65,18 @@ export const convexRoomTransport: RoomTransport = {
   async revokeGuest(args) {
     await getClient().mutation(roomApi.revokeGuest, clean(args));
   },
+  async getRoomHistory(credentials) {
+    const settled = await Promise.allSettled(
+      credentials.map((credential) =>
+        getClient().query(roomApi.historyView, {
+          publicId: credential.publicId,
+          role: credential.role,
+          secret: credential.secret
+        })
+      )
+    );
+    return settled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+  },
   async applyAction(args) {
     return await getClient().mutation(roomApi.applyAction, clean(args));
   },

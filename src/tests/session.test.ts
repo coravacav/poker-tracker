@@ -5,8 +5,10 @@ import {
   HOST_RECOVERY_KEY,
   loadGuestSession,
   loadHostRecovery,
+  loadRoomHistoryCredentials,
   saveGuestSession,
-  saveHostRecovery
+  saveHostRecovery,
+  saveRoomHistoryCredential
 } from "../session/sessionPersistence";
 
 describe("shared session isolation", () => {
@@ -55,5 +57,20 @@ describe("shared session isolation", () => {
     expect(localStorage.getItem(GUEST_SESSION_KEY)).toBeNull();
     expect(sessionStorage.getItem(HOST_RECOVERY_KEY)).toBeNull();
     expect(sessionStorage.getItem(GUEST_SESSION_KEY)).not.toContain("transactions");
+  });
+
+  it("retains room participation credentials for history", () => {
+    saveRoomHistoryCredential({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      role: "guest",
+      secret: "guest-secret",
+      roomName: "Poker Night",
+      joinedAt: 123,
+      displayName: "Guest"
+    });
+    expect(loadRoomHistoryCredentials()).toEqual([
+      expect.objectContaining({ publicId: "room_public_123456", role: "guest" })
+    ]);
   });
 });

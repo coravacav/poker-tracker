@@ -6,8 +6,10 @@ import {
   GAME_ARCHIVE_CHANGED_EVENT,
   loadArchivedGames
 } from "../domain/sessionHistory";
+import type { RoomHistoryProjection } from "../session/types";
+import { buildPlayerSummaries } from "../domain/ledger";
 
-export function SessionHistoryPanel() {
+export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHistoryProjection[] }) {
   const [games, setGames] = useState(loadArchivedGames);
   useEffect(() => {
     const refresh = () => setGames(loadArchivedGames());
@@ -45,6 +47,32 @@ export function SessionHistoryPanel() {
           </div>
         </>
       )}
+      <div className="shared-room-history">
+        <h3>Shared rooms</h3>
+        {sharedRooms.length === 0 ? (
+          <p className="muted">Rooms you host or join on this device will remain available here.</p>
+        ) : sharedRooms.map((room) => {
+          const summaries = buildPlayerSummaries(room.state.players, room.state.transactions);
+          return (
+            <details key={`${room.role}:${room.publicId}`}>
+              <summary>
+                <strong>{room.name}</strong>
+                <span>{room.role === "host" ? "Hosted" : `Joined as ${room.displayName ?? "guest"}`}</span>
+                <span>{room.status}</span>
+                <time dateTime={new Date(room.createdAt).toISOString()}>{new Date(room.createdAt).toLocaleDateString()}</time>
+              </summary>
+              <div className="shared-room-results">
+                {summaries.map((summary) => (
+                  <span key={summary.playerId}>
+                    {room.state.players.find((player) => player.id === summary.playerId)?.name ?? "Player"}
+                    <strong className={summary.netCents >= 0 ? "positive" : "negative"}>{formatCurrency(summary.netCents)}</strong>
+                  </span>
+                ))}
+              </div>
+            </details>
+          );
+        })}
+      </div>
     </section>
   );
 }

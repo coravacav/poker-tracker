@@ -57,7 +57,7 @@ The first slice stores one bounded game snapshot per room:
 - 10,000 accepted actions maximum
 - 50 non-revoked guest sessions maximum
 
-These limits preserve headroom below Convex’s 1 MB document limit. Before raising them, move transactions and other growing collections into normalized, room-indexed tables. Ended rooms are currently retained for guest notification and recovery; scheduled expiry/deletion is intentionally deferred. A later retention policy should expire abandoned active rooms and delete ended-room data after a documented recovery window.
+These limits preserve headroom below Convex’s 1 MB document limit. Before raising them, move transactions and other growing collections into normalized, room-indexed tables. Abandoned active rooms automatically expire after seven days without a host edit. A daily bounded cleanup removes processed-action, audit-event, and notification-cursor detail from ended or expired rooms after 30 days. The final bounded room snapshot and participant capability records remain available, so a host or guest can still review old rooms from the device where they participated.
 
 Shared rooms retain the 500 most recent audit events. The host and every guest have an independent notification read cursor; new guests start caught up, while later transfers, cash-outs, and corrections appear for all current participants.
 

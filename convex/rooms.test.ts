@@ -6,7 +6,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
 import type { GameState } from "../src/domain/pokerTypes";
 import { createDefaultGameState } from "../src/state/seedGame";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/!(*.*.*)*.*s");
@@ -221,5 +221,55 @@ describe("shared room authority", () => {
         action: { type: "set_game_name", name: "Too late" }
       })
     ).rejects.toThrow(/no longer active/);
+  });
+
+  it("keeps ended rooms visible to participating hosts and guests", async () => {
+    const { test } = await createRoom();
+    await test.mutation(api.rooms.join, {
+      publicId,
+      inviteSecret,
+      guestSecret,
+      displayName: "Observer"
+    });
+    await test.mutation(api.rooms.end, {
+      publicId,
+      hostSecret,
+      controllerId,
+      expectedVersion: 0,
+      clientActionId: "action_history_end_1234"
+    });
+    const hostHistory = await test.query(api.rooms.historyView, {
+      publicId,
+      role: "host",
+      secret: hostSecret
+    });
+    const guestHistory = await test.query(api.rooms.historyView, {
+      publicId,
+      role: "guest",
+      secret: guestSecret
+    });
+    expect(hostHistory.status).toBe("ended");
+    expect(guestHistory).toMatchObject({ status: "ended", displayName: "Observer" });
+  });
+
+  it("expires abandoned rooms without deleting their historical snapshot", async () => {
+    const { test } = await createRoom();
+    await test.run(async (ctx) => {
+      const room = await ctx.db
+        .query("rooms")
+        .withIndex("by_public_id", (index) => index.eq("publicId", publicId))
+        .unique();
+      if (!room) throw new Error("room missing");
+      await ctx.db.patch(room._id, { lastActivityAt: Date.now() - 8 * 24 * 60 * 60 * 1000 });
+    });
+    const result = await test.mutation(internal.rooms.runRoomLifecycle, {});
+    expect(result.expiredRooms).toBe(1);
+    const history = await test.query(api.rooms.historyView, {
+      publicId,
+      role: "host",
+      secret: hostSecret
+    });
+    expect(history.status).toBe("expired");
+    expect(history.state.settings.gameName).toBe("Poker Night");
   });
 });

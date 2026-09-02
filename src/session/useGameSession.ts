@@ -23,14 +23,17 @@ import {
   getHostControllerId,
   loadGuestSession,
   loadHostRecovery,
+  loadRoomHistoryCredentials,
   saveGuestSession,
-  saveHostRecovery
+  saveHostRecovery,
+  saveRoomHistoryCredential
 } from "./sessionPersistence";
 import type {
   GuestRoomProjection,
   GuestSession,
   HostRecovery,
   HostRoomProjection,
+  RoomHistoryProjection,
   RoomTransport
 } from "./types";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -122,9 +125,54 @@ function initialSession(localGameId: string): SessionState {
 export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const [localState, localDispatch] = useReducer(gameReducer, undefined, loadGameState);
   const [session, setSession] = useState<SessionState>(() => initialSession(localState.localGameId));
+  const [roomHistory, setRoomHistory] = useState<RoomHistoryProjection[]>([]);
   const sessionRef = useRef(session);
   const mutationPending = useRef(false);
+  const historyCredentialSavedRef = useRef(new Set<string>());
   sessionRef.current = session;
+
+  const refreshRoomHistory = useCallback(async () => {
+    if (!transport.configured) {
+      return;
+    }
+    const credentials = loadRoomHistoryCredentials();
+    if (credentials.length === 0) return;
+    const rooms = await transport.getRoomHistory(credentials);
+    setRoomHistory(rooms.sort((left, right) => right.createdAt - left.createdAt));
+  }, [transport]);
+
+  useEffect(() => {
+    void refreshRoomHistory();
+  }, [refreshRoomHistory]);
+
+  useEffect(() => {
+    if (session.mode === "hosting" && session.recovery) {
+      const key = `host:${session.recovery.publicId}`;
+      if (historyCredentialSavedRef.current.has(key)) return;
+      historyCredentialSavedRef.current.add(key);
+      saveRoomHistoryCredential({
+        schemaVersion: 1,
+        publicId: session.recovery.publicId,
+        role: "host",
+        secret: session.recovery.hostSecret,
+        roomName: session.recovery.roomName,
+        joinedAt: Date.now()
+      });
+    } else if (session.mode === "guest") {
+      const key = `guest:${session.credentials.publicId}`;
+      if (historyCredentialSavedRef.current.has(key)) return;
+      historyCredentialSavedRef.current.add(key);
+      saveRoomHistoryCredential({
+        schemaVersion: 1,
+        publicId: session.credentials.publicId,
+        role: "guest",
+        secret: session.credentials.guestSecret,
+        roomName: session.room?.name ?? "Shared poker game",
+        joinedAt: Date.now(),
+        displayName: session.credentials.displayName
+      });
+    }
+  }, [session]);
 
   useEffect(() => {
     if (session.mode === "local") saveGameState(localState);
@@ -375,6 +423,15 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         lastKnownVersion: normalizedRoom.version
       };
       saveHostRecovery(recovery);
+      saveRoomHistoryCredential({
+        schemaVersion: 1,
+        publicId: recovery.publicId,
+        role: "host",
+        secret: recovery.hostSecret,
+        roomName: recovery.roomName,
+        joinedAt: Date.now()
+      });
+      void refreshRoomHistory();
       setSession({
         mode: "hosting",
         recovery,
@@ -392,7 +449,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       if (provisionalRecovery) clearHostRecovery();
       setSession({ mode: "local", notice: roomErrorMessage(error) });
     }
-  }, [localState, transport]);
+  }, [localState, refreshRoomHistory, transport]);
 
   const joinGame = useCallback(
     async (displayName: string) => {
@@ -420,6 +477,16 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
           displayName: normalizedRoom.displayName
         };
         saveGuestSession(credentials);
+        saveRoomHistoryCredential({
+          schemaVersion: 1,
+          publicId: credentials.publicId,
+          role: "guest",
+          secret: credentials.guestSecret,
+          roomName: normalizedRoom.name,
+          joinedAt: Date.now(),
+          displayName: credentials.displayName
+        });
+        void refreshRoomHistory();
         window.history.replaceState(null, "", guestRoomHash(credentials.publicId));
         setSession({
           mode: "guest",
@@ -434,7 +501,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         );
       }
     },
-    [transport]
+    [refreshRoomHistory, transport]
   );
 
   const dispatch = useMemo<Dispatch<GameAction>>(
@@ -731,6 +798,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     rotateInvite,
     revokeGuest,
     leaveGuest,
-    dismissInvite
+    dismissInvite,
+    roomHistory,
+    refreshRoomHistory
   };
 }

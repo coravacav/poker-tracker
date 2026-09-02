@@ -35,7 +35,7 @@ import { validateTransaction } from "./domain/validation";
 import type { GameAction } from "./state/gameReducer";
 import { createId } from "./state/seedGame";
 import { useGameSession } from "./session/useGameSession";
-import type { RoomTransport, SharedActivity } from "./session/types";
+import type { RoomHistoryProjection, RoomTransport, SharedActivity } from "./session/types";
 
 export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
   const gameSession = useGameSession(roomTransport);
@@ -146,6 +146,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       onSubmitGuestTransaction={(transaction) =>
         void gameSession.submitGuestTransaction(transaction)
       }
+      roomHistory={gameSession.roomHistory}
       state={gameSession.state}
     />
   );
@@ -162,6 +163,7 @@ type GameAppProps = {
   sharedActivity?: SharedActivity;
   onMarkNotificationsRead: () => void;
   onSubmitGuestTransaction: (transaction: Transaction) => void;
+  roomHistory: RoomHistoryProjection[];
 };
 
 function GameApp({
@@ -172,6 +174,7 @@ function GameApp({
   ledgerLabel,
   onMarkNotificationsRead,
   onSubmitGuestTransaction,
+  roomHistory,
   sessionControls,
   sessionNotice,
   sharedActivity
@@ -385,7 +388,7 @@ function GameApp({
               dispatch={dispatch}
               readOnly={readOnly}
             />
-            <SessionHistoryPanel />
+            <SessionHistoryPanel sharedRooms={roomHistory} />
           </div>
         }
         play={

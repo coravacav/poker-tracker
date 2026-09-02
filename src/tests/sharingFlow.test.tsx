@@ -61,6 +61,7 @@ function fakeTransport(state = createDefaultGameState()) {
     setJoiningOpen: vi.fn(async () => undefined),
     rotateInvite: vi.fn(async () => undefined),
     revokeGuest: vi.fn(async () => undefined),
+    getRoomHistory: vi.fn(async () => []),
     applyAction: vi.fn(async ({ action }) => {
       room = {
         ...room,
