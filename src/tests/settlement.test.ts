@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PlayerLedgerSummary } from "../domain/pokerTypes";
 import {
   buildMinimizedSettlement,
+  buildSettlementSummaryText,
   filterSettlementSummariesForDisplay
 } from "../domain/settlement";
 
@@ -60,5 +61,21 @@ describe("settlement", () => {
         summary("owed-archived", 500)
       ]).map((visibleSummary) => visibleSummary.playerId)
     ).toEqual(["active", "owed-archived"]);
+  });
+
+  it("builds a shareable final-results and payment summary", () => {
+    const players = [
+      { id: "alex", name: "Alex", seatIndex: 0, isActive: true },
+      { id: "blair", name: "Blair", seatIndex: 1, isActive: true }
+    ];
+
+    expect(
+      buildSettlementSummaryText("Friday Night", players, [
+        summary("alex", -2000),
+        summary("blair", 2000)
+      ])
+    ).toBe(
+      "Friday Night\n\nFinal results\nBlair: +$20.00\nAlex: -$20.00\n\nPayments\nAlex pays Blair $20.00"
+    );
   });
 });

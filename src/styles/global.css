@@ -1970,6 +1970,28 @@ dd {
   white-space: nowrap;
 }
 
+.settlement-share-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media print {
+  .app-header,
+  .settle-toolbar,
+  .settlement-share-actions,
+  .cover-debt-button {
+    display: none !important;
+  }
+
+  .app-main,
+  .settle-mode,
+  .settlement-panel {
+    height: auto;
+    overflow: visible;
+  }
+}
+
 .settlement-list {
   display: grid;
   gap: 1px;

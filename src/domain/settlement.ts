@@ -71,3 +71,42 @@ export function filterSettlementSummariesForDisplay(
 export function playerNameById(players: Player[], playerId: string): string {
   return players.find((player) => player.id === playerId)?.name ?? "Unknown player";
 }
+
+function formatSummaryAmount(amountCents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD"
+  }).format(amountCents / 100);
+}
+
+export function buildSettlementSummaryText(
+  gameName: string,
+  players: Player[],
+  summaries: PlayerLedgerSummary[]
+): string {
+  const payments = buildMinimizedSettlement(summaries);
+  const sortedSummaries = [...summaries].sort(
+    (left, right) => right.netCents - left.netCents
+  );
+  const lines = [gameName.trim() || "Poker Night", "", "Final results"];
+
+  for (const summary of sortedSummaries) {
+    const prefix = summary.netCents > 0 ? "+" : "";
+    lines.push(
+      `${playerNameById(players, summary.playerId)}: ${prefix}${formatSummaryAmount(summary.netCents)}`
+    );
+  }
+
+  lines.push("", "Payments");
+  if (payments.length === 0) {
+    lines.push("No player-to-player payments needed.");
+  } else {
+    for (const payment of payments) {
+      lines.push(
+        `${playerNameById(players, payment.fromPlayerId)} pays ${playerNameById(players, payment.toPlayerId)} ${formatSummaryAmount(payment.amountCents)}`
+      );
+    }
+  }
+
+  return lines.join("\n");
+}

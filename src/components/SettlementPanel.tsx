@@ -1,4 +1,4 @@
-import { ArrowRight, Scale, X } from "lucide-react";
+import { ArrowRight, Check, Copy, Printer, Scale, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatCurrency } from "../domain/money";
 import type {
@@ -10,6 +10,7 @@ import type {
 } from "../domain/pokerTypes";
 import {
   buildMinimizedSettlement,
+  buildSettlementSummaryText,
   playerNameById
 } from "../domain/settlement";
 import { createId } from "../state/seedGame";
@@ -18,6 +19,7 @@ type SettlementPanelProps = {
   bankSummary: BankSummary;
   imbalanceCents: number;
   hideActions?: boolean;
+  gameName?: string;
   players: Player[];
   readOnly: boolean;
   settlementReady: boolean;
@@ -31,6 +33,7 @@ function settlementPaymentKey(payment: SettlementPayment): string {
 
 export function SettlementPanel({
   bankSummary,
+  gameName = "Poker Night",
   imbalanceCents,
   hideActions = false,
   players,
@@ -50,6 +53,7 @@ export function SettlementPanel({
   const [coveredByPlayerId, setCoveredByPlayerId] = useState<string>("");
   const [coverageNote, setCoverageNote] = useState("");
   const [coverageError, setCoverageError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const currentPaymentKeys = useMemo(
     () => new Set(minimizedPayments.map(settlementPaymentKey)),
     [minimizedPayments]
@@ -61,6 +65,21 @@ export function SettlementPanel({
   const sortedSummaries = [...summaries]
     .filter((summary) => players.some((player) => player.id === summary.playerId))
     .sort((a, b) => Math.abs(b.netCents) - Math.abs(a.netCents));
+
+  const settlementSummaryText = useMemo(
+    () => buildSettlementSummaryText(gameName, players, summaries),
+    [gameName, players, summaries]
+  );
+
+  async function copySummary() {
+    try {
+      await navigator.clipboard.writeText(settlementSummaryText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   function toggleSettlementPayment(payment: SettlementPayment) {
     const paymentKey = settlementPaymentKey(payment);
@@ -149,7 +168,17 @@ export function SettlementPanel({
           <p className="eyebrow">Live totals</p>
           <h2>Settlement</h2>
         </div>
-        <Scale size={20} />
+        <div className="settlement-share-actions">
+          <button className="text-button" type="button" onClick={() => void copySummary()}>
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+            {copied ? "Copied" : "Copy summary"}
+          </button>
+          <button className="text-button" type="button" onClick={() => window.print()}>
+            <Printer size={15} />
+            Print
+          </button>
+          <Scale size={20} />
+        </div>
       </div>
 
       <div className="settlement-layout">
