@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { centsToInputValue, formatCurrency, parseMoneyToCents } from "../domain/money";
 import type {
   BankDirection,
+  ChipDenomination,
   Player,
   PlayerId,
   PlayerLedgerSummary,
@@ -22,16 +23,20 @@ type TransactionFormProps = {
   players: Player[];
   readOnly: boolean;
   summaryByPlayerId?: Map<PlayerId, PlayerLedgerSummary>;
+  allowFinalCashOut?: boolean;
+  chipDenominations?: ChipDenomination[];
 };
 
 type TransactionEntryType =
   | Exclude<TransactionType, "debt_coverage" | "player_transfer">
-  | "covered_buy_in";
+  | "covered_buy_in"
+  | "final_chip_count";
 
 const transactionLabels: Record<TransactionEntryType, string> = {
   bank_buy_in: "Chip buy-in",
   covered_buy_in: "Covered buy-in",
   bank_cash_out: "Partial cash-out",
+  final_chip_count: "Final chip count",
   player_gave: "Player gave",
   player_owes: "Player owes",
   manual_bank_adjustment: "Chip adjustment"
@@ -43,7 +48,9 @@ export function TransactionForm({
   onAddTransaction,
   players,
   readOnly,
-  summaryByPlayerId
+  summaryByPlayerId,
+  allowFinalCashOut = false,
+  chipDenominations = []
 }: TransactionFormProps) {
   const [type, setType] = useState<TransactionEntryType>("bank_buy_in");
   const [bankPlayerId, setBankPlayerId] = useState(players[0]?.id ?? "");
@@ -53,6 +60,7 @@ export function TransactionForm({
   const [note, setNote] = useState("");
   const [bankDirection, setBankDirection] = useState<BankDirection>("incoming");
   const [error, setError] = useState<string | null>(null);
+  const [chipCounts, setChipCounts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (players.length === 0) {
@@ -76,7 +84,20 @@ export function TransactionForm({
     setAmountInput(centsToInputValue(cents));
   }
 
-  const previewAmountCents = parseMoneyToCents(amountInput);
+  const finalChipLines = chipDenominations.map((denomination) => ({
+    denominationId: denomination.id,
+    label: denomination.label,
+    colorHex: denomination.colorHex,
+    valueCents: denomination.valueCents,
+    count: Number.parseInt(chipCounts[denomination.id] || "0", 10)
+  }));
+  const finalChipTotalCents = finalChipLines.reduce(
+    (total, line) => total + (Number.isSafeInteger(line.count) ? line.count * line.valueCents : 0),
+    0
+  );
+  const previewAmountCents = type === "final_chip_count"
+    ? finalChipTotalCents
+    : parseMoneyToCents(amountInput);
   const isPlayerTransaction = type === "player_gave" || type === "player_owes";
   const showTransferPreview =
     (isPlayerTransaction || type === "covered_buy_in") &&
@@ -90,7 +111,9 @@ export function TransactionForm({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const amountCents = parseMoneyToCents(amountInput);
+    const amountCents = type === "final_chip_count"
+      ? finalChipTotalCents
+      : parseMoneyToCents(amountInput);
 
     if (amountCents === null) {
       setError("Enter a valid dollar amount.");
@@ -99,7 +122,11 @@ export function TransactionForm({
 
     const transaction: Transaction = {
       id: createId("transaction"),
-      type: type === "covered_buy_in" ? "bank_buy_in" : type,
+      type: type === "covered_buy_in"
+        ? "bank_buy_in"
+        : type === "final_chip_count"
+          ? "bank_cash_out"
+          : type,
       createdAt: new Date().toISOString(),
       amountCents,
       note: note.trim() || undefined
@@ -112,6 +139,13 @@ export function TransactionForm({
     if (type === "bank_cash_out") {
       transaction.fromPlayerId = bankPlayerId;
       transaction.cashOutKind = "partial";
+    }
+
+    if (type === "final_chip_count") {
+      transaction.fromPlayerId = bankPlayerId;
+      transaction.cashOutKind = "final";
+      transaction.chipCountBreakdown = finalChipLines.filter((line) => line.count > 0);
+      transaction.note = note.trim() || "Guest-submitted final chip count";
     }
 
     if (type === "player_gave" || type === "player_owes") {
@@ -139,6 +173,7 @@ export function TransactionForm({
       setError(null);
       setNote("");
       setAmountInput(centsToInputValue(defaultBuyInCents));
+      setChipCounts({});
     }
   }
 
@@ -164,6 +199,7 @@ export function TransactionForm({
               }
             >
               {Object.entries(transactionLabels).map(([value, label]) => (
+                value === "final_chip_count" && !allowFinalCashOut ? null :
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -171,7 +207,7 @@ export function TransactionForm({
             </select>
           </label>
 
-          {(type === "bank_cash_out" ||
+          {(type === "bank_cash_out" || type === "final_chip_count" ||
             isPlayerTransaction ||
             type === "covered_buy_in") && (
             <label>
@@ -184,9 +220,9 @@ export function TransactionForm({
               </span>
               <select
                 disabled={readOnly}
-                value={type === "bank_cash_out" ? bankPlayerId : fromPlayerId}
+                value={type === "bank_cash_out" || type === "final_chip_count" ? bankPlayerId : fromPlayerId}
                 onChange={(event) => {
-                  if (type === "bank_cash_out") {
+                  if (type === "bank_cash_out" || type === "final_chip_count") {
                     setBankPlayerId(event.currentTarget.value);
                   } else {
                     setFromPlayerId(event.currentTarget.value);
@@ -247,7 +283,7 @@ export function TransactionForm({
             </label>
           )}
 
-          <label>
+          {type !== "final_chip_count" ? <label>
             <span>Amount</span>
             <input
               disabled={readOnly}
@@ -255,7 +291,7 @@ export function TransactionForm({
               value={amountInput}
               onChange={(event) => setAmountInput(event.currentTarget.value)}
             />
-          </label>
+          </label> : null}
 
           <label className="note-field">
             <span>Note</span>
@@ -268,6 +304,36 @@ export function TransactionForm({
           </label>
         </div>
 
+        {type === "final_chip_count" ? (
+          chipDenominations.length === 0 ? (
+            <div className="notice notice-warning">The host has not configured chip denominations.</div>
+          ) : (
+            <div className="guest-final-chip-count" aria-label="Final chip counts">
+              {finalChipLines.map((line) => (
+                <label className="chip-count-line" key={line.denominationId}>
+                  <span className="chip-swatch" style={{ backgroundColor: line.colorHex }} />
+                  <span>{line.label}</span>
+                  <span>{formatCurrency(line.valueCents)}</span>
+                  <input
+                    aria-label={`${line.label} chip count`}
+                    inputMode="numeric"
+                    value={chipCounts[line.denominationId] ?? ""}
+                    placeholder="0"
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      if (/^\d*$/.test(value)) {
+                        setChipCounts((current) => ({ ...current, [line.denominationId]: value }));
+                      }
+                    }}
+                  />
+                  <strong>{formatCurrency(line.count * line.valueCents)}</strong>
+                </label>
+              ))}
+              <strong>Final total {formatCurrency(finalChipTotalCents)}</strong>
+            </div>
+          )
+        ) : null}
+
         {type === "bank_cash_out" ? (
           <p className="muted">
             Records a during-game payout. Record the player&apos;s final chip count in Cash Out mode.
@@ -275,7 +341,8 @@ export function TransactionForm({
         ) : null}
 
         <div className="quick-amounts">
-          {isPlayerTransaction || type === "covered_buy_in" || type === "bank_cash_out" ? (
+          {type !== "final_chip_count" ? (
+            isPlayerTransaction || type === "covered_buy_in" || type === "bank_cash_out" ? (
             <TransferQuickAmountButtons
               defaultBuyInCents={defaultBuyInCents}
               disabled={readOnly}
@@ -305,8 +372,9 @@ export function TransactionForm({
                 Double
               </button>
             </>
-          )}
-          <button className="primary-button" type="submit" disabled={readOnly}>
+            )
+          ) : null}
+          <button className="primary-button" type="submit" disabled={readOnly || (type === "final_chip_count" && chipDenominations.length === 0)}>
             Add transaction
           </button>
         </div>

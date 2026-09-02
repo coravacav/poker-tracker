@@ -547,7 +547,9 @@ function GameApp({
               </button>
             </div>
             <TransactionForm
+              allowFinalCashOut={guest}
               bankBalanceCents={bankSummary.balanceCents}
+              chipDenominations={state.settings.chipDenominations}
               defaultBuyInCents={state.settings.defaultBuyInCents}
               onAddTransaction={(transaction) => {
                 const added = guest

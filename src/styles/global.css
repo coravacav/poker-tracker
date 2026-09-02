@@ -309,6 +309,12 @@ td {
   gap: 12px;
 }
 
+.guest-final-chip-count {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
 .play-mode {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 270px;

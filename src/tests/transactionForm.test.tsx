@@ -214,4 +214,37 @@ describe("TransactionForm", () => {
       })
     );
   });
+
+  it("builds a final cash-out request from guest chip counts", () => {
+    const onAddTransaction = vi.fn(() => true);
+    render(
+      <TransactionForm
+        allowFinalCashOut
+        chipDenominations={[
+          { id: "red", label: "Red", colorHex: "#ff0000", valueCents: 500 },
+          { id: "blue", label: "Blue", colorHex: "#0000ff", valueCents: 100 }
+        ]}
+        defaultBuyInCents={2000}
+        onAddTransaction={onAddTransaction}
+        players={players}
+        readOnly={false}
+      />
+    );
+    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "final_chip_count" } });
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "p2" } });
+    fireEvent.change(screen.getByLabelText("Red chip count"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Blue chip count"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add transaction" }));
+
+    expect(onAddTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      type: "bank_cash_out",
+      cashOutKind: "final",
+      fromPlayerId: "p2",
+      amountCents: 1700,
+      chipCountBreakdown: [
+        expect.objectContaining({ denominationId: "red", count: 3 }),
+        expect.objectContaining({ denominationId: "blue", count: 2 })
+      ]
+    }));
+  });
 });
