@@ -14,6 +14,7 @@ export default defineSchema({
     endedAt: v.optional(v.number()),
     hostSecretHash: v.string(),
     inviteSecretHash: v.string(),
+    joiningOpen: v.optional(v.boolean()),
     hostControllerId: v.string()
   })
     .index("by_public_id", ["publicId"])

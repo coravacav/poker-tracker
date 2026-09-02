@@ -105,6 +105,9 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onDecideGuestTransaction={(requestId, decision) =>
           void gameSession.decideGuestTransaction(requestId, decision)
         }
+        onSetJoiningOpen={(open) => void gameSession.setJoiningOpen(open)}
+        onRotateInvite={() => void gameSession.rotateInvite()}
+        onRevokeGuest={(guestId) => void gameSession.revokeGuest(guestId)}
         pending={session.pending}
         recovery={session.recovery}
         recoveryRequired={session.mode === "recovery_required"}

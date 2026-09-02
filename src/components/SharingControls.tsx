@@ -19,6 +19,9 @@ type HostSharingControlsProps = {
     requestId: Id<"roomGuestRequests">,
     decision: "approved" | "rejected"
   ) => void;
+  onSetJoiningOpen: (open: boolean) => void;
+  onRotateInvite: () => void;
+  onRevokeGuest: (guestId: Id<"roomGuests">) => void;
 };
 
 export function LocalShareButton({ onShare }: { onShare: () => void }) {
@@ -40,7 +43,10 @@ export function HostSharingControls({
   onClaimHost,
   onEnd,
   onRetryRecovery,
-  onDecideGuestTransaction
+  onDecideGuestTransaction,
+  onSetJoiningOpen,
+  onRotateInvite,
+  onRevokeGuest
 }: HostSharingControlsProps) {
   const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -89,7 +95,36 @@ export function HostSharingControls({
                   </button>
                 </span>
               </label>
+              <div className="invite-management-row">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={room?.joiningOpen !== false}
+                    onChange={(event) => onSetJoiningOpen(event.currentTarget.checked)}
+                  />
+                  Accept new guests
+                </label>
+                <button className="text-button" type="button" onClick={onRotateInvite}>
+                  <RefreshCw size={15} /> Rotate invite
+                </button>
+              </div>
               <div className="guest-count"><UserRound size={16} /> {room?.guestCount ?? 0} connected guests</div>
+              {(room?.guests?.length ?? 0) > 0 ? (
+                <div className="guest-management-list">
+                  {room?.guests?.map((guest) => (
+                    <div className="guest-management-item" key={guest.id}>
+                      <span className={guest.connected ? "positive" : "muted"}>
+                        {guest.displayName} · {guest.revoked ? "Revoked" : guest.connected ? "Online" : "Offline"}
+                      </span>
+                      {!guest.revoked ? (
+                        <button className="text-button danger" type="button" onClick={() => onRevokeGuest(guest.id)}>
+                          Revoke
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {(room?.guestRequests?.length ?? 0) > 0 ? (
                 <div className="guest-request-list">
                   <h3>Guest requests</h3>

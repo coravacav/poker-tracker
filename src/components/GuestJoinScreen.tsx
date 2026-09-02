@@ -2,7 +2,7 @@ import { Eye, WifiOff } from "lucide-react";
 import { useState } from "react";
 
 type GuestJoinScreenProps = {
-  status: "loading" | "active" | "invalid" | "ended" | "reconnecting";
+  status: "loading" | "active" | "invalid" | "ended" | "closed" | "reconnecting";
   roomName?: string;
   error: string | null;
   joining: boolean;
@@ -58,10 +58,10 @@ export function GuestJoinScreen({
             </form>
           </>
         ) : null}
-        {status === "invalid" || status === "ended" ? (
+        {status === "invalid" || status === "ended" || status === "closed" ? (
           <>
             <WifiOff size={30} />
-            <h1>{status === "ended" ? "This game has ended" : "Invitation unavailable"}</h1>
+            <h1>{status === "ended" ? "This game has ended" : status === "closed" ? "Joining is closed" : "Invitation unavailable"}</h1>
             <p>{error ?? "Ask the host for a current invitation link."}</p>
           </>
         ) : null}

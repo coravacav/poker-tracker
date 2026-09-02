@@ -54,6 +54,16 @@ export type HostRoomProjection = RoomProjection & {
   guestCount: number;
   controllerStatus: "active" | "duplicate";
   guestRequests?: GuestTransactionRequest[];
+  joiningOpen?: boolean;
+  guests?: HostGuestSession[];
+};
+
+export type HostGuestSession = {
+  id: Id<"roomGuests">;
+  displayName: string;
+  joinedAt: number;
+  connected: boolean;
+  revoked: boolean;
 };
 
 export type GuestRoomProjection = RoomProjection & {
@@ -105,7 +115,7 @@ export type RoomTransport = {
   getInvitePreview: (
     publicId: string,
     inviteSecret: string
-  ) => Promise<{ status: RoomStatus | "invalid"; name?: string }>;
+  ) => Promise<{ status: RoomStatus | "invalid" | "closed"; name?: string }>;
   joinRoom: (args: {
     publicId: string;
     inviteSecret: string;
@@ -135,6 +145,21 @@ export type RoomTransport = {
     requestId: Id<"roomGuestRequests">;
     decision: "approved" | "rejected";
     expectedVersion: number;
+  }) => Promise<void>;
+  setJoiningOpen: (args: {
+    publicId: string;
+    hostSecret: string;
+    open: boolean;
+  }) => Promise<void>;
+  rotateInvite: (args: {
+    publicId: string;
+    hostSecret: string;
+    inviteSecret: string;
+  }) => Promise<void>;
+  revokeGuest: (args: {
+    publicId: string;
+    hostSecret: string;
+    guestId: Id<"roomGuests">;
   }) => Promise<void>;
   applyAction: (args: {
     publicId: string;

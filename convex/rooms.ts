@@ -507,6 +507,7 @@ export const create = mutation({
       createdAt: now,
       hostSecretHash: await hashSecret(args.hostSecret),
       inviteSecretHash: await hashSecret(args.inviteSecret),
+      joiningOpen: true,
       hostControllerId: args.controllerId
     });
     await ctx.db.insert("roomNotificationCursors", {
@@ -551,6 +552,9 @@ export const invitePreview = query({
     if (!sameHash(room.inviteSecretHash, presentedHash)) {
       return { status: "invalid" as const };
     }
+    if (room.joiningOpen === false && room.status === "active") {
+      return { status: "closed" as const, name: room.name };
+    }
     return { status: room.status, name: room.name };
   }
 });
@@ -570,6 +574,7 @@ export const join = mutation({
     const room = await roomByPublicId(ctx, args.publicId);
     if (!room) fail("ROOM_NOT_FOUND", "Shared room was not found.");
     if (room.status !== "active") fail("ROOM_ENDED", "This shared room has ended.");
+    if (room.joiningOpen === false) fail("ROOM_NOT_ACTIVE", "This room is not accepting new guests.");
     const inviteHash = await hashSecret(args.inviteSecret);
     if (!sameHash(room.inviteSecretHash, inviteHash)) {
       fail("INVALID_CAPABILITY", "Invitation is invalid.");
@@ -705,16 +710,84 @@ export const hostView = query({
   returns: v.any(),
   handler: async (ctx, args) => {
     const room = await requireHost(ctx, args.publicId, args.hostSecret);
-    const guests = await presence.listRoom(ctx, room.publicId, true, MAX_ROOM_GUESTS);
-    const guestCount = guests.length;
+    const presentGuests = await presence.listRoom(ctx, room.publicId, true, MAX_ROOM_GUESTS);
+    const onlineGuestIds = new Set(presentGuests.map((guest) => guest.userId));
+    const guestDocs = await ctx.db
+      .query("roomGuests")
+      .withIndex("by_room_id", (index) => index.eq("roomId", room._id))
+      .order("desc")
+      .take(MAX_ROOM_GUESTS);
+    const guestCount = presentGuests.length;
     return await publicRoomWithActivity(ctx, room, room.state as GameState, HOST_RECIPIENT_KEY, {
       guestCount,
+      joiningOpen: room.joiningOpen !== false,
+      guests: guestDocs.map((guest) => ({
+        id: guest._id,
+        displayName: guest.displayName,
+        joinedAt: guest.joinedAt,
+        connected: onlineGuestIds.has(String(guest._id)),
+        revoked: guest.revokedAt !== undefined
+      })),
       guestRequests: await pendingGuestRequests(ctx, room),
       controllerStatus:
         room.hostControllerId === args.controllerId
           ? ("active" as const)
           : ("duplicate" as const)
     });
+  }
+});
+
+export const setJoiningOpen = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    open: v.boolean()
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const room = await requireHost(ctx, args.publicId, args.hostSecret);
+    if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
+    await ctx.db.patch(room._id, { joiningOpen: args.open });
+    return null;
+  }
+});
+
+export const rotateInvite = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    inviteSecret: v.string()
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const room = await requireHost(ctx, args.publicId, args.hostSecret);
+    if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
+    if (!validSecret(args.inviteSecret) || args.inviteSecret === args.hostSecret) {
+      fail("INVALID_ARGUMENT", "New invitation capability is invalid.");
+    }
+    await ctx.db.patch(room._id, {
+      inviteSecretHash: await hashSecret(args.inviteSecret),
+      joiningOpen: true
+    });
+    return null;
+  }
+});
+
+export const revokeGuest = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    guestId: v.id("roomGuests")
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const room = await requireHost(ctx, args.publicId, args.hostSecret);
+    const guest = await ctx.db.get("roomGuests", args.guestId);
+    if (!guest || guest.roomId !== room._id) fail("INVALID_ARGUMENT", "Guest was not found.");
+    if (guest.revokedAt === undefined) {
+      await ctx.db.patch(guest._id, { revokedAt: Date.now() });
+    }
+    return null;
   }
 });
 

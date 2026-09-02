@@ -38,7 +38,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 type InviteState = {
   mode: "joining";
   route: Extract<InviteRoute, { kind: "invite" }>;
-  preview: { status: "loading" | "active" | "invalid" | "ended"; name?: string };
+  preview: { status: "loading" | "active" | "invalid" | "ended" | "closed"; name?: string };
   error: string | null;
   joining: boolean;
 };
@@ -635,6 +635,58 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     }
   }, [transport]);
 
+  const setJoiningOpen = useCallback(async (open: boolean) => {
+    const current = sessionRef.current;
+    if (current.mode !== "hosting" || !current.recovery) return;
+    try {
+      await transport.setJoiningOpen({
+        publicId: current.recovery.publicId,
+        hostSecret: current.recovery.hostSecret,
+        open
+      });
+      setSession({ ...current, error: null });
+    } catch (error) {
+      setSession({ ...current, error: roomErrorMessage(error) });
+    }
+  }, [transport]);
+
+  const rotateInvite = useCallback(async () => {
+    const current = sessionRef.current;
+    if (current.mode !== "hosting" || !current.recovery) return;
+    const inviteSecret = createCapability();
+    try {
+      await transport.rotateInvite({
+        publicId: current.recovery.publicId,
+        hostSecret: current.recovery.hostSecret,
+        inviteSecret
+      });
+      const recovery = {
+        ...current.recovery,
+        inviteSecret,
+        inviteUrl: createInviteUrl(current.recovery.publicId, inviteSecret)
+      };
+      saveHostRecovery(recovery);
+      setSession({ ...current, recovery, error: null });
+    } catch (error) {
+      setSession({ ...current, error: roomErrorMessage(error) });
+    }
+  }, [transport]);
+
+  const revokeGuest = useCallback(async (guestId: Id<"roomGuests">) => {
+    const current = sessionRef.current;
+    if (current.mode !== "hosting" || !current.recovery) return;
+    try {
+      await transport.revokeGuest({
+        publicId: current.recovery.publicId,
+        hostSecret: current.recovery.hostSecret,
+        guestId
+      });
+      setSession({ ...current, error: null });
+    } catch (error) {
+      setSession({ ...current, error: roomErrorMessage(error) });
+    }
+  }, [transport]);
+
   const leaveGuest = useCallback(() => {
     clearGuestSession();
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
@@ -675,6 +727,9 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     markNotificationsRead,
     submitGuestTransaction,
     decideGuestTransaction,
+    setJoiningOpen,
+    rotateInvite,
+    revokeGuest,
     leaveGuest,
     dismissInvite
   };

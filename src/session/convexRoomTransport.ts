@@ -56,6 +56,15 @@ export const convexRoomTransport: RoomTransport = {
   async decideGuestTransaction(args) {
     await getClient().mutation(roomApi.decideGuestTransaction, clean(args));
   },
+  async setJoiningOpen(args) {
+    await getClient().mutation(roomApi.setJoiningOpen, clean(args));
+  },
+  async rotateInvite(args) {
+    await getClient().mutation(roomApi.rotateInvite, clean(args));
+  },
+  async revokeGuest(args) {
+    await getClient().mutation(roomApi.revokeGuest, clean(args));
+  },
   async applyAction(args) {
     return await getClient().mutation(roomApi.applyAction, clean(args));
   },

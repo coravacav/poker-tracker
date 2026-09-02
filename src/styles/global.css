@@ -1981,6 +1981,33 @@ dd {
   gap: 8px;
 }
 
+.invite-management-row,
+.guest-management-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.invite-management-row label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.guest-management-list {
+  display: grid;
+  gap: 6px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.guest-management-item {
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
 .guest-request-list h3 {
   margin: 0;
 }
