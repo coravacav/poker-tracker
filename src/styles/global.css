@@ -982,6 +982,14 @@ label span {
   justify-content: space-between;
 }
 
+.start-game-summary-heading > div {
+  min-width: 0;
+}
+
+.start-game-summary-heading h2 {
+  overflow-wrap: anywhere;
+}
+
 .start-game-summary-heading > svg {
   flex: 0 0 auto;
   color: var(--green);
@@ -1056,6 +1064,55 @@ label span {
 .start-footnote {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+@media (max-width: 720px) {
+  .start-page {
+    padding: 16px;
+  }
+
+  .start-card {
+    padding: 24px 18px;
+  }
+
+  .start-game-metrics {
+    gap: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .start-game-metrics > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    padding: 10px 0;
+    background: transparent;
+  }
+
+  .start-game-metrics > div:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .start-game-metrics dt {
+    flex: 0 0 auto;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .start-game-metrics dd {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-align: right;
+    text-overflow: clip;
+    white-space: normal;
+  }
 }
 
 .guest-join-card label {
