@@ -77,8 +77,19 @@ The host and each guest keep one narrow room subscription. Connected-guest track
 
 The Vite build is already served as Cloudflare Worker static assets, with SPA fallback configured in `wrangler.jsonc`. For a later release:
 
-1. Set `VITE_CONVEX_URL` to the intended deployed Convex URL during the frontend build.
-2. Build and publish the Worker through the existing release process.
-3. Attach `poker.stefanbt.com` as the Worker custom domain in Cloudflare.
+1. Add a production deploy key from the Convex dashboard as the encrypted
+   `CONVEX_DEPLOY_KEY` build variable in Cloudflare.
+2. Configure Cloudflare Builds with `bun run build:cloudflare` as the build
+   command and `bunx wrangler deploy` as the deploy command. The Convex deploy
+   supplies the production URL to Vite as `VITE_CONVEX_URL`; do not configure a
+   separate static value for it in Cloudflare.
+3. Keep the root directory as `/`. The Worker serves `dist` according to
+   `wrangler.jsonc`.
+4. Attach `poker.stefanbt.com` as the Worker custom domain in Cloudflare.
+
+For an intentional local production release, `bun run deploy` performs the
+same Convex-backed build and then publishes the Worker. Both release paths
+deploy the production Convex backend and require `CONVEX_DEPLOY_KEY` in CI (or
+an authenticated Convex project locally).
 
 Invite routing uses URL fragments, so direct loads and refreshes do not require additional server routes.
