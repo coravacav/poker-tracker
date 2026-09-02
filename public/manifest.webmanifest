@@ -1,0 +1,17 @@
+{
+  "name": "Poker Tracker",
+  "short_name": "Poker",
+  "description": "A local-first poker chip, bank, and settlement ledger.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101512",
+  "theme_color": "#183f2c",
+  "icons": [
+    {
+      "src": "/poker-tracker-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -147,6 +147,20 @@ td {
   backdrop-filter: blur(10px);
 }
 
+.offline-status,
+.install-app-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.offline-status {
+  color: #f0b35f;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .app-nav {
   display: inline-flex;
   flex-wrap: wrap;

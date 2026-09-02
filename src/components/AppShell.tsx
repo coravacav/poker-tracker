@@ -6,6 +6,7 @@ import {
   isRecentTransactionAction
 } from "../domain/recentTransactionAction";
 import type { RecentTransactionAction } from "../domain/recentTransactionAction";
+import { PwaControls } from "./PwaControls";
 
 export type AppMode = "setup" | "play" | "cash_out" | "settle";
 
@@ -117,6 +118,7 @@ export function AppShell({
           <h1>Poker Tracker</h1>
         </div>
         {sessionControls}
+        <PwaControls />
         {notifications}
         <nav className="app-nav" aria-label="Poker tracker modes">
           {mode === "play" && !hideLayoutEditing && !guest ? (
