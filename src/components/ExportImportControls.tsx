@@ -4,6 +4,7 @@ import type { Dispatch } from "react";
 import type { GameAction } from "../state/gameReducer";
 import type { GameState } from "../domain/pokerTypes";
 import { validatePersistedState } from "../domain/validation";
+import { archiveGame } from "../domain/sessionHistory";
 
 type ExportImportControlsProps = {
   dispatch: Dispatch<GameAction>;
@@ -53,7 +54,8 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
   }
 
   function resetGame() {
-    if (window.confirm("Reset this poker session? The current local game will be replaced.")) {
+    if (window.confirm("Archive this poker session and start a new game?")) {
+      archiveGame(state);
       dispatch({ type: "reset_game" });
       setError(null);
     }
@@ -73,7 +75,7 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
       >
         <Upload size={17} />
       </button>
-      <button className="icon-button danger" type="button" disabled={readOnly} onClick={resetGame} title="Reset game">
+      <button className="icon-button danger" type="button" disabled={readOnly} onClick={resetGame} title="Archive and start new game">
         <RotateCcw size={17} />
       </button>
       <input

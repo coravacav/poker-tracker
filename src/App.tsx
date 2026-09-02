@@ -13,6 +13,7 @@ import { SharedNotifications } from "./components/SharedNotifications";
 import { TableSetupPanel } from "./components/TableSetupPanel";
 import { TransactionForm } from "./components/TransactionForm";
 import { TransactionTable } from "./components/TransactionTable";
+import { SessionHistoryPanel } from "./components/SessionHistoryPanel";
 import { GuestJoinScreen } from "./components/GuestJoinScreen";
 import {
   GuestSessionControls,
@@ -384,6 +385,7 @@ function GameApp({
               dispatch={dispatch}
               readOnly={readOnly}
             />
+            <SessionHistoryPanel />
           </div>
         }
         play={

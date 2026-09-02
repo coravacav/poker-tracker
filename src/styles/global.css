@@ -239,6 +239,25 @@ td {
   margin: 0 auto;
 }
 
+.session-history-panel {
+  grid-column: 1 / -1;
+}
+
+.history-stat-list {
+  display: grid;
+  gap: 6px;
+}
+
+.history-stat-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .play-mode {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 270px;
