@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import type { GameState } from "../domain/pokerTypes";
 import { gameReducer } from "../state/gameReducer";
 import { STORAGE_KEY } from "../state/persistence";
 import { LAST_VISIT_KEY } from "../session/localEntry";
+import { saveHostRecovery } from "../session/sessionPersistence";
 import { createDefaultGameState } from "../state/seedGame";
 import type {
   GuestRoomProjection,
@@ -27,6 +28,7 @@ function projection(state: GameState): RoomProjection {
 function fakeTransport(state = createDefaultGameState()) {
   let room = projection(state);
   let hostListener: ((value: HostRoomProjection) => void) | null = null;
+  let hostError: ((error: Error) => void) | null = null;
   let guestListener: ((value: GuestRoomProjection) => void) | null = null;
   const createRoom = vi.fn(async (_args: Parameters<RoomTransport["createRoom"]>[0]) => room);
   const endRoom = vi.fn(async (_args: Parameters<RoomTransport["endRoom"]>[0]) => ({
@@ -44,10 +46,12 @@ function fakeTransport(state = createDefaultGameState()) {
     createRoom,
     getInvitePreview: vi.fn(async () => ({ status: "active" as const, name: room.name })),
     joinRoom: vi.fn(async ({ displayName }) => ({ ...room, displayName })),
-    subscribeHost(_args, onUpdate) {
+    subscribeHost(_args, onUpdate, onError) {
       hostListener = onUpdate;
+      hostError = onError;
       return () => {
         hostListener = null;
+        hostError = null;
       };
     },
     subscribeGuest(_args, onUpdate) {
@@ -82,6 +86,9 @@ function fakeTransport(state = createDefaultGameState()) {
     endRoom,
     emitHost(value: HostRoomProjection) {
       hostListener?.(value);
+    },
+    emitHostError(error: Error) {
+      hostError?.(error);
     },
     emitGuest(value: GuestRoomProjection) {
       guestListener?.(value);
@@ -125,6 +132,98 @@ describe("realtime sharing UI", () => {
       await screen.findByText("Game sharing is unavailable right now. Please try again later.")
     ).toBeInTheDocument();
     expect(screen.queryByText(/VITE_|Convex|configured/i)).not.toBeInTheDocument();
+  });
+
+  it("moves a missing host room into recoverable local mode", async () => {
+    const local = createDefaultGameState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+    saveHostRecovery({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      localGameId: local.localGameId,
+      hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteSecret: "invite_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteUrl: "https://example.test/#/join/room_public_123456/invite",
+      roomName: "Poker Night",
+      lastKnownVersion: 4
+    });
+    const fake = fakeTransport(local);
+
+    render(<App roomTransport={fake.transport} />);
+    expect(await screen.findByText("Restoring the shared room…")).toBeInTheDocument();
+
+    const accepted = {
+      ...local,
+      settings: { ...local.settings, gameName: "Accepted remote state" }
+    };
+    act(() => {
+      fake.emitHost({
+        ...projection(accepted),
+        guestCount: 0,
+        guestRequests: [],
+        joiningOpen: true,
+        guests: [],
+        controllerStatus: "active"
+      });
+    });
+
+    act(() => {
+      fake.emitHostError(
+        Object.assign(new Error("Shared room was not found."), {
+          data: { code: "ROOM_NOT_FOUND", message: "Shared room was not found." }
+        })
+      );
+    });
+
+    expect(await screen.findByText("Shared room unavailable.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share unavailable" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create new share" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Guest invitation QR code")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stop sharing" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue locally" }));
+    expect(await screen.findByRole("button", { name: "Share game" })).toBeInTheDocument();
+    expect(localStorage.getItem("poker-tracker:v1:hosted-room")).toBeNull();
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null")).toMatchObject({
+      localGameId: local.localGameId,
+      settings: { gameName: "Accepted remote state" }
+    });
+  });
+
+  it("can retry a missing room and resume sharing when it returns", async () => {
+    const local = createDefaultGameState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+    saveHostRecovery({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      localGameId: local.localGameId,
+      hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteSecret: "invite_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteUrl: "https://example.test/#/join/room_public_123456/invite",
+      roomName: "Poker Night",
+      lastKnownVersion: 4
+    });
+    const fake = fakeTransport(local);
+    render(<App roomTransport={fake.transport} />);
+    await screen.findByText("Restoring the shared room…");
+    act(() => fake.emitHostError(new Error("Shared room was not found.")));
+    await screen.findByText("Shared room unavailable.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry room" }));
+    await screen.findByText("Restoring the shared room…");
+    act(() => {
+      fake.emitHost({
+        ...projection(local),
+        guestCount: 0,
+        guestRequests: [],
+        joiningOpen: true,
+        guests: [],
+        controllerStatus: "active"
+      });
+    });
+
+    expect(await screen.findByRole("button", { name: "Sharing live" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Guest invitation QR code")).toBeInTheDocument();
   });
 
   it("joins as a named read-only guest without overwriting the local game", async () => {

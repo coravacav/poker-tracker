@@ -43,6 +43,7 @@ Neither value is a host or guest room credential. Do not commit `.env.local`, de
 - Sharing is explicit. Convex receives a bounded snapshot only when the host chooses **Share game**.
 - While active, Convex is authoritative. The host sends versioned reducer actions, waits for server acceptance, and only then caches the accepted state locally. Financial actions are not optimistic or queued offline.
 - Host recovery credentials use a separate local-storage record. A tab-scoped controller ID ensures only one host tab can edit; another tab may explicitly take control.
+- If the saved host room cannot be found, the app stops presenting stale sharing controls, preserves the latest accepted local snapshot, and offers retry, local continuation, or a fresh share.
 - Guests receive a revocable, tab-scoped capability in `sessionStorage`. Guest room snapshots never write to normal local-game storage.
 - Stopping sharing marks the room ended and confirms its final authoritative snapshot before replacing the host’s local state. If that write fails or the response cannot be confirmed, recovery metadata remains and the host sees **Recovery needed** with a retry action.
 

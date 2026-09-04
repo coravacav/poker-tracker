@@ -13,7 +13,11 @@ const SHARING_REQUEST_FAILED_MESSAGE =
 
 function deploymentUrl(): string | null {
   const value = import.meta.env.VITE_CONVEX_URL?.trim();
-  return value || null;
+  return value ? value.replace(/\/+$/, "") : null;
+}
+
+export function configuredDeploymentUrl(): string | null {
+  return deploymentUrl();
 }
 
 function getClient(): ConvexClient {
@@ -101,14 +105,33 @@ export const convexRoomTransport: RoomTransport = {
 };
 
 export function roomErrorMessage(error: unknown): string {
-  if (error && typeof error === "object" && "data" in error) {
-    const data = (error as { data?: unknown }).data;
-    if (data && typeof data === "object" && "message" in data) {
-      const message = (data as { message?: unknown }).message;
-      if (typeof message === "string") return message;
-    }
+  const data = convexErrorData(error);
+  if (data?.message) {
+    return data.message;
+  }
+  if (error instanceof Error && error.message === "Shared room was not found.") {
+    return error.message;
   }
   return error instanceof Error && error.message === SHARING_UNAVAILABLE_MESSAGE
     ? SHARING_UNAVAILABLE_MESSAGE
     : SHARING_REQUEST_FAILED_MESSAGE;
+}
+
+export function roomErrorCode(error: unknown): string | null {
+  const data = convexErrorData(error);
+  if (data?.code) return data.code;
+  const message = data?.message ?? (error instanceof Error ? error.message : null);
+  if (message === "Shared room was not found.") return "ROOM_NOT_FOUND";
+  return null;
+}
+
+function convexErrorData(error: unknown): { code?: string; message?: string } | null {
+  if (!error || typeof error !== "object" || !("data" in error)) return null;
+  const data = (error as { data?: unknown }).data;
+  if (!data || typeof data !== "object") return null;
+  const candidate = data as { code?: unknown; message?: unknown };
+  return {
+    code: typeof candidate.code === "string" ? candidate.code : undefined,
+    message: typeof candidate.message === "string" ? candidate.message : undefined
+  };
 }

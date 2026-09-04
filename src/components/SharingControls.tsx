@@ -10,12 +10,17 @@ type HostSharingControlsProps = {
   recovery: HostRecovery;
   room: HostRoomProjection | null;
   connected: boolean;
+  roomReady: boolean;
+  roomUnavailable: boolean;
   pending: boolean;
   recoveryRequired: boolean;
   error: string | null;
   onClaimHost: () => void;
   onEnd: () => void;
   onRetryRecovery: () => void;
+  onRetryRoom: () => void;
+  onContinueLocally: () => void;
+  onCreateNewShare: () => void;
   onDecideGuestTransaction: (
     requestId: Id<"roomGuestRequests">,
     decision: "approved" | "rejected"
@@ -38,12 +43,17 @@ export function HostSharingControls({
   recovery,
   room,
   connected,
+  roomReady,
+  roomUnavailable,
   pending,
   recoveryRequired,
   error,
   onClaimHost,
   onEnd,
   onRetryRecovery,
+  onRetryRoom,
+  onContinueLocally,
+  onCreateNewShare,
   onDecideGuestTransaction,
   onSetJoiningOpen,
   onRotateInvite,
@@ -63,11 +73,20 @@ export function HostSharingControls({
     }
   }
 
+  const sharingLive = connected && roomReady && room?.status === "active";
+  const statusLabel = recoveryRequired
+    ? "Recovery needed"
+    : roomUnavailable
+      ? "Share unavailable"
+      : sharingLive
+        ? "Sharing live"
+        : "Reconnecting";
+
   return (
     <div className="sharing-controls">
       <button className="share-button is-active" type="button" onClick={() => setOpen(true)}>
-        {connected ? <Radio size={16} /> : <WifiOff size={16} />}
-        {recoveryRequired ? "Recovery needed" : connected ? "Sharing live" : "Reconnecting"}
+        {sharingLive ? <Radio size={16} /> : <WifiOff size={16} />}
+        {statusLabel}
       </button>
       {open
         ? createPortal(
@@ -86,92 +105,126 @@ export function HostSharingControls({
                 </div>
 
                 <div className="share-dialog-body">
-                  <div className="share-qr" aria-label="Guest invitation QR code">
-                    <QRCodeSVG value={recovery.inviteUrl} size={210} level="M" marginSize={2} />
-                  </div>
-                  <p className="muted">Guests scan this code with their normal camera for a read-only live view.</p>
-                  <label className="invite-link-field">
-                    <span>Invite link</span>
-                    <span>
-                      <input aria-label="Invite link" readOnly value={recovery.inviteUrl} />
-                      <button className="text-button" type="button" onClick={() => void copyInvite()}>
-                        <Copy size={15} /> {copied ? "Copied" : "Copy"}
-                      </button>
-                    </span>
-                  </label>
-                  <div className="invite-management-row">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={room?.joiningOpen !== false}
-                        onChange={(event) => onSetJoiningOpen(event.currentTarget.checked)}
-                      />
-                      Accept new guests
-                    </label>
-                    <button className="text-button" type="button" onClick={onRotateInvite}>
-                      <RefreshCw size={15} /> Rotate invite
-                    </button>
-                  </div>
-                  <div className="guest-count"><UserRound size={16} /> {room?.guestCount ?? 0} connected guests</div>
-                  {(room?.guests?.length ?? 0) > 0 ? (
-                    <div className="guest-management-list">
-                      {room?.guests?.map((guest) => (
-                        <div className="guest-management-item" key={guest.id}>
-                          <span className={guest.connected ? "positive" : "muted"}>
-                            {guest.displayName} · {guest.revoked ? "Revoked" : guest.connected ? "Online" : "Offline"}
-                          </span>
-                          {!guest.revoked ? (
-                            <button className="text-button danger" type="button" onClick={() => onRevokeGuest(guest.id)}>
-                              Revoke
-                            </button>
-                          ) : null}
+                  {roomUnavailable ? (
+                    <>
+                      <div className="notice notice-warning">
+                        <div className="share-recovery-copy">
+                          <strong>Shared room unavailable.</strong>
+                          <p>
+                            {error ?? "The room could not be found on the current deployment."}
+                          </p>
+                          <p>Your latest accepted game is safe on this device. The old invite will not work.</p>
                         </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {(room?.guestRequests?.length ?? 0) > 0 ? (
-                    <div className="guest-request-list">
-                      <h3>Guest requests</h3>
-                      {room?.guestRequests?.map((request) => (
-                        <article key={request.id} className="guest-request-item">
-                          <div>
-                            <strong>{request.displayName ?? "Guest"}</strong>
-                            <span>
-                              {request.transaction.type.replace(/_/g, " ")} · {formatCurrency(request.transaction.amountCents)}
-                            </span>
-                          </div>
-                          <div>
-                            <button className="text-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "rejected")}>Reject</button>
-                            <button className="primary-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "approved")}>Approve</button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : null}
-                  {!connected ? <div className="notice notice-warning">Host edits are paused until the room reconnects.</div> : null}
-                  {duplicate ? (
-                    <div className="notice notice-warning">
-                      Another tab currently controls this room.
-                      <button className="text-button" type="button" onClick={onClaimHost}>Take control here</button>
-                    </div>
-                  ) : null}
-                  {error ? <div className="notice notice-warning">{error}</div> : null}
-                  <div className="share-dialog-actions">
-                    {recoveryRequired ? (
-                      <button className="primary-button" type="button" onClick={onRetryRecovery}>
-                        <RefreshCw size={16} /> Retry final sync
-                      </button>
-                    ) : (
-                      <button
-                        className="danger-button"
-                        type="button"
-                        disabled={!connected || pending || duplicate}
-                        onClick={onEnd}
-                      >
-                        <StopCircle size={16} /> {pending ? "Finishing…" : "Stop sharing"}
-                      </button>
-                    )}
-                  </div>
+                      </div>
+                      <div className="share-dialog-actions">
+                        <button className="primary-button" type="button" onClick={onRetryRoom}>
+                          <RefreshCw size={16} /> Retry room
+                        </button>
+                        <button className="primary-button" type="button" onClick={onCreateNewShare}>
+                          <Share2 size={16} /> Create new share
+                        </button>
+                        <button className="text-button" type="button" onClick={onContinueLocally}>
+                          Continue locally
+                        </button>
+                      </div>
+                    </>
+                  ) : !roomReady || !room ? (
+                    <>
+                      <div className="notice notice-warning">
+                        {connected ? "Restoring the shared room…" : "Waiting for the shared room connection…"}
+                      </div>
+                      {error ? <div className="notice notice-warning">{error}</div> : null}
+                    </>
+                  ) : (
+                    <>
+                      <div className="share-qr" aria-label="Guest invitation QR code">
+                        <QRCodeSVG value={recovery.inviteUrl} size={210} level="M" marginSize={2} />
+                      </div>
+                      <p className="muted">Guests scan this code with their normal camera for a read-only live view.</p>
+                      <label className="invite-link-field">
+                        <span>Invite link</span>
+                        <span>
+                          <input aria-label="Invite link" readOnly value={recovery.inviteUrl} />
+                          <button className="text-button" type="button" onClick={() => void copyInvite()}>
+                            <Copy size={15} /> {copied ? "Copied" : "Copy"}
+                          </button>
+                        </span>
+                      </label>
+                      <div className="invite-management-row">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={room.joiningOpen !== false}
+                            onChange={(event) => onSetJoiningOpen(event.currentTarget.checked)}
+                          />
+                          Accept new guests
+                        </label>
+                        <button className="text-button" type="button" onClick={onRotateInvite}>
+                          <RefreshCw size={15} /> Rotate invite
+                        </button>
+                      </div>
+                      <div className="guest-count"><UserRound size={16} /> {room.guestCount} connected guests</div>
+                      {(room.guests?.length ?? 0) > 0 ? (
+                        <div className="guest-management-list">
+                          {room.guests?.map((guest) => (
+                            <div className="guest-management-item" key={guest.id}>
+                              <span className={guest.connected ? "positive" : "muted"}>
+                                {guest.displayName} · {guest.revoked ? "Revoked" : guest.connected ? "Online" : "Offline"}
+                              </span>
+                              {!guest.revoked ? (
+                                <button className="text-button danger" type="button" onClick={() => onRevokeGuest(guest.id)}>
+                                  Revoke
+                                </button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      {(room.guestRequests?.length ?? 0) > 0 ? (
+                        <div className="guest-request-list">
+                          <h3>Guest requests</h3>
+                          {room.guestRequests?.map((request) => (
+                            <article key={request.id} className="guest-request-item">
+                              <div>
+                                <strong>{request.displayName ?? "Guest"}</strong>
+                                <span>
+                                  {request.transaction.type.replace(/_/g, " ")} · {formatCurrency(request.transaction.amountCents)}
+                                </span>
+                              </div>
+                              <div>
+                                <button className="text-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "rejected")}>Reject</button>
+                                <button className="primary-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "approved")}>Approve</button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                      {!connected ? <div className="notice notice-warning">Host edits are paused until the room reconnects.</div> : null}
+                      {duplicate ? (
+                        <div className="notice notice-warning">
+                          Another tab currently controls this room.
+                          <button className="text-button" type="button" onClick={onClaimHost}>Take control here</button>
+                        </div>
+                      ) : null}
+                      {error ? <div className="notice notice-warning">{error}</div> : null}
+                      <div className="share-dialog-actions">
+                        {recoveryRequired ? (
+                          <button className="primary-button" type="button" onClick={onRetryRecovery}>
+                            <RefreshCw size={16} /> Retry final sync
+                          </button>
+                        ) : (
+                          <button
+                            className="danger-button"
+                            type="button"
+                            disabled={!connected || !roomReady || pending || duplicate}
+                            onClick={onEnd}
+                          >
+                            <StopCircle size={16} /> {pending ? "Finishing…" : "Stop sharing"}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </section>
             </div>,

@@ -89,6 +89,7 @@ export type HostRecovery = {
   inviteUrl: string;
   roomName: string;
   lastKnownVersion: number;
+  deploymentUrl?: string;
   endingActionId?: string;
 };
 

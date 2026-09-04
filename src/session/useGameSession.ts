@@ -25,8 +25,10 @@ import {
   type LocalEntry
 } from "./localEntry";
 import {
+  configuredDeploymentUrl,
   convexRoomTransport,
   roomErrorMessage,
+  roomErrorCode,
   SHARING_UNAVAILABLE_MESSAGE
 } from "./convexRoomTransport";
 import {
@@ -67,10 +69,11 @@ type GuestState = {
 };
 
 type HostState = {
-  mode: "hosting" | "creating_room" | "ending" | "recovery_required";
+  mode: "hosting" | "creating_room" | "ending" | "recovery_required" | "room_unavailable";
   recovery: HostRecovery | null;
   room: HostRoomProjection | null;
   connected: boolean;
+  roomReady: boolean;
   pending: boolean;
   error: string | null;
 };
@@ -79,6 +82,11 @@ type LocalState = { mode: "local"; notice: string | null };
 type InvalidState = { mode: "invalid_invite"; message: string };
 type SessionState = LocalState | InviteState | GuestState | HostState | InvalidState;
 export type LocalEntryDestination = "play" | "setup";
+
+const ROOM_UNAVAILABLE_COPY =
+  "The shared room is unavailable. Your latest accepted game is safe on this device.";
+const DEPLOYMENT_MISMATCH_COPY =
+  "This shared room belongs to a different deployment. Your local copy is safe on this device.";
 
 function normalizeRoomState(value: unknown): GameState | null {
   if (
@@ -91,17 +99,22 @@ function normalizeRoomState(value: unknown): GameState | null {
   return migratePersistedState(value);
 }
 
-function updateHostRecovery(recovery: HostRecovery, room: HostRoomProjection): HostRecovery {
-  const next = {
+function updateHostRecovery(
+  recovery: HostRecovery,
+  room: HostRoomProjection,
+  deploymentUrl: string | null
+): HostRecovery {
+  const next: HostRecovery = {
     ...recovery,
     roomName: room.name,
-    lastKnownVersion: room.version
+    lastKnownVersion: room.version,
+    ...(deploymentUrl ? { deploymentUrl } : {})
   };
   saveHostRecovery(next);
   return next;
 }
 
-function initialSession(localGameId: string): SessionState {
+function initialSession(localGameId: string, deploymentUrl: string | null): SessionState {
   const route = parseInviteRoute();
   if (route.kind === "invite") {
     return {
@@ -123,13 +136,18 @@ function initialSession(localGameId: string): SessionState {
   }
   const recovery = loadHostRecovery();
   if (recovery?.localGameId === localGameId) {
+    const deploymentMismatch =
+      recovery.deploymentUrl !== undefined &&
+      deploymentUrl !== null &&
+      recovery.deploymentUrl !== deploymentUrl;
     return {
-      mode: "hosting",
+      mode: deploymentMismatch ? "room_unavailable" : "hosting",
       recovery,
       room: null,
       connected: false,
+      roomReady: false,
       pending: false,
-      error: null
+      error: deploymentMismatch ? DEPLOYMENT_MISMATCH_COPY : null
     };
   }
   return { mode: "local", notice: null };
@@ -137,9 +155,12 @@ function initialSession(localGameId: string): SessionState {
 
 export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const [localState, localDispatch] = useReducer(gameReducer, undefined, loadGameState);
-  const [session, setSession] = useState<SessionState>(() => initialSession(localState.localGameId));
+  const deploymentUrl = transport === convexRoomTransport ? configuredDeploymentUrl() : null;
+  const [session, setSession] = useState<SessionState>(() =>
+    initialSession(localState.localGameId, deploymentUrl)
+  );
   const [localEntry, setLocalEntry] = useState<LocalEntry | null>(() => {
-    const initial = initialSession(localState.localGameId);
+    const initial = initialSession(localState.localGameId, deploymentUrl);
     return initial.mode === "local" ? loadInitialLocalEntry() : null;
   });
   const [localEntryDestination, setLocalEntryDestination] =
@@ -147,6 +168,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const [roomHistory, setRoomHistory] = useState<RoomHistoryProjection[]>([]);
   const sessionRef = useRef(session);
   const localStateRef = useRef(localState);
+  const lastAcceptedHostStateRef = useRef(localState);
   const localEntryRef = useRef(localEntry);
   const mutationPending = useRef(false);
   const historyCredentialSavedRef = useRef(new Set<string>());
@@ -214,7 +236,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         current.mode === "hosting" ||
         current.mode === "creating_room" ||
         current.mode === "ending" ||
-        current.mode === "recovery_required"
+        current.mode === "recovery_required" ||
+        current.mode === "room_unavailable"
       ) {
         writeLastVisitAt();
       }
@@ -245,7 +268,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         current.mode === "hosting" ||
         current.mode === "creating_room" ||
         current.mode === "ending" ||
-        current.mode === "recovery_required"
+        current.mode === "recovery_required" ||
+        current.mode === "room_unavailable"
       ) {
         writeLastVisitAt();
       }
@@ -287,7 +311,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         current.mode === "hosting" ||
         current.mode === "creating_room" ||
         current.mode === "ending" ||
-        current.mode === "recovery_required"
+        current.mode === "recovery_required" ||
+        current.mode === "room_unavailable"
           ? { ...current, connected }
           : current
       );
@@ -347,15 +372,16 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       } else {
         setSession({
           mode: "recovery_required",
-          recovery: updateHostRecovery(recovery, room),
+          recovery: updateHostRecovery(recovery, room, deploymentUrl),
           room,
           connected: transport.connectionState(),
+          roomReady: true,
           pending: false,
           error: "The room ended, but its final state could not be saved locally. Retry recovery before continuing."
         });
       }
     },
-    [transport]
+    [deploymentUrl, transport]
   );
 
   useEffect(() => {
@@ -375,7 +401,11 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         if (!normalizedState || normalizedState.localGameId !== recovery.localGameId) {
           setSession((current) =>
             current.mode === "hosting" || current.mode === "ending" || current.mode === "recovery_required"
-              ? { ...current, error: "The hosted room returned an invalid game snapshot." }
+              ? {
+                  ...current,
+                  roomReady: false,
+                  error: "The hosted room returned an invalid game snapshot."
+                }
               : current
           );
           return;
@@ -385,7 +415,9 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
           finishHostSession(normalizedRoom, recovery);
           return;
         }
-        const nextRecovery = updateHostRecovery(recovery, normalizedRoom);
+        const nextRecovery = updateHostRecovery(recovery, normalizedRoom, deploymentUrl);
+        lastAcceptedHostStateRef.current = normalizedState;
+        localDispatch({ type: "replace_state_from_import", state: normalizedState });
         const persisted = trySaveGameState(normalizedState);
         setSession((current) =>
           current.mode === "hosting" || current.mode === "ending" || current.mode === "recovery_required"
@@ -394,17 +426,33 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
                 mode: "hosting",
                 recovery: nextRecovery,
                 room: normalizedRoom,
+                roomReady: true,
                 error: persisted ? null : "Accepted room state could not be cached locally."
               }
             : current
         );
       },
       (error) => {
-        setSession((current) =>
-          current.mode === "hosting" || current.mode === "ending" || current.mode === "recovery_required"
-            ? { ...current, error: roomErrorMessage(error) }
-            : current
-        );
+        setSession((current) => {
+          if (
+            current.mode !== "hosting" &&
+            current.mode !== "ending" &&
+            current.mode !== "recovery_required"
+          ) {
+            return current;
+          }
+          if (roomErrorCode(error) === "ROOM_NOT_FOUND") {
+            return {
+              ...current,
+              mode: "room_unavailable",
+              room: null,
+              roomReady: false,
+              pending: false,
+              error: roomErrorMessage(error)
+            };
+          }
+          return { ...current, roomReady: false, error: roomErrorMessage(error) };
+        });
       }
     );
   }, [
@@ -413,6 +461,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     "recovery" in session ? session.recovery?.publicId : null,
     "recovery" in session ? session.recovery?.hostSecret : null,
     "recovery" in session ? session.recovery?.localGameId : null,
+    deploymentUrl,
     transport
   ]);
 
@@ -469,16 +518,22 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   }, [session.mode, session.mode === "guest" ? session.credentials : null, transport]);
 
   const shareGame = useCallback(async () => {
-    if (sessionRef.current.mode !== "local") return;
+    const current = sessionRef.current;
+    if (current.mode !== "local" && current.mode !== "room_unavailable") return;
     if (!transport.configured) {
       setSession({ mode: "local", notice: SHARING_UNAVAILABLE_MESSAGE });
       return;
     }
+    const sourceState =
+      current.mode === "room_unavailable"
+        ? lastAcceptedHostStateRef.current
+        : localStateRef.current;
     setSession({
       mode: "creating_room",
       recovery: null,
       room: null,
       connected: transport.connectionState(),
+      roomReady: false,
       pending: true,
       error: null
     });
@@ -492,12 +547,13 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       provisionalRecovery = {
         schemaVersion: 1,
         publicId,
-        localGameId: localState.localGameId,
+        localGameId: sourceState.localGameId,
         hostSecret,
         inviteSecret,
         inviteUrl,
-        roomName: localState.settings.gameName.trim() || "Poker Night",
-        lastKnownVersion: 0
+        roomName: sourceState.settings.gameName.trim() || "Poker Night",
+        lastKnownVersion: 0,
+        ...(deploymentUrl ? { deploymentUrl } : {})
       };
       if (!saveHostRecovery(provisionalRecovery)) {
         throw new Error("The host recovery capability could not be saved locally.");
@@ -507,8 +563,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       );
       const room = await transport.createRoom({
         publicId,
-        localGameId: localState.localGameId,
-        snapshot: localState,
+        localGameId: sourceState.localGameId,
+        snapshot: sourceState,
         hostSecret,
         inviteSecret,
         controllerId
@@ -518,6 +574,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         throw new Error("The room returned an invalid game snapshot.");
       }
       const normalizedRoom = { ...room, state: normalizedState };
+      lastAcceptedHostStateRef.current = normalizedState;
+      localDispatch({ type: "replace_state_from_import", state: normalizedState });
       const recovery: HostRecovery = {
         ...provisionalRecovery,
         roomName: normalizedRoom.name,
@@ -543,6 +601,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
           controllerStatus: "active"
         },
         connected: transport.connectionState(),
+        roomReady: true,
         pending: false,
         error: null
       });
@@ -550,7 +609,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       if (provisionalRecovery) clearHostRecovery();
       setSession({ mode: "local", notice: roomErrorMessage(error) });
     }
-  }, [localState, refreshRoomHistory, transport]);
+  }, [deploymentUrl, refreshRoomHistory, transport]);
 
   const joinGame = useCallback(
     async (displayName: string) => {
@@ -644,13 +703,16 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
             guestCount: current.room!.guestCount,
             controllerStatus: "active"
           };
-          const recovery = updateHostRecovery(current.recovery!, nextRoom);
+          const recovery = updateHostRecovery(current.recovery!, nextRoom, deploymentUrl);
+          lastAcceptedHostStateRef.current = nextRoom.state;
+          localDispatch({ type: "replace_state_from_import", state: nextRoom.state });
           const persisted = trySaveGameState(nextRoom.state);
           setSession({
             mode: "hosting",
             recovery,
             room: nextRoom,
             connected: transport.connectionState(),
+            roomReady: true,
             pending: false,
             error: persisted ? null : "Accepted room state could not be cached locally."
           });
@@ -664,7 +726,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
           );
         });
     },
-    [transport]
+    [deploymentUrl, transport]
   );
 
   const endSharing = useCallback(async () => {
@@ -711,6 +773,39 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       void endSharing();
     }
   }, [endSharing, finishHostSession]);
+
+  const retryUnavailableRoom = useCallback(() => {
+    const current = sessionRef.current;
+    if (current.mode !== "room_unavailable" || !current.recovery) return;
+    setSession({
+      ...current,
+      mode: "hosting",
+      room: null,
+      roomReady: false,
+      connected: transport.connectionState(),
+      pending: false,
+      error: null
+    });
+  }, [transport]);
+
+  const continueLocally = useCallback(() => {
+    const current = sessionRef.current;
+    if (current.mode !== "room_unavailable") return;
+    const stateToKeep = lastAcceptedHostStateRef.current;
+    if (!trySaveGameState(stateToKeep)) {
+      setSession({
+        ...current,
+        error: "Could not save the local copy. Keep this recovery record and try again."
+      });
+      return;
+    }
+    localDispatch({ type: "replace_state_from_import", state: stateToKeep });
+    clearHostRecovery();
+    setSession({
+      mode: "local",
+      notice: "The shared room is unavailable. Your latest accepted game is safe locally."
+    });
+  }, []);
 
   const claimHost = useCallback(async () => {
     const current = sessionRef.current;
@@ -900,7 +995,10 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const state =
     session.mode === "guest" && session.room
       ? session.room.state
-      : (session.mode === "hosting" || session.mode === "ending" || session.mode === "recovery_required") &&
+      : (session.mode === "hosting" ||
+          session.mode === "ending" ||
+          session.mode === "recovery_required" ||
+          session.mode === "room_unavailable") &&
           session.room
         ? session.room.state
         : localState;
@@ -909,8 +1007,12 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     session.mode === "creating_room" ||
     session.mode === "ending" ||
     session.mode === "recovery_required" ||
+    session.mode === "room_unavailable" ||
     (session.mode === "hosting" &&
-      (!session.connected || session.pending || session.room?.controllerStatus !== "active"));
+      (!session.connected ||
+        !session.roomReady ||
+        session.pending ||
+        session.room?.controllerStatus !== "active"));
 
   return {
     state,
@@ -922,6 +1024,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     joinGame,
     endSharing,
     retryRecovery,
+    retryUnavailableRoom,
+    continueLocally,
     claimHost,
     markNotificationsRead,
     submitGuestTransaction,

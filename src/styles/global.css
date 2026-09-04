@@ -900,6 +900,7 @@ label span {
 
 .share-dialog-actions {
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .danger-button {
@@ -1120,6 +1121,15 @@ label span {
 .notice-warning {
   color: var(--amber);
   background: var(--amber-soft);
+}
+
+.share-recovery-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.share-recovery-copy p {
+  margin: 0;
 }
 
 .notice-ok {

@@ -31,7 +31,8 @@ export function loadHostRecovery(): HostRecovery | null {
     isString(value.inviteSecret) &&
     isString(value.inviteUrl) &&
     isString(value.roomName) &&
-    typeof value.lastKnownVersion === "number"
+    typeof value.lastKnownVersion === "number" &&
+    (value.deploymentUrl === undefined || isString(value.deploymentUrl))
     ? (value as HostRecovery)
     : null;
 }

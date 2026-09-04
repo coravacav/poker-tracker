@@ -115,6 +115,9 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onClaimHost={() => void gameSession.claimHost()}
         onEnd={() => void gameSession.endSharing()}
         onRetryRecovery={gameSession.retryRecovery}
+        onRetryRoom={gameSession.retryUnavailableRoom}
+        onContinueLocally={gameSession.continueLocally}
+        onCreateNewShare={() => void gameSession.shareGame()}
         onDecideGuestTransaction={(requestId, decision) =>
           void gameSession.decideGuestTransaction(requestId, decision)
         }
@@ -124,6 +127,8 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         pending={session.pending}
         recovery={session.recovery}
         recoveryRequired={session.mode === "recovery_required"}
+        roomReady={session.roomReady}
+        roomUnavailable={session.mode === "room_unavailable"}
         room={session.room}
       />
     );
