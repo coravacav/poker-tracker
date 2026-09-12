@@ -10,7 +10,15 @@ import {
   useSensor,
   useSensors
 } from "@dnd-kit/core";
-import { FlipHorizontal2, RotateCcw, RotateCw, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  FlipHorizontal2,
+  FlipVertical2,
+  RotateCcw,
+  RotateCw,
+  X
+} from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Dispatch } from "react";
 import { centsToInputValue, formatCurrency, parseMoneyToCents } from "../domain/money";
@@ -690,16 +698,16 @@ export function PokerTable({
             <div
               className="player-arrangement-controls"
               role="group"
-              aria-label="Arrange players"
+              aria-label={compactView ? "Arrange player list" : "Arrange players"}
             >
               <button
                 type="button"
-                aria-label="Rotate players left"
-                title="Rotate players left"
+                aria-label={compactView ? "Shift player order up" : "Rotate players left"}
+                title={compactView ? "Shift player order up" : "Rotate players left"}
                 disabled={readOnly || activePlayers.length < 2}
                 onClick={() => arrangePlayers("rotate_left")}
               >
-                <RotateCcw size={17} />
+                {compactView ? <ArrowUp size={18} /> : <RotateCcw size={17} />}
               </button>
               <button
                 type="button"
@@ -708,16 +716,16 @@ export function PokerTable({
                 disabled={readOnly || activePlayers.length < 2}
                 onClick={() => arrangePlayers("reverse")}
               >
-                <FlipHorizontal2 size={17} />
+                {compactView ? <FlipVertical2 size={18} /> : <FlipHorizontal2 size={17} />}
               </button>
               <button
                 type="button"
-                aria-label="Rotate players right"
-                title="Rotate players right"
+                aria-label={compactView ? "Shift player order down" : "Rotate players right"}
+                title={compactView ? "Shift player order down" : "Rotate players right"}
                 disabled={readOnly || activePlayers.length < 2}
                 onClick={() => arrangePlayers("rotate_right")}
               >
-                <RotateCw size={17} />
+                {compactView ? <ArrowDown size={18} /> : <RotateCw size={17} />}
               </button>
             </div>
           ) : null}

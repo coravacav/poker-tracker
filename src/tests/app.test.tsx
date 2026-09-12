@@ -203,7 +203,7 @@ describe("App", () => {
     ]);
   });
 
-  it("keeps player arrangement controls available in the mobile player list", () => {
+  it("uses list-oriented arrangement controls in the mobile player list", () => {
     const originalInnerWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
 
@@ -212,17 +212,38 @@ describe("App", () => {
 
       expect(screen.queryByRole("button", { name: "Edit layout" }))
         .not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Rotate players left" }))
+      expect(screen.getByRole("button", { name: "Shift player order up" }))
         .toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Reverse player order" }))
         .toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Rotate players right" }))
+      expect(screen.getByRole("button", { name: "Shift player order down" }))
         .toBeInTheDocument();
 
+      const playerNames = () =>
+        screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);
+
+      fireEvent.click(screen.getByRole("button", { name: "Shift player order up" }));
+      expect(playerNames()).toEqual([
+        "Player 2",
+        "Player 3",
+        "Player 4",
+        "Player 5",
+        "Player 6",
+        "Player 1"
+      ]);
+
+      fireEvent.click(screen.getByRole("button", { name: "Shift player order down" }));
+      expect(playerNames()).toEqual([
+        "Player 1",
+        "Player 2",
+        "Player 3",
+        "Player 4",
+        "Player 5",
+        "Player 6"
+      ]);
+
       fireEvent.click(screen.getByRole("button", { name: "Reverse player order" }));
-      expect(
-        screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)
-      ).toEqual([
+      expect(playerNames()).toEqual([
         "Player 6",
         "Player 5",
         "Player 4",
