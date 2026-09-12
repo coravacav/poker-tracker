@@ -10,7 +10,7 @@ import {
   useSensor,
   useSensors
 } from "@dnd-kit/core";
-import { X } from "lucide-react";
+import { FlipHorizontal2, RotateCcw, RotateCw, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Dispatch } from "react";
 import { centsToInputValue, formatCurrency, parseMoneyToCents } from "../domain/money";
@@ -68,6 +68,8 @@ type RenameDraft = {
   playerId: PlayerId;
   nameInput: string;
 };
+
+type PlayerArrangement = "rotate_left" | "rotate_right" | "reverse";
 
 const SHAPES: Array<{ shape: TableShape; label: string }> = [
   { shape: "rectangle", label: "Rectangle" },
@@ -313,6 +315,43 @@ export function PokerTable({
         element.getBoundingClientRect()
       ])
     );
+  }
+
+  function arrangePlayers(arrangement: PlayerArrangement) {
+    const playersInTableOrder = seatSlots.map((slot) =>
+      playerBySeatIndex.get(slot.seatIndex)
+    );
+
+    if (
+      playersInTableOrder.length < 2 ||
+      playersInTableOrder.some((player) => !player)
+    ) {
+      return;
+    }
+
+    const currentPlayers = playersInTableOrder.filter(
+      (player): player is Player => player !== undefined
+    );
+    const arrangedPlayers =
+      arrangement === "rotate_left"
+        ? [...currentPlayers.slice(1), currentPlayers[0]]
+        : arrangement === "rotate_right"
+          ? [currentPlayers[currentPlayers.length - 1], ...currentPlayers.slice(0, -1)]
+          : [...currentPlayers].reverse();
+    const playerIdBySeatIndex = new Map(
+      seatSlots.map((slot, index) => [slot.seatIndex, arrangedPlayers[index].id])
+    );
+    const orderedPlayerIds = [...activePlayers]
+      .sort((left, right) => left.seatIndex - right.seatIndex)
+      .map((player) => playerIdBySeatIndex.get(player.seatIndex))
+      .filter((playerId): playerId is PlayerId => playerId !== undefined);
+
+    if (orderedPlayerIds.length !== activePlayers.length) {
+      return;
+    }
+
+    snapshotPlayerSeatRects();
+    dispatch({ type: "reorder_players", orderedPlayerIds });
   }
 
   useLayoutEffect(() => {
@@ -648,19 +687,54 @@ export function PokerTable({
         </div>
         <div className="table-toolbar-controls">
           {effectiveLayoutEditing ? (
-            <div className="shape-segments" aria-label="Table shape">
-              {SHAPES.map(({ shape, label }) => (
+            <>
+              <div
+                className="player-arrangement-controls"
+                role="group"
+                aria-label="Arrange players"
+              >
                 <button
-                  key={shape}
                   type="button"
-                  aria-pressed={tableShape === shape}
-                  disabled={readOnly}
-                  onClick={() => dispatch({ type: "set_table_shape", shape })}
+                  aria-label="Rotate players left"
+                  title="Rotate players left"
+                  disabled={readOnly || activePlayers.length < 2}
+                  onClick={() => arrangePlayers("rotate_left")}
                 >
-                  {label}
+                  <RotateCcw size={17} />
                 </button>
-              ))}
-            </div>
+                <button
+                  type="button"
+                  aria-label="Reverse player order"
+                  title="Reverse player order"
+                  disabled={readOnly || activePlayers.length < 2}
+                  onClick={() => arrangePlayers("reverse")}
+                >
+                  <FlipHorizontal2 size={17} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Rotate players right"
+                  title="Rotate players right"
+                  disabled={readOnly || activePlayers.length < 2}
+                  onClick={() => arrangePlayers("rotate_right")}
+                >
+                  <RotateCw size={17} />
+                </button>
+              </div>
+              <div className="shape-segments" aria-label="Table shape">
+                {SHAPES.map(({ shape, label }) => (
+                  <button
+                    key={shape}
+                    type="button"
+                    aria-pressed={tableShape === shape}
+                    disabled={readOnly}
+                    onClick={() => dispatch({ type: "set_table_shape", shape })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
           ) : null}
           <span className="default-buy-in">
             Default buy-in {formatCurrency(defaultBuyInCents)}

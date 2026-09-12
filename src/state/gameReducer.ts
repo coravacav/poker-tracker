@@ -374,15 +374,31 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       });
 
     case "reorder_players": {
+      const activePlayers = state.players.filter((player) => player.isActive);
+      const activePlayerIds = new Set(activePlayers.map((player) => player.id));
+      const orderedPlayerIds = action.orderedPlayerIds.filter(
+        (playerId, index, playerIds) =>
+          activePlayerIds.has(playerId) && playerIds.indexOf(playerId) === index
+      );
+
+      if (orderedPlayerIds.length !== activePlayers.length) {
+        return state;
+      }
+
+      const activeSeatIndexes = activePlayers
+        .map((player) => player.seatIndex)
+        .sort((left, right) => left - right);
       const seatById = new Map(
-        action.orderedPlayerIds.map((playerId, index) => [playerId, index])
+        orderedPlayerIds.map((playerId, index) => [playerId, activeSeatIndexes[index]])
       );
 
       return reconcileSeatIndexes({
         ...state,
         players: state.players.map((player) => ({
           ...player,
-          seatIndex: seatById.get(player.id) ?? player.seatIndex
+          seatIndex: player.isActive
+            ? seatById.get(player.id) ?? player.seatIndex
+            : player.seatIndex
         }))
       });
     }

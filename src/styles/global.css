@@ -1172,16 +1172,25 @@ label span {
   align-items: center;
 }
 
-.shape-segments {
+.shape-segments,
+.player-arrangement-controls {
   display: inline-grid;
-  grid-template-columns: repeat(3, minmax(82px, 1fr));
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
 }
 
-.shape-segments button {
+.shape-segments {
+  grid-template-columns: repeat(3, minmax(82px, 1fr));
+}
+
+.player-arrangement-controls {
+  grid-template-columns: repeat(3, 38px);
+}
+
+.shape-segments button,
+.player-arrangement-controls button {
   min-height: 36px;
   border: 0;
   border-right: 1px solid var(--line);
@@ -1192,8 +1201,20 @@ label span {
   font-weight: 800;
 }
 
-.shape-segments button:last-child {
+.player-arrangement-controls button {
+  display: inline-grid;
+  padding: 0;
+  place-items: center;
+}
+
+.shape-segments button:last-child,
+.player-arrangement-controls button:last-child {
   border-right: 0;
+}
+
+.player-arrangement-controls button:hover {
+  color: var(--green);
+  background: var(--green-soft);
 }
 
 .shape-segments button[aria-pressed="true"] {

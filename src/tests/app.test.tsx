@@ -32,6 +32,12 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Rectangle" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Oval" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Round" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rotate players left" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reverse player order" }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rotate players right" }))
+      .not.toBeInTheDocument();
     expect(screen.queryByTitle("Drag to move physical seat")).not.toBeInTheDocument();
     expect(screen.queryByTitle("Drag to move player")).not.toBeInTheDocument();
     expect(screen.queryByText("Seat 1")).not.toBeInTheDocument();
@@ -145,6 +151,56 @@ describe("App", () => {
       .toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Move seat to bottom position 4" }))
       .toBeInTheDocument();
+  });
+
+  it("rotates and reverses players without moving the physical seats", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit layout" }));
+    const pokerSeating = screen.getByLabelText("Poker seating");
+    const playerNamesInTableOrder = () =>
+      within(pokerSeating)
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent);
+
+    expect(playerNamesInTableOrder()).toEqual([
+      "Player 1",
+      "Player 2",
+      "Player 3",
+      "Player 4",
+      "Player 5",
+      "Player 6"
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rotate players left" }));
+    expect(playerNamesInTableOrder()).toEqual([
+      "Player 2",
+      "Player 3",
+      "Player 4",
+      "Player 5",
+      "Player 6",
+      "Player 1"
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rotate players right" }));
+    expect(playerNamesInTableOrder()).toEqual([
+      "Player 1",
+      "Player 2",
+      "Player 3",
+      "Player 4",
+      "Player 5",
+      "Player 6"
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reverse player order" }));
+    expect(playerNamesInTableOrder()).toEqual([
+      "Player 6",
+      "Player 5",
+      "Player 4",
+      "Player 3",
+      "Player 2",
+      "Player 1"
+    ]);
   });
 
   it("disables layout editing in read-only mode", () => {

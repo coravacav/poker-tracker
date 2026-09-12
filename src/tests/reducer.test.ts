@@ -60,6 +60,38 @@ describe("gameReducer", () => {
     ).toEqual(orderedPlayerIds);
   });
 
+  it("reorders players within the existing physical seat indexes", () => {
+    let state = createDefaultGameState();
+    const archivedPlayer = state.players[2];
+    state = gameReducer(state, {
+      type: "archive_player",
+      playerId: archivedPlayer.id
+    });
+    const placementsBefore = state.settings.tableSeatPlacements;
+    const activePlayers = state.players
+      .filter((player) => player.isActive)
+      .sort((left, right) => left.seatIndex - right.seatIndex);
+
+    state = gameReducer(state, {
+      type: "reorder_players",
+      orderedPlayerIds: activePlayers.map((player) => player.id).reverse()
+    });
+
+    expect(
+      state.players
+        .filter((player) => player.isActive)
+        .sort((left, right) => left.seatIndex - right.seatIndex)
+        .map((player) => player.id)
+    ).toEqual(activePlayers.map((player) => player.id).reverse());
+    expect(
+      state.players
+        .filter((player) => player.isActive)
+        .map((player) => player.seatIndex)
+        .sort((left, right) => left - right)
+    ).toEqual([0, 1, 3, 4, 5]);
+    expect(state.settings.tableSeatPlacements).toEqual(placementsBefore);
+  });
+
   it("replaces the active roster in line order while preserving reusable players", () => {
     const initialState = createDefaultGameState();
     const initialIds = initialState.players.map((player) => player.id);
