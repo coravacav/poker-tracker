@@ -203,6 +203,41 @@ describe("App", () => {
     ]);
   });
 
+  it("keeps player arrangement controls available in the mobile player list", () => {
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+
+    try {
+      render(<App />);
+
+      expect(screen.queryByRole("button", { name: "Edit layout" }))
+        .not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Rotate players left" }))
+        .toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Reverse player order" }))
+        .toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Rotate players right" }))
+        .toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Reverse player order" }));
+      expect(
+        screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent)
+      ).toEqual([
+        "Player 6",
+        "Player 5",
+        "Player 4",
+        "Player 3",
+        "Player 2",
+        "Player 1"
+      ]);
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalInnerWidth
+      });
+    }
+  });
+
   it("disables layout editing in read-only mode", () => {
     render(<App />);
 

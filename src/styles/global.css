@@ -1217,6 +1217,14 @@ label span {
   background: var(--green-soft);
 }
 
+.poker-table-panel.is-player-list-view .player-arrangement-controls {
+  grid-template-columns: repeat(3, 44px);
+}
+
+.poker-table-panel.is-player-list-view .player-arrangement-controls button {
+  min-height: 44px;
+}
+
 .shape-segments button[aria-pressed="true"] {
   color: var(--green);
   background: var(--green-soft);
@@ -2633,6 +2641,19 @@ dd {
 
   .app-main {
     padding: 10px;
+  }
+
+  .poker-table-panel.is-player-list-view .table-toolbar {
+    align-items: flex-start;
+  }
+
+  .poker-table-panel.is-player-list-view .table-toolbar-controls {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .poker-table-panel.is-player-list-view .default-buy-in {
+    order: -1;
   }
 
   .app-nav {

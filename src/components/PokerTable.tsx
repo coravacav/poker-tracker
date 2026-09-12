@@ -686,55 +686,55 @@ export function PokerTable({
           </h2>
         </div>
         <div className="table-toolbar-controls">
-          {effectiveLayoutEditing ? (
-            <>
-              <div
-                className="player-arrangement-controls"
-                role="group"
-                aria-label="Arrange players"
+          {effectiveLayoutEditing || (compactView && !readOnly) ? (
+            <div
+              className="player-arrangement-controls"
+              role="group"
+              aria-label="Arrange players"
+            >
+              <button
+                type="button"
+                aria-label="Rotate players left"
+                title="Rotate players left"
+                disabled={readOnly || activePlayers.length < 2}
+                onClick={() => arrangePlayers("rotate_left")}
               >
+                <RotateCcw size={17} />
+              </button>
+              <button
+                type="button"
+                aria-label="Reverse player order"
+                title="Reverse player order"
+                disabled={readOnly || activePlayers.length < 2}
+                onClick={() => arrangePlayers("reverse")}
+              >
+                <FlipHorizontal2 size={17} />
+              </button>
+              <button
+                type="button"
+                aria-label="Rotate players right"
+                title="Rotate players right"
+                disabled={readOnly || activePlayers.length < 2}
+                onClick={() => arrangePlayers("rotate_right")}
+              >
+                <RotateCw size={17} />
+              </button>
+            </div>
+          ) : null}
+          {effectiveLayoutEditing ? (
+            <div className="shape-segments" aria-label="Table shape">
+              {SHAPES.map(({ shape, label }) => (
                 <button
+                  key={shape}
                   type="button"
-                  aria-label="Rotate players left"
-                  title="Rotate players left"
-                  disabled={readOnly || activePlayers.length < 2}
-                  onClick={() => arrangePlayers("rotate_left")}
+                  aria-pressed={tableShape === shape}
+                  disabled={readOnly}
+                  onClick={() => dispatch({ type: "set_table_shape", shape })}
                 >
-                  <RotateCcw size={17} />
+                  {label}
                 </button>
-                <button
-                  type="button"
-                  aria-label="Reverse player order"
-                  title="Reverse player order"
-                  disabled={readOnly || activePlayers.length < 2}
-                  onClick={() => arrangePlayers("reverse")}
-                >
-                  <FlipHorizontal2 size={17} />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Rotate players right"
-                  title="Rotate players right"
-                  disabled={readOnly || activePlayers.length < 2}
-                  onClick={() => arrangePlayers("rotate_right")}
-                >
-                  <RotateCw size={17} />
-                </button>
-              </div>
-              <div className="shape-segments" aria-label="Table shape">
-                {SHAPES.map(({ shape, label }) => (
-                  <button
-                    key={shape}
-                    type="button"
-                    aria-pressed={tableShape === shape}
-                    disabled={readOnly}
-                    onClick={() => dispatch({ type: "set_table_shape", shape })}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </>
+              ))}
+            </div>
           ) : null}
           <span className="default-buy-in">
             Default buy-in {formatCurrency(defaultBuyInCents)}
