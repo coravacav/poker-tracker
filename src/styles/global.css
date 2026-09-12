@@ -2775,6 +2775,22 @@ dd {
   }
 }
 
+@media (max-width: 340px) {
+  body {
+    min-width: 0;
+  }
+
+  .poker-table.is-player-list .seat-actions {
+    gap: 4px;
+  }
+
+  .poker-table.is-player-list .seat-actions .icon-button {
+    gap: 4px;
+    padding-inline: 5px;
+    font-size: 0.72rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .seat-slot {
     transition: none;
