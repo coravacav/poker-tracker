@@ -5,7 +5,11 @@ import type { GameState } from "../domain/pokerTypes";
 import { gameReducer } from "../state/gameReducer";
 import { STORAGE_KEY } from "../state/persistence";
 import { LAST_VISIT_KEY } from "../session/localEntry";
-import { saveHostRecovery } from "../session/sessionPersistence";
+import {
+  GUEST_SESSION_KEY,
+  saveHostRecovery,
+  saveRoomHistoryCredential
+} from "../session/sessionPersistence";
 import { createDefaultGameState } from "../state/seedGame";
 import type {
   GuestRoomProjection,
@@ -30,7 +34,10 @@ function fakeTransport(state = createDefaultGameState()) {
   let hostListener: ((value: HostRoomProjection) => void) | null = null;
   let hostError: ((error: Error) => void) | null = null;
   let guestListener: ((value: GuestRoomProjection) => void) | null = null;
+  let connectionListener: ((connected: boolean) => void) | null = null;
+  let connected = true;
   const createRoom = vi.fn(async (_args: Parameters<RoomTransport["createRoom"]>[0]) => room);
+  const heartbeat = vi.fn(async () => undefined);
   const endRoom = vi.fn(async (_args: Parameters<RoomTransport["endRoom"]>[0]) => ({
     ...room,
     status: "ended" as const,
@@ -38,10 +45,13 @@ function fakeTransport(state = createDefaultGameState()) {
   }));
   const transport: RoomTransport = {
     configured: true,
-    connectionState: () => true,
+    connectionState: () => connected,
     subscribeToConnection(listener) {
-      listener(true);
-      return () => undefined;
+      connectionListener = listener;
+      listener(connected);
+      return () => {
+        connectionListener = null;
+      };
     },
     createRoom,
     getInvitePreview: vi.fn(async () => ({ status: "active" as const, name: room.name })),
@@ -60,7 +70,7 @@ function fakeTransport(state = createDefaultGameState()) {
         guestListener = null;
       };
     },
-    heartbeat: vi.fn(async () => undefined),
+    heartbeat,
     submitGuestTransaction: vi.fn(async () => "request_test" as never),
     decideGuestTransaction: vi.fn(async () => undefined),
     setJoiningOpen: vi.fn(async () => undefined),
@@ -84,6 +94,7 @@ function fakeTransport(state = createDefaultGameState()) {
     transport,
     createRoom,
     endRoom,
+    heartbeat,
     emitHost(value: HostRoomProjection) {
       hostListener?.(value);
     },
@@ -92,6 +103,10 @@ function fakeTransport(state = createDefaultGameState()) {
     },
     emitGuest(value: GuestRoomProjection) {
       guestListener?.(value);
+    },
+    setConnected(value: boolean) {
+      connected = value;
+      connectionListener?.(value);
     },
     setRoom(value: RoomProjection) {
       room = value;
@@ -256,6 +271,57 @@ describe("realtime sharing UI", () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null").settings.gameName).toBe(
       "Local game"
     );
+  });
+
+  it("restores a guest after tab storage is discarded", async () => {
+    const remote = createDefaultGameState();
+    remote.settings.gameName = "Recovered table";
+    const fake = fakeTransport(remote);
+    saveRoomHistoryCredential({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      role: "guest",
+      secret: "guest_abcdefghijklmnopqrstuvwxyz0123456789",
+      roomName: "Recovered table",
+      joinedAt: Date.now(),
+      displayName: "Observer"
+    });
+    window.history.replaceState(null, "", "/#/room/room_public_123456");
+
+    render(<App roomTransport={fake.transport} />);
+    act(() => {
+      fake.emitGuest({ ...projection(remote), displayName: "Observer" });
+    });
+
+    expect(await screen.findByText("Viewing as Observer")).toBeInTheDocument();
+    expect(JSON.parse(sessionStorage.getItem(GUEST_SESSION_KEY) ?? "null")).toMatchObject({
+      publicId: "room_public_123456",
+      guestSecret: "guest_abcdefghijklmnopqrstuvwxyz0123456789",
+      displayName: "Observer"
+    });
+  });
+
+  it("renews guest presence immediately when the connection returns", async () => {
+    const remote = createDefaultGameState();
+    const fake = fakeTransport(remote);
+    fake.setConnected(false);
+    saveRoomHistoryCredential({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      role: "guest",
+      secret: "guest_abcdefghijklmnopqrstuvwxyz0123456789",
+      roomName: "Poker Night",
+      joinedAt: Date.now(),
+      displayName: "Observer"
+    });
+    window.history.replaceState(null, "", "/#/room/room_public_123456");
+
+    render(<App roomTransport={fake.transport} />);
+    expect(fake.heartbeat).not.toHaveBeenCalled();
+
+    act(() => fake.setConnected(true));
+
+    await waitFor(() => expect(fake.heartbeat).toHaveBeenCalledTimes(1));
   });
 
   it("saves the confirmed final room state locally when sharing ends", async () => {

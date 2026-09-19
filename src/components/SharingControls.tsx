@@ -163,13 +163,13 @@ export function HostSharingControls({
                           <RefreshCw size={15} /> Rotate invite
                         </button>
                       </div>
-                      <div className="guest-count"><UserRound size={16} /> {room.guestCount} connected guests</div>
+                      <div className="guest-count"><UserRound size={16} /> {room.guestCount} currently online</div>
                       {(room.guests?.length ?? 0) > 0 ? (
                         <div className="guest-management-list">
                           {room.guests?.map((guest) => (
                             <div className="guest-management-item" key={guest.id}>
                               <span className={guest.connected ? "positive" : "muted"}>
-                                {guest.displayName} · {guest.revoked ? "Revoked" : guest.connected ? "Online" : "Offline"}
+                                {guest.displayName} · {guest.revoked ? "Revoked" : guest.connected ? "Online" : "Away"}
                               </span>
                               {!guest.revoked ? (
                                 <button className="text-button danger" type="button" onClick={() => onRevokeGuest(guest.id)}>

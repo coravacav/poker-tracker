@@ -18,6 +18,9 @@ const presence = new Presence(components.presence);
 const HOST_RECIPIENT_KEY = "host";
 const MAX_SHARED_AUDIT_EVENTS = 500;
 const MAX_PUBLIC_SHARED_AUDIT_EVENTS = 200;
+// The presence component expires a session after 2.5x this value. Guests still
+// send every 30 seconds, leaving a five-minute grace period for mobile sleep.
+const GUEST_PRESENCE_INTERVAL_MS = 2 * 60 * 1000;
 
 type RoomErrorCode =
   | "INVALID_ARGUMENT"
@@ -727,7 +730,13 @@ export const heartbeat = mutation({
   handler: async (ctx, args) => {
     const { room, guest } = await requireGuest(ctx, args.publicId, args.guestSecret);
     if (room.status === "active" && validIdentifier(args.sessionId)) {
-      await presence.heartbeat(ctx, room.publicId, String(guest._id), args.sessionId, 30_000);
+      await presence.heartbeat(
+        ctx,
+        room.publicId,
+        String(guest._id),
+        args.sessionId,
+        GUEST_PRESENCE_INTERVAL_MS
+      );
     }
     return null;
   }

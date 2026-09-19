@@ -76,6 +76,33 @@ export function clearGuestSession(): void {
   if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(GUEST_SESSION_KEY);
 }
 
+export function recoverGuestSession(
+  publicId: string,
+  presenceSessionId: string,
+  deploymentUrl: string | null
+): GuestSession | null {
+  const credential = loadRoomHistoryCredentials().find(
+    (candidate) =>
+      candidate.role === "guest" &&
+      candidate.publicId === publicId &&
+      isString(candidate.displayName) &&
+      (candidate.deploymentUrl === undefined ||
+        deploymentUrl === null ||
+        candidate.deploymentUrl === deploymentUrl)
+  );
+  if (!credential?.displayName) return null;
+
+  const session: GuestSession = {
+    schemaVersion: 1,
+    publicId: credential.publicId,
+    guestSecret: credential.secret,
+    presenceSessionId,
+    displayName: credential.displayName
+  };
+  saveGuestSession(session);
+  return session;
+}
+
 export function loadRoomHistoryCredentials(): RoomHistoryCredential[] {
   const values = parseStored<unknown>(
     typeof localStorage === "undefined" ? undefined : localStorage,
@@ -90,7 +117,8 @@ export function loadRoomHistoryCredentials(): RoomHistoryCredential[] {
       (candidate.role === "host" || candidate.role === "guest") &&
       isString(candidate.secret) &&
       isString(candidate.roomName) &&
-      typeof candidate.joinedAt === "number";
+      typeof candidate.joinedAt === "number" &&
+      (candidate.deploymentUrl === undefined || isString(candidate.deploymentUrl));
   }).slice(0, 50);
 }
 

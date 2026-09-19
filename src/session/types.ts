@@ -109,6 +109,7 @@ export type RoomHistoryCredential = {
   roomName: string;
   joinedAt: number;
   displayName?: string;
+  deploymentUrl?: string;
 };
 
 export type RoomHistoryProjection = RoomProjection & {

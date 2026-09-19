@@ -38,6 +38,7 @@ import {
   loadGuestSession,
   loadHostRecovery,
   loadRoomHistoryCredentials,
+  recoverGuestSession,
   saveGuestSession,
   saveHostRecovery,
   saveRoomHistoryCredential
@@ -126,7 +127,9 @@ function initialSession(localGameId: string, deploymentUrl: string | null): Sess
     };
   }
   if (route.kind === "guest_room") {
-    const credentials = loadGuestSession(route.publicId);
+    const credentials =
+      loadGuestSession(route.publicId) ??
+      recoverGuestSession(route.publicId, createCapability(18), deploymentUrl);
     return credentials
       ? { mode: "guest", credentials, room: null, connected: false, error: null }
       : {
@@ -201,7 +204,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         role: "host",
         secret: session.recovery.hostSecret,
         roomName: session.recovery.roomName,
-        joinedAt: Date.now()
+        joinedAt: Date.now(),
+        ...(deploymentUrl ? { deploymentUrl } : {})
       });
     } else if (session.mode === "guest") {
       const key = `guest:${session.credentials.publicId}`;
@@ -214,10 +218,11 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         secret: session.credentials.guestSecret,
         roomName: session.room?.name ?? "Shared poker game",
         joinedAt: Date.now(),
-        displayName: session.credentials.displayName
+        displayName: session.credentials.displayName,
+        ...(deploymentUrl ? { deploymentUrl } : {})
       });
     }
-  }, [session]);
+  }, [deploymentUrl, session]);
 
   useEffect(() => {
     if (session.mode === "local" && !localEntry) saveGameState(localState);
@@ -316,6 +321,16 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
           ? { ...current, connected }
           : current
       );
+      const current = sessionRef.current;
+      if (connected && current.mode === "guest") {
+        void transport
+          .heartbeat(
+            current.credentials.publicId,
+            current.credentials.guestSecret,
+            current.credentials.presenceSessionId
+          )
+          .catch(() => undefined);
+      }
     });
   }, [session.mode, transport]);
 
@@ -509,11 +524,19 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
           .catch(() => undefined);
       }
     };
-    heartbeat();
     const interval = window.setInterval(heartbeat, 30_000);
+    const heartbeatWhenVisible = () => {
+      if (document.visibilityState === "visible") heartbeat();
+    };
+    document.addEventListener("visibilitychange", heartbeatWhenVisible);
+    window.addEventListener("focus", heartbeat);
+    window.addEventListener("online", heartbeat);
     return () => {
       unsubscribe();
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", heartbeatWhenVisible);
+      window.removeEventListener("focus", heartbeat);
+      window.removeEventListener("online", heartbeat);
     };
   }, [session.mode, session.mode === "guest" ? session.credentials : null, transport]);
 
@@ -644,7 +667,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
           secret: credentials.guestSecret,
           roomName: normalizedRoom.name,
           joinedAt: Date.now(),
-          displayName: credentials.displayName
+          displayName: credentials.displayName,
+          ...(deploymentUrl ? { deploymentUrl } : {})
         });
         void refreshRoomHistory();
         window.history.replaceState(null, "", guestRoomHash(credentials.publicId));

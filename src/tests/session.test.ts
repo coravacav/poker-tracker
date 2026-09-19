@@ -6,6 +6,7 @@ import {
   loadGuestSession,
   loadHostRecovery,
   loadRoomHistoryCredentials,
+  recoverGuestSession,
   saveGuestSession,
   saveHostRecovery,
   saveRoomHistoryCredential
@@ -72,5 +73,56 @@ describe("shared session isolation", () => {
     expect(loadRoomHistoryCredentials()).toEqual([
       expect.objectContaining({ publicId: "room_public_123456", role: "guest" })
     ]);
+  });
+
+  it("recovers a tab-scoped guest session from durable room history", () => {
+    saveRoomHistoryCredential({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      role: "guest",
+      secret: "guest-secret",
+      roomName: "Poker Night",
+      joinedAt: 123,
+      displayName: "Guest",
+      deploymentUrl: "https://example.convex.cloud"
+    });
+
+    expect(
+      recoverGuestSession(
+        "room_public_123456",
+        "new-presence-session",
+        "https://example.convex.cloud"
+      )
+    ).toEqual({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      guestSecret: "guest-secret",
+      presenceSessionId: "new-presence-session",
+      displayName: "Guest"
+    });
+    expect(loadGuestSession("room_public_123456")?.presenceSessionId).toBe(
+      "new-presence-session"
+    );
+  });
+
+  it("does not recover a guest credential from another deployment", () => {
+    saveRoomHistoryCredential({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      role: "guest",
+      secret: "guest-secret",
+      roomName: "Poker Night",
+      joinedAt: 123,
+      displayName: "Guest",
+      deploymentUrl: "https://old.convex.cloud"
+    });
+
+    expect(
+      recoverGuestSession(
+        "room_public_123456",
+        "new-presence-session",
+        "https://new.convex.cloud"
+      )
+    ).toBeNull();
   });
 });
