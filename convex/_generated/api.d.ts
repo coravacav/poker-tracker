@@ -10,6 +10,8 @@
 
 import type * as crons from "../crons.js";
 import type * as friendProfiles from "../friendProfiles.js";
+import type * as lib_capabilities from "../lib/capabilities.js";
+import type * as lib_friendDiscovery from "../lib/friendDiscovery.js";
 import type * as rooms from "../rooms.js";
 
 import type {
@@ -21,6 +23,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   friendProfiles: typeof friendProfiles;
+  "lib/capabilities": typeof lib_capabilities;
+  "lib/friendDiscovery": typeof lib_friendDiscovery;
   rooms: typeof rooms;
 }>;
 

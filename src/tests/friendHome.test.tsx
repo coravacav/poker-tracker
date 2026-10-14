@@ -35,7 +35,33 @@ describe("friend discovery on Home", () => {
     expect(screen.getByText("Friday Poker is live")).toBeInTheDocument();
     expect(screen.getByLabelText("Personal friend code QR")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Join" }));
-    expect(onJoin).toHaveBeenCalledWith(live);
+    expect(onJoin).toHaveBeenCalledWith(live, live.room);
+  });
+
+  it("lists and joins each room a followed friend is sharing", () => {
+    const onJoin = vi.fn();
+    const rooms = [
+      { publicId: "room_public_second12", name: "Late Game", createdAt: 2 },
+      { publicId: "room_public_123456", name: "Friday Poker", createdAt: 1 }
+    ];
+    const live = { friendCode: "9876ZYXWVUTSRQPNMLKJ", displayName: "Blair", room: rooms[0], rooms };
+    render(
+      <StartPage
+        entry={{ reason: "stale_return", savedGame: createDefaultGameState() }}
+        friendFeatureAvailable
+        friendProfile={profile}
+        followedFriends={[{ schemaVersion: 1, friendCode: live.friendCode, displayName: "Blair" }]}
+        friendActivity={[live]}
+        onContinue={() => undefined}
+        onStartNew={() => undefined}
+        onJoinFriendRoom={onJoin}
+      />
+    );
+
+    expect(screen.getByText("Late Game is live")).toBeInTheDocument();
+    expect(screen.getByText("Friday Poker is live")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Join Friday Poker" }));
+    expect(onJoin).toHaveBeenCalledWith(live, rooms[1]);
   });
 
   it("prefills a scanned code and submits a follow", () => {

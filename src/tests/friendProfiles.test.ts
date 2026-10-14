@@ -12,6 +12,7 @@ import {
   saveFriendProfile,
   validFriendCode
 } from "../session/friendProfiles";
+import { parseFriendCode } from "../session/friendCode";
 
 describe("device friend profiles", () => {
   beforeEach(() => localStorage.clear());
@@ -21,6 +22,15 @@ describe("device friend profiles", () => {
     expect(friendCode).toMatch(/^[2-9A-HJ-NP-Z]{20}$/);
     expect(validFriendCode(friendCode)).toBe(true);
     expect(formatFriendCode(friendCode).split("-")).toHaveLength(5);
+  });
+
+  it("accepts the same friend-code lengths as the server", () => {
+    expect(validFriendCode("2345ABCDEFGHJKLMNPQ")).toBe(false);
+    expect(validFriendCode("ABCDEFGHJKMNPQRSTVWXY234")).toBe(true);
+    expect(validFriendCode("23456789ABCDEFGHJKLMNPQRSTUVWXYZ")).toBe(true);
+    expect(normalizeFriendCode("23456789ABCDEFGHJKLMNPQRSTUVWXYZ2345")).toHaveLength(32);
+    expect(parseFriendCode("abcd-efgh-jkmn-pqrs-tvwx-y234")).toBe("ABCDEFGHJKMNPQRSTVWXY234");
+    expect(parseFriendCode("ABCDEFGHJKMNPQRSTVWXY23O")).toBeNull();
   });
 
   it("normalizes manual and QR friend codes", () => {

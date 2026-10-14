@@ -1,15 +1,21 @@
 import {
+  FRIEND_CODE_ALPHABET,
+  FRIEND_CODE_GENERATED_LENGTH,
+  FRIEND_CODE_MAX_LENGTH,
+  MAX_FOLLOWED_FRIENDS,
+  isCanonicalFriendCode
+} from "./friendCode";
+import {
   quarantineEntries,
   quarantineRaw,
   readStoredJson,
   reasonForInvalid
 } from "../state/storageQuarantine";
+import type { FriendActivity, FriendRoom } from "./types";
 
 export const FRIEND_PROFILE_KEY = "poker-tracker:v1:friend-profile";
 export const FOLLOWED_FRIENDS_KEY = "poker-tracker:v1:followed-friends";
 
-const FRIEND_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-const FRIEND_CODE_PATTERN = /^[2-9A-HJ-NP-Z]{20}$/;
 
 export type FriendProfile = {
   schemaVersion: 1;
@@ -26,8 +32,9 @@ export type FollowedFriend = {
 
 const FRIEND_SCHEMA_VERSION = 1;
 
+/** Lenient input filter: drops separators and characters outside the alphabet. */
 export function normalizeFriendCode(value: string): string {
-  return value.toUpperCase().replace(/[^2-9A-HJ-NP-Z]/g, "").slice(0, 20);
+  return value.toUpperCase().replace(/[^2-9A-HJ-NP-Z]/g, "").slice(0, FRIEND_CODE_MAX_LENGTH);
 }
 
 export function formatFriendCode(value: string): string {
@@ -35,14 +42,14 @@ export function formatFriendCode(value: string): string {
 }
 
 export function validFriendCode(value: string): boolean {
-  return FRIEND_CODE_PATTERN.test(normalizeFriendCode(value));
+  return isCanonicalFriendCode(normalizeFriendCode(value));
 }
 
 export function createFriendCode(): string {
   if (!globalThis.crypto?.getRandomValues) {
     throw new Error("Secure random friend-code generation is unavailable in this browser.");
   }
-  const bytes = new Uint8Array(20);
+  const bytes = new Uint8Array(FRIEND_CODE_GENERATED_LENGTH);
   globalThis.crypto.getRandomValues(bytes);
   const compact = Array.from(
     bytes,
@@ -134,7 +141,7 @@ export function loadFollowedFriends(): FollowedFriend[] {
       friendCode,
       displayName: candidate.displayName.trim() || "Poker friend"
     }];
-  }).slice(0, 50);
+  }).slice(0, MAX_FOLLOWED_FRIENDS);
   quarantineEntries(FOLLOWED_FRIENDS_KEY, skipped, FRIEND_SCHEMA_VERSION);
   return friends;
 }
@@ -142,9 +149,14 @@ export function loadFollowedFriends(): FollowedFriend[] {
 export function saveFollowedFriends(friends: FollowedFriend[]): boolean {
   if (typeof localStorage === "undefined") return false;
   try {
-    localStorage.setItem(FOLLOWED_FRIENDS_KEY, JSON.stringify(friends.slice(0, 50)));
+    localStorage.setItem(FOLLOWED_FRIENDS_KEY, JSON.stringify(friends.slice(0, MAX_FOLLOWED_FRIENDS)));
     return true;
   } catch {
     return false;
   }
+}
+
+/** Rooms a followed friend is sharing, newest first. */
+export function friendActivityRooms(activity: FriendActivity): FriendRoom[] {
+  return activity.rooms ?? (activity.room ? [activity.room] : []);
 }

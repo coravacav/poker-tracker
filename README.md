@@ -74,7 +74,7 @@ Shared rooms retain the 500 most recent audit events. The host and every guest h
 - Room IDs do not authorize writes. Host, invitation, and guest capabilities are cryptographically random and stored in Convex only as SHA-256 verifiers.
 - Every mutation checks the host capability and active controller server-side. Guest queries require a non-revoked guest capability and return a projection without host cash-out drafts.
 - Public functions validate arguments; room/action/guest limits provide basic abuse boundaries.
-- There are no accounts, mutual friend approvals, IP-based creation limits, or CAPTCHA. A friend code is a bearer discovery capability: anyone holding it can see rooms marked visible to followers and join while joining is open. A compromised browser profile exposes its profile-owner and active room capabilities.
+- There are no accounts, mutual friend approvals, IP-based creation limits, or CAPTCHA. A friend code is a bearer discovery capability: anyone holding it can see the host's active rooms marked visible to followers (at most five per host) and join while joining is open. Rotating a friend code immediately stops discovery and joining through the old code, and guests of rooms created before the rotation no longer see the host profile. A compromised browser profile exposes its profile-owner and active room capabilities.
 
 ## Convex usage
 

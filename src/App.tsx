@@ -108,7 +108,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onRotateFriendCode={() => void gameSession.rotateFriendCode()}
         onAddFriend={(friendCode) => void gameSession.addFriend(friendCode)}
         onRemoveFriend={gameSession.removeFriend}
-        onJoinFriendRoom={(activity) => void gameSession.joinFriendRoom(activity)}
+        onJoinFriendRoom={(activity, room) => void gameSession.joinFriendRoom(activity, room)}
       />
     );
   }

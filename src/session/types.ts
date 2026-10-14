@@ -50,14 +50,19 @@ export type RoomProjection = {
   activity?: SharedActivity;
 };
 
+export type FriendRoom = {
+  publicId: string;
+  name: string;
+  createdAt: number;
+};
+
 export type FriendActivity = {
   friendCode: string;
   displayName: string;
-  room: {
-    publicId: string;
-    name: string;
-    createdAt: number;
-  } | null;
+  /** Newest discoverable room. */
+  room: FriendRoom | null;
+  /** Every discoverable room (bounded server-side); absent from older backends. */
+  rooms?: FriendRoom[];
 };
 
 export type HostRoomProjection = RoomProjection & {

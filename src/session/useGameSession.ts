@@ -58,6 +58,7 @@ import {
 import type {
   GuestRoomProjection,
   FriendActivity,
+  FriendRoom,
   GuestSession,
   HostRecovery,
   HostRoomProjection,
@@ -852,10 +853,13 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     }
   }, [followedFriends]);
 
-  const joinFriendRoom = useCallback(async (activity: FriendActivity) => {
+  const joinFriendRoom = useCallback(async (
+    activity: FriendActivity,
+    selectedRoom: FriendRoom | null = activity.room
+  ) => {
     if (
       sessionRef.current.mode !== "local" ||
-      !activity.room ||
+      !selectedRoom ||
       !friendProfile ||
       !transport.joinFriendRoom
     ) return;
@@ -864,7 +868,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     try {
       const guestSecret = createCapability();
       const room = await transport.joinFriendRoom({
-        publicId: activity.room.publicId,
+        publicId: selectedRoom.publicId,
         friendCode: activity.friendCode,
         guestSecret,
         displayName: friendProfile.displayName
@@ -874,7 +878,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       const normalizedRoom = { ...room, state: normalizedState };
       const credentials: GuestSession = {
         schemaVersion: 1,
-        publicId: activity.room.publicId,
+        publicId: selectedRoom.publicId,
         guestSecret,
         presenceSessionId: createCapability(18),
         displayName: normalizedRoom.displayName

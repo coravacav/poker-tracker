@@ -9,9 +9,19 @@ import {
   roomStateError,
   sanitizeGuestState
 } from "../src/session/roomProtocol";
-import { components } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { hashSecret, sameHash, validIdentifier, validSecret } from "./lib/capabilities";
+import {
+  clearLegacyActiveRoom,
+  isDiscoverable,
+  profileByFriendCode,
+  publicHostProfile,
+  syncFriendRoomListing,
+  verifyProfileOwner
+} from "./lib/friendDiscovery";
+import { parseFriendCode } from "../src/session/friendCode";
 
 const presence = new Presence(components.presence);
 
@@ -86,6 +96,27 @@ const guestViewValidator = guestRoomValidator.extend({
     decidedAt: v.union(v.number(), v.null())
   }))
 });
+const invitePreviewValidator = v.union(
+  v.object({ status: v.literal("invalid") }),
+  v.object({
+    status: v.union(roomStatusValidator, v.literal("closed")),
+    name: v.string()
+  })
+);
+const historyViewValidator = publicRoomValidator.extend({
+  role: v.union(v.literal("host"), v.literal("guest")),
+  createdAt: v.number(),
+  displayName: v.union(v.string(), v.null())
+});
+const hostActionResultValidator = publicRoomValidator.extend({
+  activity: activityValidator,
+  duplicate: v.boolean(),
+  resultingVersion: v.number()
+});
+const endResultValidator = publicRoomValidator.extend({
+  activity: activityValidator,
+  duplicate: v.optional(v.boolean())
+});
 const hostRoomValidator = publicRoomValidator.extend({
   activity: activityValidator,
   guestCount: v.number(),
@@ -148,45 +179,6 @@ function isPrivateAuditAction(type: string): boolean {
 
 function fail(code: RoomErrorCode, message: string): never {
   throw new ConvexError({ code, message });
-}
-
-function validIdentifier(value: string): boolean {
-  return /^[A-Za-z0-9_-]{16,160}$/.test(value);
-}
-
-function validSecret(value: string): boolean {
-  return /^[A-Za-z0-9_-]{32,256}$/.test(value);
-}
-
-function normalizeFriendCode(value: string): string {
-  return value.trim().toUpperCase().replace(/[\s-]+/g, "");
-}
-
-function validFriendCode(value: string): boolean {
-  return /^[2-9A-HJ-NP-Z]{20,32}$/.test(value);
-}
-
-function validProfileOwnerSecret(value: string): boolean {
-  return validSecret(value);
-}
-
-async function hashSecret(secret: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(secret)
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0")
-  ).join("");
-}
-
-function sameHash(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) {
-    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  }
-  return difference === 0;
 }
 
 function formatAmount(amountCents: number): string {
@@ -559,17 +551,6 @@ function publicRoom<T extends Record<string, unknown> = Record<never, never>>(
   };
 }
 
-async function publicHostProfile(
-  ctx: QueryCtx | MutationCtx,
-  room: Doc<"rooms">
-): Promise<{ friendCode: string; displayName: string } | null> {
-  if (!room.hostProfileId) return null;
-  const profile = await ctx.db.get("friendProfiles", room.hostProfileId);
-  return profile
-    ? { friendCode: profile.friendCode, displayName: profile.displayName }
-    : null;
-}
-
 export async function joinRoomAsGuest(
   ctx: MutationCtx,
   room: Doc<"rooms">,
@@ -582,7 +563,7 @@ export async function joinRoomAsGuest(
   if (room.status !== "active") fail("ROOM_ENDED", "This shared room has ended.");
   if (room.joiningOpen === false) fail("ROOM_NOT_ACTIVE", "This room is not accepting new guests.");
   const displayName = rawDisplayName.trim();
-  if (displayName.length < 1 || displayName.length > 40) {
+  if (rawDisplayName.length > 200 || displayName.length < 1 || displayName.length > 40) {
     fail("INVALID_ARGUMENT", "Display name must be between 1 and 40 characters.");
   }
 
@@ -594,8 +575,13 @@ export async function joinRoomAsGuest(
     )
     .unique();
   const now = Date.now();
+  if (existingGuest && existingGuest.revokedAt !== undefined) {
+    // A revoked capability must not be revived (and must not create a second
+    // guest row with the same verifier).
+    fail("INVALID_CAPABILITY", "Guest session is invalid or revoked.");
+  }
   let guestId = existingGuest?._id;
-  if (existingGuest && existingGuest.revokedAt === undefined) {
+  if (existingGuest) {
     await ctx.db.patch(existingGuest._id, { displayName });
   } else {
     const guests = await ctx.db
@@ -689,19 +675,14 @@ export const create = mutation({
       fail("INVALID_ARGUMENT", "Friend code and profile owner secret must be provided together.");
     }
     if (args.friendCode !== undefined && args.profileOwnerSecret !== undefined) {
-      const friendCode = normalizeFriendCode(args.friendCode);
-      if (!validFriendCode(friendCode) || !validProfileOwnerSecret(args.profileOwnerSecret)) {
-        fail("INVALID_ARGUMENT", "Friend profile capability is invalid.");
-      }
-      hostProfile = await ctx.db
-        .query("friendProfiles")
-        .withIndex("by_friend_code", (index) => index.eq("friendCode", friendCode))
-        .unique();
-      if (!hostProfile) fail("INVALID_CAPABILITY", "Friend profile capability is invalid.");
-      const profileSecretHash = await hashSecret(args.profileOwnerSecret);
-      if (!sameHash(hostProfile.ownerSecretHash, profileSecretHash)) {
+      const check = await verifyProfileOwner(ctx, args.friendCode, args.profileOwnerSecret);
+      if (!check.ok) {
+        if (check.reason === "invalid_argument") {
+          fail("INVALID_ARGUMENT", "Friend profile capability is invalid.");
+        }
         fail("INVALID_CAPABILITY", "Friend profile capability is invalid.");
       }
+      hostProfile = check.profile;
     }
 
     const now = Date.now();
@@ -725,7 +706,10 @@ export const create = mutation({
       } : {})
     });
     if (hostProfile) {
-      await ctx.db.patch(hostProfile._id, { activeRoomId: roomId, updatedAt: now });
+      // Each linked room gets its own listing, so hosting a second room no
+      // longer hides the first from followers.
+      const createdRoom = await ctx.db.get("rooms", roomId);
+      if (createdRoom) await syncFriendRoomListing(ctx, createdRoom);
     }
     await ctx.db.insert("roomNotificationCursors", {
       roomId,
@@ -758,7 +742,7 @@ export const create = mutation({
 
 export const invitePreview = query({
   args: { publicId: v.string(), inviteSecret: v.string() },
-  returns: v.any(),
+  returns: invitePreviewValidator,
   handler: async (ctx, args) => {
     if (!validSecret(args.inviteSecret)) {
       return { status: "invalid" as const };
@@ -807,22 +791,14 @@ export const joinFriend = mutation({
   },
   returns: guestRoomValidator,
   handler: async (ctx, args) => {
-    const friendCode = normalizeFriendCode(args.friendCode);
-    if (!validFriendCode(friendCode)) {
-      fail("INVALID_CAPABILITY", "Friend code is invalid.");
-    }
-    const profile = await ctx.db
-      .query("friendProfiles")
-      .withIndex("by_friend_code", (index) => index.eq("friendCode", friendCode))
-      .unique();
+    const friendCode = parseFriendCode(args.friendCode);
+    if (!friendCode) fail("INVALID_CAPABILITY", "Friend code is invalid.");
+    const profile = await profileByFriendCode(ctx, friendCode);
     if (!profile) fail("INVALID_CAPABILITY", "Friend code is invalid.");
     const room = await roomByPublicId(ctx, args.publicId);
-    if (
-      !room ||
-      profile.activeRoomId !== room._id ||
-      room.hostProfileId !== profile._id ||
-      room.visibleToFriends !== true
-    ) {
+    // Authorize against the room document itself: it must belong to this
+    // profile and currently be discoverable (active and visible to friends).
+    if (!room || room.hostProfileId !== profile._id || !isDiscoverable(room)) {
       fail("ROOM_NOT_FOUND", "This friend is not sharing that room.");
     }
     return await joinRoomAsGuest(ctx, room, args.guestSecret, args.displayName);
@@ -854,7 +830,7 @@ export const historyView = query({
     role: v.union(v.literal("host"), v.literal("guest")),
     secret: v.string()
   },
-  returns: v.any(),
+  returns: historyViewValidator,
   handler: async (ctx, args) => {
     if (args.role === "host") {
       const room = await requireHost(ctx, args.publicId, args.secret);
@@ -996,6 +972,7 @@ export const setFriendVisibility = mutation({
       visibleToFriends: args.visible,
       lastActivityAt: Date.now()
     });
+    await syncFriendRoomListing(ctx, { ...room, visibleToFriends: args.visible });
     return null;
   }
 });
@@ -1118,7 +1095,7 @@ export const applyAction = mutation({
     clientActionId: v.string(),
     action: v.any()
   },
-  returns: v.any(),
+  returns: hostActionResultValidator,
   handler: async (ctx, args) => {
     const room = await requireHost(ctx, args.publicId, args.hostSecret);
     if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
@@ -1160,13 +1137,17 @@ export const applyAction = mutation({
     if ("error" in applied) fail("INVALID_ARGUMENT", applied.error);
     const version = room.version + 1;
     const auditEvent = buildAuditEvent(beforeState, applied.state, args.action, version, now);
+    const name = applied.state.settings.gameName.trim().slice(0, 80) || "Poker Night";
     await ctx.db.patch(room._id, {
       state: applied.state,
-      name: applied.state.settings.gameName.trim().slice(0, 80) || "Poker Night",
+      name,
       version,
       acceptedActionCount: room.acceptedActionCount + 1,
       lastActivityAt: now
     });
+    if (room.hostProfileId && name !== room.name) {
+      await syncFriendRoomListing(ctx, { ...room, name });
+    }
     await ctx.db.insert("processedActions", {
       roomId: room._id,
       clientActionId: args.clientActionId,
@@ -1177,11 +1158,7 @@ export const applyAction = mutation({
     return {
       ...(await publicRoomWithActivity(
         ctx,
-        {
-          ...room,
-          version,
-          name: applied.state.settings.gameName.trim().slice(0, 80) || "Poker Night"
-        },
+        { ...room, version, name },
         applied.state,
         HOST_RECIPIENT_KEY
       )),
@@ -1274,7 +1251,7 @@ export const end = mutation({
     expectedVersion: v.number(),
     clientActionId: v.string()
   },
-  returns: v.any(),
+  returns: endResultValidator,
   handler: async (ctx, args) => {
     const room = await requireHost(ctx, args.publicId, args.hostSecret);
     if (!validIdentifier(args.clientActionId)) {
@@ -1301,10 +1278,8 @@ export const end = mutation({
     const endedAt = Date.now();
     await ctx.db.patch(room._id, { status: "ended", endedAt, lastActivityAt: endedAt });
     if (room.hostProfileId) {
-      const profile = await ctx.db.get("friendProfiles", room.hostProfileId);
-      if (profile?.activeRoomId === room._id) {
-        await ctx.db.patch(profile._id, { activeRoomId: undefined, updatedAt: endedAt });
-      }
+      await syncFriendRoomListing(ctx, { ...room, status: "ended" });
+      await clearLegacyActiveRoom(ctx, room, endedAt);
     }
     await appendAuditEvent(ctx, room._id, {
       eventId: `event_${crypto.randomUUID()}`,
@@ -1352,28 +1327,31 @@ export const runRoomLifecycle = internalMutation({
     for (const room of staleActiveRooms) {
       await ctx.db.patch(room._id, { status: "expired", endedAt: now, lastActivityAt: now });
       if (room.hostProfileId) {
-        const profile = await ctx.db.get("friendProfiles", room.hostProfileId);
-        if (profile?.activeRoomId === room._id) {
-          await ctx.db.patch(profile._id, { activeRoomId: undefined, updatedAt: now });
-        }
+        await syncFriendRoomListing(ctx, { ...room, status: "expired" });
+        await clearLegacyActiveRoom(ctx, room, now);
       }
     }
 
-    const oldEndedRooms = await ctx.db
-      .query("rooms")
-      .withIndex("by_status_and_last_activity_at", (index) =>
-        index.eq("status", "ended").lt("lastActivityAt", now - ENDED_DETAIL_RETENTION_MS)
-      )
-      .take(CLEANUP_BATCH_SIZE);
-    const oldExpiredRooms = await ctx.db
-      .query("rooms")
-      .withIndex("by_status_and_last_activity_at", (index) =>
-        index.eq("status", "expired").lt("lastActivityAt", now - ENDED_DETAIL_RETENTION_MS)
-      )
-      .take(CLEANUP_BATCH_SIZE);
+    // Only rooms whose details have not been fully pruned are selected, so
+    // each run makes progress instead of revisiting the oldest rooms forever.
+    const roomsToPrune: Doc<"rooms">[] = [];
+    let morePruningPending = false;
+    for (const status of ["ended", "expired"] as const) {
+      const batch = await ctx.db
+        .query("rooms")
+        .withIndex("by_status_and_details_pruned_at_and_last_activity_at", (index) =>
+          index
+            .eq("status", status)
+            .eq("detailsPrunedAt", undefined)
+            .lt("lastActivityAt", now - ENDED_DETAIL_RETENTION_MS)
+        )
+        .take(CLEANUP_BATCH_SIZE);
+      if (batch.length === CLEANUP_BATCH_SIZE) morePruningPending = true;
+      roomsToPrune.push(...batch);
+    }
 
     let prunedDocuments = 0;
-    for (const room of [...oldEndedRooms, ...oldExpiredRooms]) {
+    for (const room of roomsToPrune) {
       const processed = await ctx.db
         .query("processedActions")
         .withIndex("by_room_id_and_client_action_id", (index) => index.eq("roomId", room._id))
@@ -1390,6 +1368,20 @@ export const runRoomLifecycle = internalMutation({
         await ctx.db.delete(document._id);
         prunedDocuments += 1;
       }
+      const roomFullyPruned = [processed, events, cursors].every(
+        (batch) => batch.length < CLEANUP_DOCUMENTS_PER_ROOM
+      );
+      if (roomFullyPruned) {
+        await ctx.db.patch(room._id, { detailsPrunedAt: now });
+      } else {
+        morePruningPending = true;
+      }
+    }
+
+    // Keep going until the backlog is cleared so stale rooms do not remain
+    // active (and discoverable by followers) beyond the idle window.
+    if (staleActiveRooms.length === CLEANUP_BATCH_SIZE || morePruningPending) {
+      await ctx.scheduler.runAfter(0, internal.rooms.runRoomLifecycle, {});
     }
     return { expiredRooms: staleActiveRooms.length, prunedDocuments };
   }

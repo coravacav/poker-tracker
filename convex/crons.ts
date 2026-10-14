@@ -3,10 +3,11 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-crons.daily(
+crons.cron(
   "expire abandoned rooms and prune old room details",
-  { hourUTC: 8, minuteUTC: 20 },
-  internal.rooms.runRoomLifecycle
+  "20 8 * * *",
+  internal.rooms.runRoomLifecycle,
+  {}
 );
 
 export default crons;

@@ -10,6 +10,6 @@
     "target": "ESNext",
     "lib": ["ESNext", "DOM"]
   },
-  "include": ["./**/*", "../src/domain/**/*", "../src/state/**/*", "../src/session/roomProtocol.ts"],
+  "include": ["./**/*", "../src/domain/**/*", "../src/state/**/*", "../src/session/roomProtocol.ts", "../src/session/friendCode.ts"],
   "exclude": ["./_generated", "./**/*.test.ts"]
 }

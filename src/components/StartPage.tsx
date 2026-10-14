@@ -3,8 +3,13 @@ import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import type { GameState } from "../domain/pokerTypes";
 import type { FriendProfile, FollowedFriend } from "../session/friendProfiles";
-import { formatFriendCode, friendCodeUrl, normalizeFriendCode } from "../session/friendProfiles";
-import type { FriendActivity } from "../session/types";
+import {
+  formatFriendCode,
+  friendActivityRooms,
+  friendCodeUrl,
+  normalizeFriendCode
+} from "../session/friendProfiles";
+import type { FriendActivity, FriendRoom } from "../session/types";
 import type { LocalEntryReason } from "../session/localEntry";
 import { BackupReminder } from "./BackupReminder";
 import { StorageRecoveryNotice } from "./StorageRecoveryNotice";
@@ -25,7 +30,7 @@ type StartPageProps = {
   onRotateFriendCode?: () => void;
   onAddFriend?: (friendCode: string) => void;
   onRemoveFriend?: (friendCode: string) => void;
-  onJoinFriendRoom?: (activity: FriendActivity) => void;
+  onJoinFriendRoom?: (activity: FriendActivity, room: FriendRoom) => void;
 };
 
 function formatDate(value: string | undefined): string | null {
@@ -197,16 +202,20 @@ export function StartPage({
                     <p className="muted">Scan a personal friend QR or enter a code to see hosted rooms here.</p>
                   ) : followedFriends.map((friend) => {
                     const live = activityByCode.get(friend.friendCode);
+                    const liveRooms = live ? friendActivityRooms(live) : [];
                     return (
                       <article className="friend-list-item" key={friend.friendCode}>
                         <div><strong>{live?.displayName ?? friend.displayName}</strong>
-                          <span>{live?.room ? `${live.room.name} is live` : "Not hosting right now"}</span></div>
+                          {liveRooms.length === 0 ? <span>Not hosting right now</span> : null}
+                          {liveRooms.map((room) => <span key={room.publicId}>{room.name} is live</span>)}</div>
                         <div className="friend-list-actions">
-                          {live?.room ? (
-                            <button className="primary-button" type="button" onClick={() => onJoinFriendRoom?.(live)}>
+                          {live ? liveRooms.map((room) => (
+                            <button className="primary-button" type="button" key={room.publicId}
+                              aria-label={liveRooms.length > 1 ? `Join ${room.name}` : undefined}
+                              onClick={() => onJoinFriendRoom?.(live, room)}>
                               <Radio size={15} /> Join
                             </button>
-                          ) : null}
+                          )) : null}
                           <button className="icon-button" type="button"
                             aria-label={`Remove ${live?.displayName ?? friend.displayName}`} title="Stop following"
                             onClick={() => onRemoveFriend?.(friend.friendCode)}><X size={15} /></button>
