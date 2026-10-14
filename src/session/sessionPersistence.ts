@@ -1,4 +1,10 @@
 import type { GuestSession, HostRecovery, RoomHistoryCredential } from "./types";
+import {
+  quarantineEntries,
+  quarantineRaw,
+  readStoredJson,
+  reasonForInvalid
+} from "../state/storageQuarantine";
 
 export const HOST_RECOVERY_KEY = "poker-tracker:v1:hosted-room";
 export const GUEST_SESSION_KEY = "poker-tracker:v1:guest-room";
@@ -19,12 +25,13 @@ function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
+const SESSION_SCHEMA_VERSION = 1;
+
 export function loadHostRecovery(): HostRecovery | null {
-  const value = parseStored<Partial<HostRecovery>>(
-    typeof localStorage === "undefined" ? undefined : localStorage,
-    HOST_RECOVERY_KEY
-  );
-  return value?.schemaVersion === 1 &&
+  const stored = readStoredJson(HOST_RECOVERY_KEY);
+  if (!stored) return null;
+  const value = (stored.value && typeof stored.value === "object" ? stored.value : {}) as Partial<HostRecovery>;
+  const valid = value.schemaVersion === 1 &&
     isString(value.publicId) &&
     isString(value.localGameId) &&
     isString(value.hostSecret) &&
@@ -32,9 +39,11 @@ export function loadHostRecovery(): HostRecovery | null {
     isString(value.inviteUrl) &&
     isString(value.roomName) &&
     typeof value.lastKnownVersion === "number" &&
-    (value.deploymentUrl === undefined || isString(value.deploymentUrl))
-    ? (value as HostRecovery)
-    : null;
+    (value.deploymentUrl === undefined || isString(value.deploymentUrl));
+  if (valid) return value as HostRecovery;
+  // The host secret cannot be recreated, so keep a copy before a new room replaces it.
+  quarantineRaw(HOST_RECOVERY_KEY, stored.raw, reasonForInvalid(stored.value, SESSION_SCHEMA_VERSION));
+  return null;
 }
 
 export function saveHostRecovery(value: HostRecovery): boolean {
@@ -104,22 +113,28 @@ export function recoverGuestSession(
 }
 
 export function loadRoomHistoryCredentials(): RoomHistoryCredential[] {
-  const values = parseStored<unknown>(
-    typeof localStorage === "undefined" ? undefined : localStorage,
-    ROOM_HISTORY_KEY
-  );
-  if (!Array.isArray(values)) return [];
-  return values.filter((value): value is RoomHistoryCredential => {
-    if (!value || typeof value !== "object") return false;
-    const candidate = value as Partial<RoomHistoryCredential>;
-    return candidate.schemaVersion === 1 &&
+  const stored = readStoredJson(ROOM_HISTORY_KEY);
+  if (!stored) return [];
+  const values = stored.value;
+  if (!Array.isArray(values)) {
+    quarantineRaw(ROOM_HISTORY_KEY, stored.raw, "invalid");
+    return [];
+  }
+  const skipped: unknown[] = [];
+  const credentials = values.filter((value): value is RoomHistoryCredential => {
+    const candidate = (value && typeof value === "object" ? value : {}) as Partial<RoomHistoryCredential>;
+    const valid = candidate.schemaVersion === 1 &&
       isString(candidate.publicId) &&
       (candidate.role === "host" || candidate.role === "guest") &&
       isString(candidate.secret) &&
       isString(candidate.roomName) &&
       typeof candidate.joinedAt === "number" &&
       (candidate.deploymentUrl === undefined || isString(candidate.deploymentUrl));
+    if (!valid) skipped.push(value);
+    return valid;
   }).slice(0, 50);
+  quarantineEntries(ROOM_HISTORY_KEY, skipped, SESSION_SCHEMA_VERSION);
+  return credentials;
 }
 
 export function saveRoomHistoryCredential(value: RoomHistoryCredential): void {

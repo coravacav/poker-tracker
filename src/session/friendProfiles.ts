@@ -1,3 +1,10 @@
+import {
+  quarantineEntries,
+  quarantineRaw,
+  readStoredJson,
+  reasonForInvalid
+} from "../state/storageQuarantine";
+
 export const FRIEND_PROFILE_KEY = "poker-tracker:v1:friend-profile";
 export const FOLLOWED_FRIENDS_KEY = "poker-tracker:v1:followed-friends";
 
@@ -17,15 +24,7 @@ export type FollowedFriend = {
   displayName: string;
 };
 
-function parseStored(key: string): unknown {
-  if (typeof localStorage === "undefined") return null;
-  try {
-    const value = localStorage.getItem(key);
-    return value ? JSON.parse(value) : null;
-  } catch {
-    return null;
-  }
-}
+const FRIEND_SCHEMA_VERSION = 1;
 
 export function normalizeFriendCode(value: string): string {
   return value.toUpperCase().replace(/[^2-9A-HJ-NP-Z]/g, "").slice(0, 20);
@@ -66,8 +65,7 @@ export function friendCodeFromHash(hash = window.location.hash): string | null {
   return validFriendCode(friendCode) ? friendCode : null;
 }
 
-export function loadFriendProfile(): FriendProfile | null {
-  const value = parseStored(FRIEND_PROFILE_KEY);
+function parseFriendProfile(value: unknown): FriendProfile | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<FriendProfile>;
   return candidate.schemaVersion === 1 &&
@@ -86,6 +84,17 @@ export function loadFriendProfile(): FriendProfile | null {
     : null;
 }
 
+export function loadFriendProfile(): FriendProfile | null {
+  const stored = readStoredJson(FRIEND_PROFILE_KEY);
+  if (!stored) return null;
+  const profile = parseFriendProfile(stored.value);
+  // The owner secret cannot be recreated, so keep a copy before a new profile replaces it.
+  if (!profile) {
+    quarantineRaw(FRIEND_PROFILE_KEY, stored.raw, reasonForInvalid(stored.value, FRIEND_SCHEMA_VERSION));
+  }
+  return profile;
+}
+
 export function saveFriendProfile(profile: FriendProfile): boolean {
   if (typeof localStorage === "undefined") return false;
   try {
@@ -97,18 +106,26 @@ export function saveFriendProfile(profile: FriendProfile): boolean {
 }
 
 export function loadFollowedFriends(): FollowedFriend[] {
-  const value = parseStored(FOLLOWED_FRIENDS_KEY);
-  if (!Array.isArray(value)) return [];
+  const stored = readStoredJson(FOLLOWED_FRIENDS_KEY);
+  if (!stored) return [];
+  const value = stored.value;
+  if (!Array.isArray(value)) {
+    quarantineRaw(FOLLOWED_FRIENDS_KEY, stored.raw, "invalid");
+    return [];
+  }
   const seen = new Set<string>();
-  return value.flatMap((entry): FollowedFriend[] => {
-    if (!entry || typeof entry !== "object") return [];
-    const candidate = entry as Partial<FollowedFriend>;
+  const skipped: unknown[] = [];
+  const friends = value.flatMap((entry): FollowedFriend[] => {
+    const candidate = (entry && typeof entry === "object" ? entry : {}) as Partial<FollowedFriend>;
     if (
       candidate.schemaVersion !== 1 ||
       typeof candidate.friendCode !== "string" ||
       !validFriendCode(candidate.friendCode) ||
       typeof candidate.displayName !== "string"
-    ) return [];
+    ) {
+      skipped.push(entry);
+      return [];
+    }
     const friendCode = normalizeFriendCode(candidate.friendCode);
     if (seen.has(friendCode)) return [];
     seen.add(friendCode);
@@ -118,6 +135,8 @@ export function loadFollowedFriends(): FollowedFriend[] {
       displayName: candidate.displayName.trim() || "Poker friend"
     }];
   }).slice(0, 50);
+  quarantineEntries(FOLLOWED_FRIENDS_KEY, skipped, FRIEND_SCHEMA_VERSION);
+  return friends;
 }
 
 export function saveFollowedFriends(friends: FollowedFriend[]): boolean {

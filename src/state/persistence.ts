@@ -13,8 +13,16 @@ import {
 import { normalizeLegacyPlayerTransactions } from "../domain/playerTransactions";
 import { validatePersistedState } from "../domain/validation";
 import { createDefaultGameState, createId } from "./seedGame";
+import {
+  quarantineRaw,
+  readStoredJson,
+  reasonForInvalid,
+  releaseQuarantinedRaw
+} from "./storageQuarantine";
 
 export const STORAGE_KEY = "poker-tracker:v1:current-game";
+/** Highest saved-game schema this build can read. */
+export const CURRENT_SCHEMA_VERSION = 7;
 
 function shapeFromLegacyLayout(layout: TableSeatLayout | undefined): TableShape {
   if (layout === "round") {
@@ -242,19 +250,28 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
 }
 
 export function loadSavedGameState(): GameState | null {
-  if (typeof localStorage === "undefined") {
+  const stored = readStoredJson(STORAGE_KEY);
+  if (!stored) {
+    return null;
+  }
+
+  if (!validatePersistedState(stored.value)) {
+    // Keep a copy before the next save can replace it; a newer build's save is the usual cause.
+    quarantineRaw(
+      STORAGE_KEY,
+      stored.raw,
+      reasonForInvalid(stored.value, CURRENT_SCHEMA_VERSION)
+    );
     return null;
   }
 
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) {
-      return null;
-    }
-
-    const parsed = JSON.parse(stored) as unknown;
-    return validatePersistedState(parsed) ? migratePersistedState(parsed) : null;
+    const state = migratePersistedState(stored.value);
+    // The same value reads cleanly again (e.g. after updating), so any earlier copy is redundant.
+    releaseQuarantinedRaw(STORAGE_KEY, stored.raw);
+    return state;
   } catch {
+    quarantineRaw(STORAGE_KEY, stored.raw, "invalid");
     return null;
   }
 }

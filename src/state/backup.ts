@@ -45,7 +45,11 @@ export function parseBackup(
 }
 
 export function downloadJson(filename: string, value: unknown): void {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+  downloadText(filename, JSON.stringify(value, null, 2));
+}
+
+export function downloadText(filename: string, text: string): void {
+  const blob = new Blob([text], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

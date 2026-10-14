@@ -1,6 +1,13 @@
 import type { GameState } from "./pokerTypes";
 import { buildPlayerSummaries } from "./ledger";
-import { migratePersistedState } from "../state/persistence";
+import { CURRENT_SCHEMA_VERSION, migratePersistedState } from "../state/persistence";
+import {
+  listQuarantined,
+  quarantineEntries,
+  quarantineRaw,
+  reasonForInvalid,
+  releaseQuarantined
+} from "../state/storageQuarantine";
 import { validatePersistedState } from "./validation";
 
 export const GAME_ARCHIVE_KEY = "poker-tracker:v1:game-archive";
@@ -21,22 +28,96 @@ export type PlayerHistoryStat = {
   biggestLossCents: number;
 };
 
+function parseArchivedEntry(entry: unknown): ArchivedGame | null {
+  if (!entry || typeof entry !== "object") return null;
+  const candidate = entry as { archivedAt?: unknown; state?: unknown };
+  if (typeof candidate.archivedAt !== "string" || !validatePersistedState(candidate.state)) return null;
+  try {
+    return { archivedAt: candidate.archivedAt, state: migratePersistedState(candidate.state) };
+  } catch {
+    return null;
+  }
+}
+
 export function parseArchivedGames(value: unknown): ArchivedGame[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    if (!entry || typeof entry !== "object") return [];
-    const candidate = entry as { archivedAt?: unknown; state?: unknown };
-    if (typeof candidate.archivedAt !== "string" || !validatePersistedState(candidate.state)) return [];
-    return [{ archivedAt: candidate.archivedAt, state: migratePersistedState(candidate.state) }];
-  });
+  return value.flatMap((entry) => parseArchivedEntry(entry) ?? []);
+}
+
+type StoredArchive = {
+  games: ArchivedGame[];
+  /** Entries this build cannot read; written back untouched so a newer build still sees them. */
+  unreadable: unknown[];
+  /** False when the stored archive is unreadable and no copy of it could be kept. */
+  safeToWrite: boolean;
+};
+
+const entryState = (entry: unknown) =>
+  entry && typeof entry === "object" ? (entry as { state?: unknown }).state : undefined;
+
+/** Drops kept copies of archive entries that are still stored and now read cleanly. */
+function releaseReadableEntryCopies(storedEntries: unknown[]): void {
+  const copies = listQuarantined().filter(
+    (record) => record.sourceKey === GAME_ARCHIVE_KEY && record.scope === "entries"
+  );
+  if (copies.length === 0) return;
+  const stored = new Set(storedEntries.map((entry) => JSON.stringify(entry)));
+  for (const copy of copies) {
+    try {
+      const entries = JSON.parse(copy.raw) as unknown;
+      if (
+        Array.isArray(entries) &&
+        entries.every((entry) => stored.has(JSON.stringify(entry)) && parseArchivedEntry(entry))
+      ) {
+        releaseQuarantined(copy.id);
+      }
+    } catch {
+      // Leave copies we cannot interpret for the user to download.
+    }
+  }
+}
+
+function readStoredArchive(): StoredArchive {
+  if (typeof localStorage === "undefined") return { games: [], unreadable: [], safeToWrite: false };
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(GAME_ARCHIVE_KEY);
+  } catch {
+    return { games: [], unreadable: [], safeToWrite: false };
+  }
+  if (raw === null) return { games: [], unreadable: [], safeToWrite: true };
+
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return { games: [], unreadable: [], safeToWrite: quarantineRaw(GAME_ARCHIVE_KEY, raw, "unreadable") };
+  }
+  if (!Array.isArray(value)) {
+    return {
+      games: [],
+      unreadable: [],
+      safeToWrite: quarantineRaw(GAME_ARCHIVE_KEY, raw, reasonForInvalid(value, CURRENT_SCHEMA_VERSION))
+    };
+  }
+
+  const games: ArchivedGame[] = [];
+  const unreadable: unknown[] = [];
+  for (const entry of value) {
+    const game = parseArchivedEntry(entry);
+    if (game) games.push(game);
+    else unreadable.push(entry);
+  }
+  if (unreadable.length > 0) {
+    quarantineEntries(GAME_ARCHIVE_KEY, unreadable, CURRENT_SCHEMA_VERSION, entryState);
+  } else {
+    releaseReadableEntryCopies(value);
+  }
+  return { games, unreadable, safeToWrite: true };
 }
 
 export function loadArchivedGames(): ArchivedGame[] {
-  try {
-    return parseArchivedGames(JSON.parse(localStorage.getItem(GAME_ARCHIVE_KEY) ?? "[]") as unknown);
-  } catch {
-    return [];
-  }
+  return readStoredArchive().games;
 }
 
 export function hasArchivedGames(): boolean {
@@ -48,9 +129,13 @@ export function hasArchivedGames(): boolean {
   }
 }
 
-function writeArchivedGames(games: ArchivedGame[]): boolean {
+function writeArchivedGames(archive: StoredArchive, games: ArchivedGame[]): boolean {
+  if (!archive.safeToWrite) return false;
   try {
-    localStorage.setItem(GAME_ARCHIVE_KEY, JSON.stringify(games.slice(0, MAX_ARCHIVED_GAMES)));
+    localStorage.setItem(
+      GAME_ARCHIVE_KEY,
+      JSON.stringify([...games.slice(0, MAX_ARCHIVED_GAMES), ...archive.unreadable])
+    );
     window.dispatchEvent(new Event(GAME_ARCHIVE_CHANGED_EVENT));
     return true;
   } catch {
@@ -61,7 +146,8 @@ function writeArchivedGames(games: ArchivedGame[]): boolean {
 /** Merges restored games into the archive, keeping the newest copy of each game. */
 export function mergeArchivedGames(imported: ArchivedGame[]): boolean {
   const byGameId = new Map<string, ArchivedGame>();
-  for (const game of [...loadArchivedGames(), ...imported]) {
+  const archive = readStoredArchive();
+  for (const game of [...archive.games, ...imported]) {
     const current = byGameId.get(game.state.localGameId);
     if (!current || Date.parse(game.archivedAt) > Date.parse(current.archivedAt)) {
       byGameId.set(game.state.localGameId, game);
@@ -70,15 +156,14 @@ export function mergeArchivedGames(imported: ArchivedGame[]): boolean {
   const games = [...byGameId.values()].sort(
     (left, right) => (Date.parse(right.archivedAt) || 0) - (Date.parse(left.archivedAt) || 0)
   );
-  return writeArchivedGames(games);
+  return writeArchivedGames(archive, games);
 }
 
 export function archiveGame(state: GameState): boolean {
   if (state.transactions.length === 0) return false;
-  const existing = loadArchivedGames().filter(
-    (game) => game.state.localGameId !== state.localGameId
-  );
-  return writeArchivedGames([{ archivedAt: new Date().toISOString(), state }, ...existing]);
+  const archive = readStoredArchive();
+  const existing = archive.games.filter((game) => game.state.localGameId !== state.localGameId);
+  return writeArchivedGames(archive, [{ archivedAt: new Date().toISOString(), state }, ...existing]);
 }
 
 export function buildPlayerHistoryStats(games: ArchivedGame[]): PlayerHistoryStat[] {
