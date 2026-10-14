@@ -1,6 +1,7 @@
 import type { GameState, Transaction } from "../domain/pokerTypes";
 import { isValidPersonId } from "../domain/people";
 import { normalizeLegacyPlayerTransaction } from "../domain/playerTransactions";
+import { sanitizeSettlementPins } from "../domain/settlement";
 import { validatePersistedState } from "../domain/validation";
 import { gameReducer, type GameAction } from "../state/gameReducer";
 
@@ -34,7 +35,11 @@ const HOSTED_ACTION_TYPES = new Set<GameAction["type"]>([
   "replace_cash_out",
   "flip_transaction",
   "void_transaction",
-  "undo_recent_transaction"
+  "undo_recent_transaction",
+  "pin_settlement_payment",
+  "set_settlement_pin_status",
+  "unpin_settlement_payment",
+  "clear_settlement_pins"
 ]);
 
 function jsonSize(value: unknown): number {
@@ -46,6 +51,7 @@ function jsonSize(value: unknown): number {
 }
 
 export function normalizeGameState(state: GameState): GameState {
+  const settlementPins = sanitizeSettlementPins(state.settlementPins, state.players);
   const normalized: GameState = {
     schemaVersion: 7,
     localGameId: state.localGameId,
@@ -130,7 +136,9 @@ export function normalizeGameState(state: GameState): GameState {
         count
       })),
       correctingTransactionId
-    }))
+    })),
+    // Omitted when empty so pin-free rooms keep the shape older clients sent.
+    ...(settlementPins.length > 0 ? { settlementPins } : {})
   };
   return JSON.parse(JSON.stringify(normalized)) as GameState;
 }

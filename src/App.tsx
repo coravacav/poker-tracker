@@ -573,8 +573,16 @@ function GameApp({
               hideActions={guest}
               imbalanceCents={imbalanceCents}
               onAddTransaction={addTransaction}
+              onSettlementPinAction={guest ? undefined : (action) => {
+                if (readOnly) {
+                  setNotice("Reconnect before changing the shared game.");
+                  return;
+                }
+                dispatch(action);
+              }}
               players={state.players}
               readOnly={readOnly}
+              settlementPins={state.settlementPins}
               settlementReady={settlementReady}
               summaries={settlementSummaries}
             />

@@ -300,3 +300,51 @@ describe("shared room authority", () => {
     expect(history.state.settings.gameName).toBe("Poker Night");
   });
 });
+
+describe("shared settlement pins", () => {
+  it("shares paid payments with guests and describes them in the activity feed", async () => {
+    const { test, snapshot } = await createRoom();
+    await test.mutation(api.rooms.join, {
+      publicId,
+      inviteSecret,
+      guestSecret,
+      displayName: "Observer"
+    });
+
+    const pin = {
+      id: "settlement_pin_shared",
+      fromPlayerId: snapshot.players[0].id,
+      toPlayerId: snapshot.players[1].id,
+      amountCents: 2500,
+      status: "paid" as const
+    };
+    await test.mutation(api.rooms.applyAction, {
+      publicId,
+      hostSecret,
+      controllerId,
+      expectedVersion: 0,
+      clientActionId: "action_settlement_pin_12345",
+      action: { type: "pin_settlement_payment" as const, pin }
+    });
+
+    const guestView = await test.query(api.rooms.guestView, { publicId, guestSecret });
+    expect(guestView.state.settlementPins).toEqual([pin]);
+
+    const hostView = await test.query(api.rooms.hostView, { publicId, hostSecret, controllerId });
+    expect(hostView.state.settlementPins).toEqual([pin]);
+    expect(hostView.activity.events[0].summary).toBe(
+      "Marked Player 1 pays Player 2 $25.00 as paid"
+    );
+
+    await test.mutation(api.rooms.applyAction, {
+      publicId,
+      hostSecret,
+      controllerId,
+      expectedVersion: 1,
+      clientActionId: "action_settlement_unpin_12345",
+      action: { type: "unpin_settlement_payment" as const, pinId: pin.id }
+    });
+    const afterUnpin = await test.query(api.rooms.guestView, { publicId, guestSecret });
+    expect(afterUnpin.state).not.toHaveProperty("settlementPins");
+  });
+});

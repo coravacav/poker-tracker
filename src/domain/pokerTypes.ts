@@ -118,6 +118,12 @@ export type PersistedGameState = {
   players: Player[];
   transactions: Transaction[];
   cashOutDrafts: CashOutDraft[];
+  /**
+   * Settlement payments the host fixed in place (see domain/settlement.ts).
+   * Additive and optional, so it needs no schema bump: older builds ignore it.
+   * Absent rather than empty when there are none.
+   */
+  settlementPins?: SettlementPin[];
 };
 
 export type LegacyPersistedGameStateV6 = {
@@ -190,4 +196,15 @@ export type SettlementPayment = {
   fromPlayerId: PlayerId;
   toPlayerId: PlayerId;
   amountCents: number;
+};
+
+/**
+ * "locked": the players agreed on this payment; "paid": it already happened.
+ * Either way it stays fixed and the remaining payments are computed around it.
+ */
+export type SettlementPinStatus = "locked" | "paid";
+
+export type SettlementPin = SettlementPayment & {
+  id: string;
+  status: SettlementPinStatus;
 };

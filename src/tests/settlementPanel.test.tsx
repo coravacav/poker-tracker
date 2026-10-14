@@ -1,7 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useReducer } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { SettlementPanel } from "../components/SettlementPanel";
 import type { BankSummary, Player, PlayerLedgerSummary } from "../domain/pokerTypes";
+import { gameReducer } from "../state/gameReducer";
+import { createDefaultGameState } from "../state/seedGame";
 
 const players: Player[] = [
   { id: "alex", name: "Alex", seatIndex: 0, isActive: true },
@@ -54,19 +57,30 @@ const bankSummary: BankSummary = {
   balanceCents: 3000
 };
 
+/** Routes pin actions through the real reducer, like the app does. */
+function PinHarness() {
+  const [state, dispatch] = useReducer(gameReducer, undefined, () => ({
+    ...createDefaultGameState(),
+    players
+  }));
+  return (
+    <SettlementPanel
+      bankSummary={bankSummary}
+      imbalanceCents={0}
+      onAddTransaction={vi.fn(() => true)}
+      onSettlementPinAction={dispatch}
+      players={state.players}
+      readOnly={false}
+      settlementPins={state.settlementPins}
+      settlementReady={true}
+      summaries={summaries}
+    />
+  );
+}
+
 describe("SettlementPanel", () => {
-  it("tracks and clears checked settlement payments", () => {
-    render(
-      <SettlementPanel
-        bankSummary={bankSummary}
-        imbalanceCents={0}
-        onAddTransaction={vi.fn(() => true)}
-        players={players}
-        readOnly={false}
-        settlementReady={true}
-        summaries={summaries}
-      />
-    );
+  it("marks payments paid through pins and clears the marks", () => {
+    render(<PinHarness />);
 
     expect(screen.getByText("0 of 2 payments settled")).toBeInTheDocument();
 
@@ -75,13 +89,128 @@ describe("SettlementPanel", () => {
     });
     fireEvent.click(paymentCheckbox);
 
-    expect(paymentCheckbox).toBeChecked();
+    const paidCheckbox = screen.getByRole("checkbox", {
+      name: "Mark Alex to Casey $20.00 as unpaid"
+    });
+    expect(paidCheckbox).toBeChecked();
     expect(screen.getByText("1 of 2 payments settled")).toBeInTheDocument();
+    expect(screen.getByText("Paid")).toBeInTheDocument();
+    // The other payment is still suggested and unchanged.
+    expect(
+      screen.getByRole("checkbox", { name: "Mark Alex to Blair $10.00 as paid" })
+    ).not.toBeChecked();
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear checks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear marks" }));
 
-    expect(paymentCheckbox).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Mark Alex to Casey $20.00 as paid" })
+    ).not.toBeChecked();
     expect(screen.getByText("0 of 2 payments settled")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear marks" })).not.toBeInTheDocument();
+  });
+
+  it("locks a payment, then marks the locked payment paid", () => {
+    render(<PinHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Lock Alex to Blair $10.00" }));
+    const unlock = screen.getByRole("button", { name: "Unlock Alex to Blair $10.00" });
+    expect(unlock).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Locked")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mark Alex to Blair $10.00 as paid" }));
+    expect(screen.getByText("1 of 2 payments settled")).toBeInTheDocument();
+    expect(screen.queryByText("Locked")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Unlock Alex to Blair/ })).not.toBeInTheDocument();
+
+    // Unchecking a paid payment returns it to the suggested plan.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mark Alex to Blair $10.00 as unpaid" }));
+    expect(screen.getByText("0 of 2 payments settled")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lock Alex to Blair $10.00" })).toBeInTheDocument();
+  });
+
+  it("adds a custom payment and plans the rest around it", () => {
+    render(<PinHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add payment" }));
+    const form = screen.getByRole("form", { name: "Add a fixed payment" });
+    fireEvent.change(within(form).getByLabelText("Payer"), { target: { value: "alex" } });
+    fireEvent.change(within(form).getByLabelText("Recipient"), { target: { value: "blair" } });
+    fireEvent.change(within(form).getByLabelText("Amount"), { target: { value: "30" } });
+    fireEvent.click(within(form).getByLabelText("Already paid"));
+    fireEvent.click(within(form).getByRole("button", { name: "Add payment" }));
+
+    expect(screen.queryByRole("form", { name: "Add a fixed payment" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "Mark Alex to Blair $30.00 as unpaid" })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Mark Blair to Casey $20.00 as paid" })
+    ).not.toBeChecked();
+    expect(screen.getByText("1 of 2 payments settled")).toBeInTheDocument();
+    expect(screen.getByText(/more than Blair owes or is owed/)).toBeInTheDocument();
+  });
+
+  it("rejects an invalid custom payment", () => {
+    render(<PinHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add payment" }));
+    const form = screen.getByRole("form", { name: "Add a fixed payment" });
+    fireEvent.change(within(form).getByLabelText("Recipient"), { target: { value: "alex" } });
+    fireEvent.change(within(form).getByLabelText("Payer"), { target: { value: "alex" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Add payment" }));
+    expect(screen.getByText("Choose two different players.")).toBeInTheDocument();
+
+    fireEvent.change(within(form).getByLabelText("Recipient"), { target: { value: "casey" } });
+    fireEvent.change(within(form).getByLabelText("Amount"), { target: { value: "0" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Add payment" }));
+    expect(screen.getByText("Enter an amount greater than zero.")).toBeInTheDocument();
+    expect(screen.getByText("0 of 2 payments settled")).toBeInTheDocument();
+  });
+
+  it("shows pinned payments to guests without controls", () => {
+    render(
+      <SettlementPanel
+        bankSummary={bankSummary}
+        hideActions
+        imbalanceCents={0}
+        onAddTransaction={vi.fn(() => true)}
+        players={players}
+        readOnly
+        settlementPins={[
+          { id: "pin", fromPlayerId: "alex", toPlayerId: "casey", amountCents: 2000, status: "paid" }
+        ]}
+        settlementReady={true}
+        summaries={summaries}
+      />
+    );
+
+    expect(screen.getByText("1 of 2 payments settled")).toBeInTheDocument();
+    expect(screen.getByText("Paid")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Lock/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add payment" })).not.toBeInTheDocument();
+  });
+
+  it("disables payment marks in read-only mode", () => {
+    const onSettlementPinAction = vi.fn();
+    render(
+      <SettlementPanel
+        bankSummary={bankSummary}
+        imbalanceCents={0}
+        onAddTransaction={vi.fn(() => true)}
+        onSettlementPinAction={onSettlementPinAction}
+        players={players}
+        readOnly
+        settlementReady={true}
+        summaries={summaries}
+      />
+    );
+
+    const checkbox = screen.getByRole("checkbox", { name: "Mark Alex to Casey $20.00 as paid" });
+    expect(checkbox).toBeDisabled();
+    fireEvent.click(checkbox);
+    expect(onSettlementPinAction).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Add payment" })).toBeDisabled();
   });
 
   it("records one player's exact full debt against a selected coverer", () => {

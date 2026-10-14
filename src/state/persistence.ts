@@ -12,6 +12,7 @@ import {
 } from "../domain/tableLayout";
 import { normalizeLegacyPlayerTransactions } from "../domain/playerTransactions";
 import { isValidPersonId } from "../domain/people";
+import { sanitizeSettlementPins } from "../domain/settlement";
 import { validatePersistedState } from "../domain/validation";
 import { createDefaultGameState, createId } from "./seedGame";
 import {
@@ -149,8 +150,19 @@ function withUsablePersonIds(state: GameState): GameState {
   };
 }
 
+/**
+ * settlementPins is optional and additive like Player.personId: validation
+ * ignores it and pins this build cannot use are dropped here.
+ */
+function withUsableSettlementPins(state: GameState): GameState {
+  const { settlementPins, ...rest } = state;
+  if (settlementPins === undefined) return state;
+  const pins = sanitizeSettlementPins(settlementPins, state.players);
+  return pins.length > 0 ? { ...rest, settlementPins: pins } : rest;
+}
+
 export function migratePersistedState(state: AnyPersistedGameState): GameState {
-  return withUsablePersonIds(migrateSchema(state));
+  return withUsableSettlementPins(withUsablePersonIds(migrateSchema(state)));
 }
 
 function migrateSchema(state: AnyPersistedGameState): GameState {

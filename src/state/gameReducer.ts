@@ -17,6 +17,8 @@ import type {
   Player,
   PlayerId,
   SeatRail,
+  SettlementPin,
+  SettlementPinStatus,
   Transaction,
   TransactionId
 } from "../domain/pokerTypes";
@@ -26,6 +28,7 @@ import {
 } from "../domain/recentTransactionAction";
 import type { RecentTransactionAction } from "../domain/recentTransactionAction";
 import { isValidPersonId, nameKey } from "../domain/people";
+import { MAX_SETTLEMENT_PINS, sanitizeSettlementPins } from "../domain/settlement";
 import { migratePersistedState } from "./persistence";
 import { createDefaultGameState, createId } from "./seedGame";
 
@@ -74,6 +77,11 @@ export type GameAction =
       action: RecentTransactionAction;
       requestedAt: string;
     }
+  /** Fixes a settlement payment in place; the rest of the plan is computed around it. */
+  | { type: "pin_settlement_payment"; pin: SettlementPin }
+  | { type: "set_settlement_pin_status"; pinId: string; status: SettlementPinStatus }
+  | { type: "unpin_settlement_payment"; pinId: string }
+  | { type: "clear_settlement_pins" }
   | { type: "replace_state_from_import"; state: AnyPersistedGameState }
   | { type: "reset_game" };
 
@@ -141,6 +149,12 @@ function withPersonLink(next: Player, previous: Player, personId: string | null 
       : unlinked;
   }
   return isValidPersonId(personId) ? { ...unlinked, personId } : unlinked;
+}
+
+/** Stores pins without an empty array, so pin-free games keep their old shape. */
+function withSettlementPins(state: GameState, pins: SettlementPin[]): GameState {
+  const { settlementPins: _settlementPins, ...rest } = state;
+  return pins.length > 0 ? { ...rest, settlementPins: pins } : rest;
 }
 
 function nextPlayerName(playersLength: number): string {
@@ -765,6 +779,36 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         cashOutDrafts
       };
     }
+
+    case "pin_settlement_payment": {
+      const pins = state.settlementPins ?? [];
+      const [pin] = sanitizeSettlementPins([action.pin], state.players);
+      if (!pin || pins.length >= MAX_SETTLEMENT_PINS || pins.some((existing) => existing.id === pin.id)) {
+        return state;
+      }
+      return withSettlementPins(state, [...pins, pin]);
+    }
+
+    case "set_settlement_pin_status": {
+      const pins = state.settlementPins ?? [];
+      const target = pins.find((pin) => pin.id === action.pinId);
+      if (!target || target.status === action.status || (action.status !== "locked" && action.status !== "paid")) {
+        return state;
+      }
+      return withSettlementPins(
+        state,
+        pins.map((pin) => (pin.id === action.pinId ? { ...pin, status: action.status } : pin))
+      );
+    }
+
+    case "unpin_settlement_payment": {
+      const pins = state.settlementPins ?? [];
+      if (!pins.some((pin) => pin.id === action.pinId)) return state;
+      return withSettlementPins(state, pins.filter((pin) => pin.id !== action.pinId));
+    }
+
+    case "clear_settlement_pins":
+      return state.settlementPins === undefined ? state : withSettlementPins(state, []);
 
     case "replace_state_from_import":
       return reconcileSeatIndexes(migratePersistedState(action.state));

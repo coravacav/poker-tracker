@@ -1,19 +1,32 @@
-import { ArrowRight, Check, Copy, Printer, Scale, X } from "lucide-react";
-import { useMemo, useState } from "react";
-import { formatCurrency } from "../domain/money";
+import { ArrowRight, Check, Copy, Lock, LockOpen, Plus, Printer, Scale, X } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
+import { formatCurrency, parseMoneyToCents } from "../domain/money";
 import type {
   BankSummary,
   Player,
   PlayerLedgerSummary,
-  SettlementPayment,
+  SettlementPin,
   Transaction
 } from "../domain/pokerTypes";
 import {
-  buildMinimizedSettlement,
+  buildSettlementPlan,
   buildSettlementSummaryText,
-  playerNameById
+  playerNameById,
+  type SettlementPlanPayment
 } from "../domain/settlement";
+import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
+
+export type SettlementPinAction = Extract<
+  GameAction,
+  {
+    type:
+      | "pin_settlement_payment"
+      | "set_settlement_pin_status"
+      | "unpin_settlement_payment"
+      | "clear_settlement_pins";
+  }
+>;
 
 type SettlementPanelProps = {
   bankSummary: BankSummary;
@@ -24,12 +37,24 @@ type SettlementPanelProps = {
   readOnly: boolean;
   settlementReady: boolean;
   summaries: PlayerLedgerSummary[];
+  settlementPins?: SettlementPin[];
   onAddTransaction: (transaction: Transaction) => boolean;
+  onSettlementPinAction?: (action: SettlementPinAction) => void;
 };
 
-function settlementPaymentKey(payment: SettlementPayment): string {
-  return `${payment.fromPlayerId}:${payment.toPlayerId}:${payment.amountCents}`;
+function planPaymentKey(payment: SettlementPlanPayment): string {
+  return (
+    payment.pinId ??
+    `suggested:${payment.fromPlayerId}:${payment.toPlayerId}:${payment.amountCents}`
+  );
 }
+
+type PinDraft = {
+  fromPlayerId: string;
+  toPlayerId: string;
+  amount: string;
+  alreadyPaid: boolean;
+};
 
 export function SettlementPanel({
   bankSummary,
@@ -40,35 +65,34 @@ export function SettlementPanel({
   readOnly,
   settlementReady,
   summaries,
-  onAddTransaction
+  settlementPins = [],
+  onAddTransaction,
+  onSettlementPinAction
 }: SettlementPanelProps) {
-  const minimizedPayments = useMemo(
-    () => buildMinimizedSettlement(summaries),
-    [summaries]
-  );
-  const [settledPaymentKeys, setSettledPaymentKeys] = useState<Set<string>>(
-    () => new Set()
+  const plan = useMemo(
+    () => buildSettlementPlan(summaries, settlementPins),
+    [settlementPins, summaries]
   );
   const [coveredPlayerId, setCoveredPlayerId] = useState<string | null>(null);
   const [coveredByPlayerId, setCoveredByPlayerId] = useState<string>("");
   const [coverageNote, setCoverageNote] = useState("");
   const [coverageError, setCoverageError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const currentPaymentKeys = useMemo(
-    () => new Set(minimizedPayments.map(settlementPaymentKey)),
-    [minimizedPayments]
-  );
-  const settledPaymentCount = minimizedPayments.filter((payment) =>
-    settledPaymentKeys.has(settlementPaymentKey(payment))
-  ).length;
-  const hasSettledPayments = settledPaymentCount > 0;
+  const [pinDraft, setPinDraft] = useState<PinDraft | null>(null);
+  const [pinDraftError, setPinDraftError] = useState<string | null>(null);
+  const canEditPayments = !hideActions && Boolean(onSettlementPinAction);
+  const pinControlsDisabled = readOnly || !onSettlementPinAction;
+  const pinControlsTitle = readOnly ? "Turn off read-only mode to change payments" : undefined;
   const sortedSummaries = [...summaries]
     .filter((summary) => players.some((player) => player.id === summary.playerId))
     .sort((a, b) => Math.abs(b.netCents) - Math.abs(a.netCents));
+  const overpinnedNames = plan.overpinnedPlayerIds.map((playerId) =>
+    playerNameById(players, playerId)
+  );
 
   const settlementSummaryText = useMemo(
-    () => buildSettlementSummaryText(gameName, players, summaries),
-    [gameName, players, summaries]
+    () => buildSettlementSummaryText(gameName, players, summaries, settlementPins),
+    [gameName, players, settlementPins, summaries]
   );
 
   async function copySummary() {
@@ -81,32 +105,85 @@ export function SettlementPanel({
     }
   }
 
-  function toggleSettlementPayment(payment: SettlementPayment) {
-    const paymentKey = settlementPaymentKey(payment);
-
-    setSettledPaymentKeys((previousKeys) => {
-      const nextKeys = new Set(previousKeys);
-
-      if (nextKeys.has(paymentKey)) {
-        nextKeys.delete(paymentKey);
-      } else {
-        nextKeys.add(paymentKey);
+  function pinPayment(payment: SettlementPlanPayment, status: SettlementPin["status"]) {
+    onSettlementPinAction?.({
+      type: "pin_settlement_payment",
+      pin: {
+        id: createId("settlement_pin"),
+        fromPlayerId: payment.fromPlayerId,
+        toPlayerId: payment.toPlayerId,
+        amountCents: payment.amountCents,
+        status
       }
-
-      return nextKeys;
     });
   }
 
-  function clearSettlementChecks() {
-    setSettledPaymentKeys((previousKeys) => {
-      const nextKeys = new Set(previousKeys);
-      for (const paymentKey of previousKeys) {
-        if (currentPaymentKeys.has(paymentKey)) {
-          nextKeys.delete(paymentKey);
-        }
-      }
-      return nextKeys;
+  function togglePaid(payment: SettlementPlanPayment) {
+    if (pinControlsDisabled) return;
+    if (!payment.pinId) {
+      pinPayment(payment, "paid");
+    } else if (payment.status === "locked") {
+      onSettlementPinAction?.({
+        type: "set_settlement_pin_status",
+        pinId: payment.pinId,
+        status: "paid"
+      });
+    } else {
+      onSettlementPinAction?.({ type: "unpin_settlement_payment", pinId: payment.pinId });
+    }
+  }
+
+  function toggleLocked(payment: SettlementPlanPayment) {
+    if (pinControlsDisabled) return;
+    if (payment.pinId) {
+      onSettlementPinAction?.({ type: "unpin_settlement_payment", pinId: payment.pinId });
+    } else {
+      pinPayment(payment, "locked");
+    }
+  }
+
+  function openPinDraft() {
+    const firstSuggestion = plan.payments.find((payment) => payment.status === "suggested");
+    const fallbackFrom = sortedSummaries[0]?.playerId ?? "";
+    const fallbackTo =
+      sortedSummaries.find((summary) => summary.playerId !== fallbackFrom)?.playerId ?? "";
+    setPinDraft({
+      fromPlayerId: firstSuggestion?.fromPlayerId ?? fallbackFrom,
+      toPlayerId: firstSuggestion?.toPlayerId ?? fallbackTo,
+      amount: firstSuggestion ? (firstSuggestion.amountCents / 100).toFixed(2) : "",
+      alreadyPaid: false
     });
+    setPinDraftError(null);
+  }
+
+  function submitPinDraft(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!pinDraft || pinControlsDisabled) return;
+    const amountCents = parseMoneyToCents(pinDraft.amount);
+    if (!pinDraft.fromPlayerId || !pinDraft.toPlayerId) {
+      setPinDraftError("Choose who pays and who receives.");
+      return;
+    }
+    if (pinDraft.fromPlayerId === pinDraft.toPlayerId) {
+      setPinDraftError("Choose two different players.");
+      return;
+    }
+    if (amountCents === null || amountCents <= 0 || !Number.isSafeInteger(amountCents)) {
+      setPinDraftError("Enter an amount greater than zero.");
+      return;
+    }
+    onSettlementPinAction?.({
+      type: "pin_settlement_payment",
+      pin: {
+        id: createId("settlement_pin"),
+        fromPlayerId: pinDraft.fromPlayerId,
+        toPlayerId: pinDraft.toPlayerId,
+        amountCents,
+        status: pinDraft.alreadyPaid ? "paid" : "locked"
+      }
+    });
+    setPinDraft(null);
+    setPinDraftError(null);
   }
 
   function openDebtCoverage(playerId: string) {
@@ -186,51 +263,180 @@ export function SettlementPanel({
           <div className="settlement-section-heading">
             <div>
               <h3>Player Payments</h3>
-              {minimizedPayments.length > 0 ? (
+              {plan.payments.length > 0 ? (
                 <p>
-                  {settledPaymentCount} of {minimizedPayments.length} payments settled
+                  {plan.paidCount} of {plan.payments.length} payments settled
                 </p>
               ) : null}
             </div>
-            {hasSettledPayments ? (
-              <button className="text-button" type="button" onClick={clearSettlementChecks}>
-                Clear checks
-              </button>
+            {canEditPayments ? (
+              <div className="settlement-pin-controls">
+                {settlementPins.length > 0 ? (
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={pinControlsDisabled}
+                    title={pinControlsTitle}
+                    onClick={() => onSettlementPinAction?.({ type: "clear_settlement_pins" })}
+                  >
+                    Clear marks
+                  </button>
+                ) : null}
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={pinControlsDisabled || sortedSummaries.length < 2}
+                  title={pinControlsTitle ?? "Add a payment that already happened or that players agreed on"}
+                  onClick={openPinDraft}
+                >
+                  <Plus size={15} />
+                  Add payment
+                </button>
+              </div>
             ) : null}
           </div>
+          {pinDraft && canEditPayments ? (
+            <form
+              className="settlement-pin-form"
+              aria-label="Add a fixed payment"
+              onSubmit={submitPinDraft}
+            >
+              <div className="form-grid two">
+                <label>
+                  <span>Payer</span>
+                  <select
+                    value={pinDraft.fromPlayerId}
+                    onChange={(event) => {
+                      const fromPlayerId = event.currentTarget.value;
+                      setPinDraft((draft) => (draft ? { ...draft, fromPlayerId } : draft));
+                      setPinDraftError(null);
+                    }}
+                  >
+                    {sortedSummaries.map((summary) => (
+                      <option key={summary.playerId} value={summary.playerId}>
+                        {playerNameById(players, summary.playerId)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Recipient</span>
+                  <select
+                    value={pinDraft.toPlayerId}
+                    onChange={(event) => {
+                      const toPlayerId = event.currentTarget.value;
+                      setPinDraft((draft) => (draft ? { ...draft, toPlayerId } : draft));
+                      setPinDraftError(null);
+                    }}
+                  >
+                    {sortedSummaries.map((summary) => (
+                      <option key={summary.playerId} value={summary.playerId}>
+                        {playerNameById(players, summary.playerId)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Amount</span>
+                  <input
+                    inputMode="decimal"
+                    value={pinDraft.amount}
+                    placeholder="0.00"
+                    onChange={(event) => {
+                      const amount = event.currentTarget.value;
+                      setPinDraft((draft) => (draft ? { ...draft, amount } : draft));
+                      setPinDraftError(null);
+                    }}
+                  />
+                </label>
+                <label className="settlement-pin-paid">
+                  <input
+                    type="checkbox"
+                    checked={pinDraft.alreadyPaid}
+                    onChange={(event) => {
+                      const alreadyPaid = event.currentTarget.checked;
+                      setPinDraft((draft) => (draft ? { ...draft, alreadyPaid } : draft));
+                    }}
+                  />
+                  <span>Already paid</span>
+                </label>
+              </div>
+              {pinDraftError ? (
+                <div className="notice notice-warning">{pinDraftError}</div>
+              ) : null}
+              <div className="modal-actions">
+                <button type="button" onClick={() => setPinDraft(null)}>
+                  Cancel
+                </button>
+                <button className="primary-button" type="submit" disabled={pinControlsDisabled}>
+                  Add payment
+                </button>
+              </div>
+            </form>
+          ) : null}
+          {overpinnedNames.length > 0 ? (
+            <div className="notice notice-warning settlement-pin-warning">
+              Locked or paid payments are more than {overpinnedNames.join(", ")}{" "}
+              {overpinnedNames.length === 1 ? "owes or is owed" : "owe or are owed"}, so the
+              remaining payments send the difference back. Check the marked payments.
+            </div>
+          ) : null}
           <div className="settlement-list">
-            {minimizedPayments.length === 0 ? (
+            {plan.payments.length === 0 ? (
               <p className="muted">No player-to-player payments needed.</p>
             ) : (
-              minimizedPayments.map((payment) => {
-                const paymentKey = settlementPaymentKey(payment);
+              plan.payments.map((payment) => {
                 const fromPlayerName = playerNameById(players, payment.fromPlayerId);
                 const toPlayerName = playerNameById(players, payment.toPlayerId);
                 const amount = formatCurrency(payment.amountCents);
-                const isSettled = settledPaymentKeys.has(paymentKey);
+                const isPaid = payment.status === "paid";
+                const isLocked = payment.status === "locked";
+                const description = `${fromPlayerName} to ${toPlayerName} ${amount}`;
 
                 return (
-                  <label
-                    className={`settlement-line payment-line ${
-                      isSettled ? "is-settled" : ""
+                  <div
+                    className={`settlement-line payment-line ${isPaid ? "is-settled" : ""} ${
+                      isLocked ? "is-locked" : ""
                     }`}
-                    key={paymentKey}
+                    key={planPaymentKey(payment)}
                   >
-                    {!hideActions ? (
-                      <input
-                        type="checkbox"
-                        checked={isSettled}
-                        aria-label={`Mark ${fromPlayerName} to ${toPlayerName} ${amount} as ${
-                          isSettled ? "unpaid" : "paid"
-                        }`}
-                        onChange={() => toggleSettlementPayment(payment)}
-                      />
+                    <label className="payment-line-label">
+                      {canEditPayments ? (
+                        <input
+                          type="checkbox"
+                          checked={isPaid}
+                          disabled={pinControlsDisabled}
+                          aria-label={`Mark ${description} as ${isPaid ? "unpaid" : "paid"}`}
+                          onChange={() => togglePaid(payment)}
+                        />
+                      ) : null}
+                      <span>{fromPlayerName}</span>
+                      <ArrowRight size={15} aria-hidden="true" />
+                      <span>{toPlayerName}</span>
+                      {isPaid || isLocked ? (
+                        <small className="payment-status">{isPaid ? "Paid" : "Locked"}</small>
+                      ) : null}
+                      <strong>{amount}</strong>
+                    </label>
+                    {canEditPayments && !isPaid ? (
+                      <button
+                        className="icon-button payment-lock-button"
+                        type="button"
+                        aria-pressed={isLocked}
+                        disabled={pinControlsDisabled}
+                        aria-label={`${isLocked ? "Unlock" : "Lock"} ${description}`}
+                        title={
+                          pinControlsTitle ??
+                          (isLocked
+                            ? "Unlock: let this payment be recomputed"
+                            : "Lock: keep this payment and plan the rest around it")
+                        }
+                        onClick={() => toggleLocked(payment)}
+                      >
+                        {isLocked ? <Lock size={15} /> : <LockOpen size={15} />}
+                      </button>
                     ) : null}
-                    <span>{fromPlayerName}</span>
-                    <ArrowRight size={15} aria-hidden="true" />
-                    <span>{toPlayerName}</span>
-                    <strong>{amount}</strong>
-                  </label>
+                  </div>
                 );
               })
             )}

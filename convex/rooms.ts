@@ -1,6 +1,6 @@
 import { Presence } from "@convex-dev/presence";
 import { ConvexError, v } from "convex/values";
-import type { GameState, Transaction } from "../src/domain/pokerTypes";
+import type { GameState, SettlementPin, Transaction } from "../src/domain/pokerTypes";
 import {
   applyHostedAction,
   MAX_ROOM_ACTIONS,
@@ -259,10 +259,26 @@ function actionType(action: unknown): string {
   return (action as { type: string }).type;
 }
 
+function settlementPinById(state: GameState, pinId: unknown): SettlementPin | undefined {
+  return typeof pinId === "string"
+    ? state.settlementPins?.find((pin) => pin.id === pinId)
+    : undefined;
+}
+
+function describeSettlementPin(pin: SettlementPin | undefined, state: GameState): string {
+  if (!pin) return "a settlement payment";
+  return `${playerName(state, pin.fromPlayerId)} pays ${playerName(state, pin.toPlayerId)} ${formatAmount(pin.amountCents)}`;
+}
+
 function actionPlayerIds(action: unknown): string[] {
   if (!action || typeof action !== "object") return [];
   const candidate = action as Record<string, unknown>;
+  const pin = candidate.pin && typeof candidate.pin === "object"
+    ? candidate.pin as Record<string, unknown>
+    : {};
   return [
+    pin.fromPlayerId,
+    pin.toPlayerId,
     candidate.playerId,
     candidate.fromPlayerId,
     candidate.toPlayerId,
@@ -338,6 +354,20 @@ function auditSummary(
       return `Cleared the cash-out draft for ${firstPlayer}`;
     case "start_cash_out_correction":
       return `Started a cash-out correction for ${firstPlayer}`;
+    case "pin_settlement_payment":
+    case "set_settlement_pin_status": {
+      const pinId = type === "pin_settlement_payment"
+        ? (candidate.pin as { id?: unknown } | undefined)?.id
+        : candidate.pinId;
+      const pin = settlementPinById(after, pinId);
+      return pin?.status === "paid"
+        ? `Marked ${describeSettlementPin(pin, after)} as paid`
+        : `Locked ${describeSettlementPin(pin, after)}`;
+    }
+    case "unpin_settlement_payment":
+      return `Unpinned ${describeSettlementPin(settlementPinById(before, candidate.pinId), before)}`;
+    case "clear_settlement_pins":
+      return "Cleared the settlement payment marks";
     default:
       return `Updated the shared game (${type})`;
   }
