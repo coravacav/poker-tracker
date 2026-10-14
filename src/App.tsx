@@ -36,11 +36,17 @@ import { validateTransaction } from "./domain/validation";
 import type { GameAction } from "./state/gameReducer";
 import { createId } from "./state/seedGame";
 import { useGameSession } from "./session/useGameSession";
+import { useStoragePersistenceRequest } from "./state/useStoragePersistence";
 import type { RoomHistoryProjection, RoomTransport, SharedActivity } from "./session/types";
 
 export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
   const gameSession = useGameSession(roomTransport);
   const { session } = gameSession;
+  useStoragePersistenceRequest(
+    (!gameSession.isGuest && gameSession.state.transactions.length > 0) ||
+      gameSession.friendProfile !== null ||
+      gameSession.followedFriends.length > 0
+  );
 
   if (session.mode === "joining") {
     return (

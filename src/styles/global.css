@@ -1189,6 +1189,53 @@ label span {
   font-size: 0.78rem;
 }
 
+.backup-reminder {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--ink);
+  background: var(--surface-alt);
+  text-align: left;
+}
+
+.backup-reminder > svg {
+  margin-top: 1px;
+  color: var(--amber);
+}
+
+.backup-reminder-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.backup-reminder-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.backup-reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 2;
+  gap: 8px;
+}
+
+@media (max-width: 420px) {
+  .backup-reminder-actions {
+    grid-column: 1 / -1;
+  }
+
+  .backup-reminder-actions button {
+    flex: 1 1 auto;
+  }
+}
+
 @media (max-width: 720px) {
   .start-page {
     padding: 16px;

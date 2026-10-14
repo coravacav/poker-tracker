@@ -1,10 +1,11 @@
-import { Download, RotateCcw, Upload } from "lucide-react";
+import { DatabaseBackup, Download, RotateCcw, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Dispatch } from "react";
 import type { GameAction } from "../state/gameReducer";
 import type { GameState } from "../domain/pokerTypes";
 import { validatePersistedState } from "../domain/validation";
-import { archiveGame } from "../domain/sessionHistory";
+import { archiveGame, mergeArchivedGames } from "../domain/sessionHistory";
+import { downloadJson, exportFullBackup, parseBackup } from "../state/backup";
 
 type ExportImportControlsProps = {
   dispatch: Dispatch<GameAction>;
@@ -17,15 +18,7 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
   const [error, setError] = useState<string | null>(null);
 
   function exportGame() {
-    const blob = new Blob([JSON.stringify(state, null, 2)], {
-      type: "application/json"
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${state.settings.gameName || "poker-tracker"}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadJson(`${state.settings.gameName || "poker-tracker"}.json`, state);
   }
 
   async function importGame(file: File | undefined) {
@@ -36,6 +29,21 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
     try {
       const text = await file.text();
       const parsed = JSON.parse(text) as unknown;
+      const backup = parseBackup(parsed);
+
+      if (backup) {
+        if (!mergeArchivedGames(backup.archivedGames)) {
+          setError("Could not restore Player History on this device.");
+          return;
+        }
+        if (backup.currentGame) {
+          // Keep an in-progress game that the backup would otherwise replace.
+          if (backup.currentGame.localGameId !== state.localGameId) archiveGame(state);
+          dispatch({ type: "replace_state_from_import", state: backup.currentGame });
+        }
+        setError(null);
+        return;
+      }
 
       if (!validatePersistedState(parsed)) {
         setError("Import did not match the saved game schema.");
@@ -69,9 +77,18 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
       <button
         className="icon-button"
         type="button"
+        onClick={() => exportFullBackup(state)}
+        title="Back up all games"
+        aria-label="Back up all games"
+      >
+        <DatabaseBackup size={17} />
+      </button>
+      <button
+        className="icon-button"
+        type="button"
         disabled={readOnly}
         onClick={() => inputRef.current?.click()}
-        title="Import JSON"
+        title="Import JSON or backup"
       >
         <Upload size={17} />
       </button>

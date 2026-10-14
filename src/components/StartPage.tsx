@@ -6,6 +6,7 @@ import type { FriendProfile, FollowedFriend } from "../session/friendProfiles";
 import { formatFriendCode, friendCodeUrl, normalizeFriendCode } from "../session/friendProfiles";
 import type { FriendActivity } from "../session/types";
 import type { LocalEntryReason } from "../session/localEntry";
+import { BackupReminder } from "./BackupReminder";
 
 type StartPageProps = {
   entry: { reason: LocalEntryReason; savedGame: GameState | null; error?: string };
@@ -124,6 +125,7 @@ export function StartPage({
               <Plus size={18} aria-hidden="true" /> Start new game
             </button>
           </div>
+          <BackupReminder currentGame={savedGame} />
         </section>
 
         {friendFeatureAvailable ? (
