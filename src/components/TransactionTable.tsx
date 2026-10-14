@@ -1,7 +1,7 @@
 import { Ban, ClipboardList, Repeat2, Search, SlidersHorizontal, X } from "lucide-react";
 import { useState } from "react";
 import type { Dispatch, FormEvent } from "react";
-import { formatCurrency } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 import type {
   Player,
   Transaction,
@@ -102,6 +102,7 @@ function CorrectionDialog({
   onCancel: () => void;
   onConfirm: (reason: string) => void;
 }) {
+  const formatCurrency = useFormatCurrency();
   const [reason, setReason] = useState(kind === "void" ? "Correction" : "");
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -163,6 +164,7 @@ export function TransactionTable({
   transactions,
   variant = "table"
 }: TransactionTableProps) {
+  const formatCurrency = useFormatCurrency();
   const [search, setSearch] = useState("");
   const [playerFilter, setPlayerFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState<"all" | TransactionType>("all");

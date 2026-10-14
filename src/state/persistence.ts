@@ -14,7 +14,11 @@ import { normalizeLegacyPlayerTransactions } from "../domain/playerTransactions"
 import { isValidPersonId } from "../domain/people";
 import { sanitizeSettlementPins } from "../domain/settlement";
 import { normalizeVenmoHandle } from "../domain/venmo";
-import { validatePersistedState } from "../domain/validation";
+import {
+  LATEST_GAME_SCHEMA_VERSION,
+  schemaVersionForCurrency,
+  validatePersistedState
+} from "../domain/validation";
 import { createDefaultGameState, createId } from "./seedGame";
 import {
   quarantineRaw,
@@ -24,8 +28,11 @@ import {
 } from "./storageQuarantine";
 
 export const STORAGE_KEY = "poker-tracker:v1:current-game";
-/** Highest saved-game schema this build can read. */
-export const CURRENT_SCHEMA_VERSION = 7;
+/**
+ * Highest saved-game schema this build can read. Saves are written as 7 for
+ * US dollar games and 8 for other currencies (schemaVersionForCurrency).
+ */
+export const CURRENT_SCHEMA_VERSION = LATEST_GAME_SCHEMA_VERSION;
 
 function shapeFromLegacyLayout(layout: TableSeatLayout | undefined): TableShape {
   if (layout === "round") {
@@ -126,7 +133,7 @@ function finishMigration(
 ): GameState {
   return {
     ...state,
-    schemaVersion: 7,
+    schemaVersion: schemaVersionForCurrency(state.settings.currencyCode),
     localGameId,
     transactions: normalizeLegacyPlayerTransactions(classifyLegacyCashOuts(state.transactions))
   };
@@ -186,9 +193,11 @@ export function migratePersistedState(state: AnyPersistedGameState): GameState {
 }
 
 function migrateSchema(state: AnyPersistedGameState): GameState {
-  if (state.schemaVersion === 7) {
+  if (state.schemaVersion === 7 || state.schemaVersion === 8) {
     return {
       ...state,
+      // A schema 8 save in US dollars reads as 7 so older builds can open it again.
+      schemaVersion: schemaVersionForCurrency(state.settings.currencyCode),
       settings: {
         ...state.settings,
         tableSeatPlacements: normalizeSeatPlacements(
@@ -283,6 +292,11 @@ function migrateSchema(state: AnyPersistedGameState): GameState {
       transactions: state.transactions,
       cashOutDrafts: []
     });
+  }
+
+  if (state.schemaVersion !== 1) {
+    // Unreachable for validated input; also lets TypeScript narrow to the v1 shape.
+    throw new Error("Unsupported saved game schema.");
   }
 
   const players = resetActiveSeatIndexes(state.players);

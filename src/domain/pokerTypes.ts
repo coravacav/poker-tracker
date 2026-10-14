@@ -1,3 +1,5 @@
+import type { CurrencyCode } from "./money";
+
 export type PlayerId = string;
 export type TransactionId = string;
 
@@ -55,7 +57,12 @@ export type TableSeatPlacement = {
 
 export type GameSettings = {
   gameName: string;
-  currencyCode: "USD";
+  /**
+   * Label for every amount in the game. All supported currencies use two minor
+   * digits, so amounts stay integer cents whatever the code. Anything but USD
+   * makes the save schema 8 (see CURRENT_SCHEMA_VERSION in state/persistence.ts).
+   */
+  currencyCode: CurrencyCode;
   defaultBuyInCents: number;
   tableShape: TableShape;
   tableSeatPlacements: TableSeatPlacement[];
@@ -116,8 +123,16 @@ export type BankSummary = {
   balanceCents: number;
 };
 
+/**
+ * Saves carry the lowest schema that describes them: 7 for US dollar games
+ * (readable by every build since v7) and 8 for any other currency, so builds
+ * from before per-game currencies report "saved by a newer version" instead
+ * of quietly showing euros as dollars. See schemaVersionForCurrency.
+ */
+export type GameSchemaVersion = 7 | 8;
+
 export type PersistedGameState = {
-  schemaVersion: 7;
+  schemaVersion: GameSchemaVersion;
   localGameId: string;
   settings: GameSettings;
   players: Player[];

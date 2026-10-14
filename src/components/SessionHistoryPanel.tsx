@@ -1,5 +1,5 @@
 import { BarChart3, Pencil, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { formatCurrency } from "../domain/money";
 import {
   indexPeople,
@@ -158,11 +158,17 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                   ) : (
                     <strong>{stat.name}</strong>
                   )}
-                  <span>{stat.games} games</span>
-                  <span>Avg {formatCurrency(stat.averageNetCents)}</span>
-                  <strong className={stat.totalNetCents >= 0 ? "positive" : "negative"}>
-                    {formatCurrency(stat.totalNetCents)}
-                  </strong>
+                  {stat.results.map((result, index) => (
+                    // One line per currency; amounts in different currencies are never added up.
+                    <Fragment key={result.currencyCode}>
+                      {index > 0 ? <span className="history-stat-spacer" aria-hidden="true" /> : null}
+                      <span>{result.games} {result.games === 1 ? "game" : "games"}</span>
+                      <span>Avg {formatCurrency(result.averageNetCents, result.currencyCode)}</span>
+                      <strong className={result.totalNetCents >= 0 ? "positive" : "negative"}>
+                        {formatCurrency(result.totalNetCents, result.currencyCode)}
+                      </strong>
+                    </Fragment>
+                  ))}
                   {managing ? (
                     <div className="history-stat-manage">
                       {isRenaming ? (
@@ -279,7 +285,7 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                 {summaries.map((summary) => (
                   <span key={summary.playerId}>
                     {room.state.players.find((player) => player.id === summary.playerId)?.name ?? "Player"}
-                    <strong className={summary.netCents >= 0 ? "positive" : "negative"}>{formatCurrency(summary.netCents)}</strong>
+                    <strong className={summary.netCents >= 0 ? "positive" : "negative"}>{formatCurrency(summary.netCents, room.state.settings.currencyCode)}</strong>
                   </span>
                 ))}
               </div>

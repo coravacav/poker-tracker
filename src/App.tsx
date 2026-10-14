@@ -5,6 +5,7 @@ import { AppShell, type AppMode } from "./components/AppShell";
 import { BankSummaryPanel } from "./components/BankSummary";
 import { CashOutMode } from "./components/CashOutMode";
 import { ChipDenominationPanel } from "./components/ChipDenominationPanel";
+import { CurrencyProvider } from "./components/CurrencyContext";
 import { IconKey } from "./components/IconKey";
 import { PlayerDrawer } from "./components/PlayerDrawer";
 import { PokerTable } from "./components/PokerTable";
@@ -28,6 +29,7 @@ import {
   getSummaryByPlayerId
 } from "./domain/ledger";
 import { getCashOutOverview } from "./domain/chipCounts";
+import { formatCurrency } from "./domain/money";
 import type { GameState, Transaction } from "./domain/pokerTypes";
 import { getLatestTransactionAction } from "./domain/recentTransactionAction";
 import { latestRepeatableTransaction, repeatTransaction } from "./domain/quickEntry";
@@ -379,7 +381,7 @@ function GameApp({
   }, []);
 
   return (
-    <>
+    <CurrencyProvider currencyCode={state.settings.currencyCode}>
       <AppShell
         cashOut={
           <CashOutMode
@@ -562,7 +564,7 @@ function GameApp({
                 ) : null}
                 {bankSummary.balanceCents !== 0 ? (
                   <div className="notice notice-warning">
-                    The chip pool still has {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(bankSummary.balanceCents / 100)} remaining.
+                    The chip pool still has {formatCurrency(bankSummary.balanceCents, state.settings.currencyCode)} remaining.
                   </div>
                 ) : null}
               </div>
@@ -663,6 +665,6 @@ function GameApp({
           </section>
         </div>
       ) : null}
-    </>
+    </CurrencyProvider>
   );
 }

@@ -1,5 +1,5 @@
 import { CircleDollarSign, TriangleAlert } from "lucide-react";
-import { formatCurrency } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 import type { BankSummary } from "../domain/pokerTypes";
 
 type BankSummaryPanelProps = {
@@ -13,6 +13,7 @@ export function BankSummaryPanel({
   imbalanceCents,
   variant = "full"
 }: BankSummaryPanelProps) {
+  const formatCurrency = useFormatCurrency();
   if (variant === "compact") {
     return (
       <section className="panel bank-panel bank-panel-compact" aria-label="Chip pool">

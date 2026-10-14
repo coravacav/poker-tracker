@@ -1,3 +1,4 @@
+import { DEFAULT_CURRENCY_CODE, type CurrencyCode } from "./money";
 import type { GameState } from "./pokerTypes";
 import {
   EMPTY_PEOPLE_DIRECTORY,
@@ -18,17 +19,29 @@ export type ArchivedGame = {
   state: GameState;
 };
 
+/** One player's results in one currency. Amounts in different currencies are never added together. */
+export type PlayerCurrencyResult = {
+  currencyCode: CurrencyCode;
+  games: number;
+  totalNetCents: number;
+  averageNetCents: number;
+  biggestWinCents: number;
+  biggestLossCents: number;
+};
+
 export type PlayerHistoryStat = {
   /** Stable row key: `person:<root person id>` or `name:<lowercased name>`. */
   key: string;
   /** Set for rows that belong to a person in the people directory. */
   personId?: string;
   name: string;
+  /** Games across every currency. */
   games: number;
-  totalNetCents: number;
-  averageNetCents: number;
-  biggestWinCents: number;
-  biggestLossCents: number;
+  /**
+   * Results per currency: the history's main currency (historyMainCurrency) first,
+   * then by games played. Never empty.
+   */
+  results: PlayerCurrencyResult[];
   /** Newest archive time among this row's games. */
   lastPlayedAt: string;
 };
@@ -56,10 +69,47 @@ export function archivedAtMs(archivedAt: unknown): number {
 }
 
 /**
+ * The currency most archived games were played in (ties go to the most
+ * recently archived game's); US dollars when there are none.
+ */
+export function historyMainCurrency(games: ArchivedGame[]): CurrencyCode {
+  const tally = new Map<CurrencyCode, { games: number; latestMs: number }>();
+  for (const game of games) {
+    const code = game.state.settings.currencyCode;
+    const current = tally.get(code) ?? { games: 0, latestMs: Number.NEGATIVE_INFINITY };
+    tally.set(code, {
+      games: current.games + 1,
+      latestMs: Math.max(current.latestMs, archivedAtMs(game.archivedAt))
+    });
+  }
+  let best: { code: CurrencyCode; games: number; latestMs: number } | null = null;
+  for (const [code, value] of tally) {
+    if (!best || value.games > best.games || (value.games === best.games && value.latestMs > best.latestMs)) {
+      best = { code, ...value };
+    }
+  }
+  return best?.code ?? DEFAULT_CURRENCY_CODE;
+}
+
+function currencyResult(currencyCode: CurrencyCode, results: number[]): PlayerCurrencyResult {
+  const totalNetCents = results.reduce((total, result) => total + result, 0);
+  return {
+    currencyCode,
+    games: results.length,
+    totalNetCents,
+    averageNetCents: Math.round(totalNetCents / results.length),
+    biggestWinCents: Math.max(...results),
+    biggestLossCents: Math.min(...results)
+  };
+}
+
+/**
  * Per-person results across archived games. Players count for the person they
  * are linked to (via personId, following merges) or whose name/alias they match
  * exactly; anyone else is grouped by lowercased trimmed name as before.
  * Players who never took part (inactive with no transactions) are skipped.
+ * Money is grouped per currency (see PlayerHistoryStat.results); rows are
+ * ordered by their total in the main currency, then rows without it by games.
  */
 export function buildPlayerHistoryStats(
   games: ArchivedGame[],
@@ -68,7 +118,13 @@ export function buildPlayerHistoryStats(
   const index = indexPeople(directory);
   const values = new Map<
     string,
-    { personId?: string; name: string; results: number[]; lastPlayedMs: number; lastPlayedAt: string }
+    {
+      personId?: string;
+      name: string;
+      results: Map<CurrencyCode, number[]>;
+      lastPlayedMs: number;
+      lastPlayedAt: string;
+    }
   >();
   for (const game of games) {
     const summaryById = new Map(
@@ -85,11 +141,12 @@ export function buildPlayerHistoryStats(
       const current = values.get(key) ?? {
         ...("personId" in identity ? { personId: identity.personId } : {}),
         name: "personId" in identity ? index.byId.get(identity.personId)?.name ?? player.name.trim() : player.name.trim(),
-        results: [],
+        results: new Map<CurrencyCode, number[]>(),
         lastPlayedMs: playedMs,
         lastPlayedAt: game.archivedAt
       };
-      current.results.push(result);
+      const currencyCode = game.state.settings.currencyCode;
+      current.results.set(currencyCode, [...(current.results.get(currencyCode) ?? []), result]);
       if (playedMs > current.lastPlayedMs) {
         current.lastPlayedMs = playedMs;
         current.lastPlayedAt = game.archivedAt;
@@ -100,20 +157,35 @@ export function buildPlayerHistoryStats(
     }
   }
 
-  return [...values.entries()].map(([key, { personId, name, results, lastPlayedAt }]) => {
-    const totalNetCents = results.reduce((total, result) => total + result, 0);
+  const mainCurrency = historyMainCurrency(games);
+  const mainTotal = (stat: PlayerHistoryStat): number | null =>
+    stat.results[0]?.currencyCode === mainCurrency ? stat.results[0].totalNetCents : null;
+
+  return [...values.entries()].map(([key, { personId, name, results, lastPlayedAt }]): PlayerHistoryStat => {
+    const byCurrency = [...results.entries()]
+      .map(([currencyCode, values]) => currencyResult(currencyCode, values))
+      .sort(
+        (left, right) =>
+          Number(right.currencyCode === mainCurrency) - Number(left.currencyCode === mainCurrency) ||
+          right.games - left.games ||
+          left.currencyCode.localeCompare(right.currencyCode)
+      );
     return {
       key,
       ...(personId ? { personId } : {}),
       name,
-      games: results.length,
-      totalNetCents,
-      averageNetCents: Math.round(totalNetCents / results.length),
-      biggestWinCents: Math.max(...results),
-      biggestLossCents: Math.min(...results),
+      games: byCurrency.reduce((total, result) => total + result.games, 0),
+      results: byCurrency,
       lastPlayedAt
     };
-  }).sort((left, right) => right.totalNetCents - left.totalNetCents);
+  }).sort((left, right) => {
+    const leftTotal = mainTotal(left);
+    const rightTotal = mainTotal(right);
+    if (leftTotal !== null && rightTotal !== null) return rightTotal - leftTotal;
+    if (leftTotal !== null) return -1;
+    if (rightTotal !== null) return 1;
+    return right.games - left.games || left.name.localeCompare(right.name);
+  });
 }
 
 export type PersonSuggestion = {

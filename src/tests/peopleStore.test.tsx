@@ -202,3 +202,22 @@ describe("Player History merging", () => {
     expect(screen.getByRole("checkbox", { name: "Select Mike" }).closest(".history-stat-row")).toHaveTextContent("3 games");
   });
 });
+
+describe("Player History currencies", () => {
+  it("shows a line per currency instead of adding different currencies together", async () => {
+    const euro = playedGame(["Alex"], 500);
+    const euroGame = { ...euro, schemaVersion: 8 as const, settings: { ...euro.settings, currencyCode: "EUR" as const } };
+    await mergeArchivedGames([
+      legacy(["Alex"], 1),
+      { archivedAt: new Date(Date.UTC(2026, 0, 2)).toISOString(), state: euroGame }
+    ]);
+    render(<SessionHistoryPanel />);
+    await screen.findByText("2 archived games");
+
+    const row = screen.getByText("Alex").closest(".history-stat-row") as HTMLElement;
+    expect(row).toHaveTextContent("1 game");
+    expect(within(row).getByText("-$10.00")).toBeInTheDocument();
+    expect(within(row).getByText("-€5.00")).toBeInTheDocument();
+    expect(row).not.toHaveTextContent("15.00");
+  });
+});

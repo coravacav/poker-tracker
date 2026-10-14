@@ -32,7 +32,7 @@ describe("chip key fast entry", () => {
   it("ignores blank lines and reports original line numbers", () => {
     expect(parseChipFastEntry("\nRed = 5\n\nBlue = nope")).toEqual({
       ok: false,
-      error: "Line 4: enter a positive USD value for Blue."
+      error: "Line 4: enter a positive chip value for Blue."
     });
   });
 
@@ -52,7 +52,7 @@ describe("chip key fast entry", () => {
     for (const input of ["Red =", "Red = 0", "Red = -5", "Red = 1.234"]) {
       expect(parseChipFastEntry(input)).toEqual({
         ok: false,
-        error: "Line 1: enter a positive USD value for Red."
+        error: "Line 1: enter a positive chip value for Red."
       });
     }
   });

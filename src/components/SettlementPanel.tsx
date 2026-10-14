@@ -396,7 +396,7 @@ export function SettlementPanel({
               plan.payments.map((payment) => {
                 const fromPlayerName = playerNameById(players, payment.fromPlayerId);
                 const toPlayerName = playerNameById(players, payment.toPlayerId);
-                const amount = formatCurrency(payment.amountCents);
+                const amount = formatCurrency(payment.amountCents, currencyCode);
                 const isPaid = payment.status === "paid";
                 const isLocked = payment.status === "locked";
                 const description = `${fromPlayerName} to ${toPlayerName} ${amount}`;
@@ -483,7 +483,7 @@ export function SettlementPanel({
                         : "neutral"
                   }
                 >
-                  {formatCurrency(summary.netCents)}
+                  {formatCurrency(summary.netCents, currencyCode)}
                 </strong>
                 {summary.netCents < 0 && !hideActions ? (
                   <button
@@ -509,8 +509,8 @@ export function SettlementPanel({
       </div>
 
       <div className="settlement-footer">
-        <span>Net chips in play {formatCurrency(bankSummary.balanceCents)}</span>
-        <span>Imbalance {formatCurrency(imbalanceCents)}</span>
+        <span>Net chips in play {formatCurrency(bankSummary.balanceCents, currencyCode)}</span>
+        <span>Imbalance {formatCurrency(imbalanceCents, currencyCode)}</span>
       </div>
 
       {coveredPlayerId && coverageSummary ? (
@@ -564,7 +564,7 @@ export function SettlementPanel({
               </label>
               <label>
                 <span>Full debt amount</span>
-                <input readOnly value={formatCurrency(coverageAmountCents)} />
+                <input readOnly value={formatCurrency(coverageAmountCents, currencyCode)} />
               </label>
               <label>
                 <span>Note</span>
@@ -583,7 +583,7 @@ export function SettlementPanel({
                     <span>{playerNameById(players, coveredPlayerId)}</span>
                     <small>Covered player</small>
                   </div>
-                  <strong>{formatCurrency(coverageSummary.netCents)} → $0.00</strong>
+                  <strong>{formatCurrency(coverageSummary.netCents, currencyCode)} → {formatCurrency(0, currencyCode)}</strong>
                 </article>
                 <article className="preview-card">
                   <div className="preview-card-heading">
@@ -591,7 +591,7 @@ export function SettlementPanel({
                     <small>Coverer</small>
                   </div>
                   <strong>
-                    {formatCurrency(covererSummary.netCents)} → {formatCurrency(covererSummary.netCents - coverageAmountCents)}
+                    {formatCurrency(covererSummary.netCents, currencyCode)} → {formatCurrency(covererSummary.netCents - coverageAmountCents, currencyCode)}
                   </strong>
                 </article>
               </div>

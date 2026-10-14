@@ -1,5 +1,6 @@
 import type {
   AnyPersistedGameState,
+  GameSchemaVersion,
   CashOutDraft,
   ChipCountLine,
   ChipDenomination,
@@ -11,6 +12,25 @@ import type {
   TransactionType
 } from "./pokerTypes";
 import { chipCountTotalCents } from "./chipCounts";
+import { isSupportedCurrencyCode, type CurrencyCode } from "./money";
+
+/** Highest saved-game schema this build can read. */
+export const LATEST_GAME_SCHEMA_VERSION = 8;
+
+/**
+ * The schema a game with this currency is saved as: 7 for US dollars, so
+ * builds from before per-game currencies keep opening those saves, and 8
+ * otherwise, so those builds report "saved by a newer version" (see
+ * state/storageQuarantine.ts) rather than "couldn't be read".
+ */
+export function schemaVersionForCurrency(currencyCode: CurrencyCode): GameSchemaVersion {
+  return currencyCode === "USD" ? 7 : 8;
+}
+
+/** Schema 8 added non-USD currencies; earlier schemas are always US dollars. */
+function isValidCurrencyForSchema(schemaVersion: number, currencyCode: unknown): boolean {
+  return schemaVersion >= 8 ? isSupportedCurrencyCode(currencyCode) : currencyCode === "USD";
+}
 
 const COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
 
@@ -303,6 +323,14 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     transactions?: unknown;
     cashOutDrafts?: unknown;
   };
+  // 0 for anything that is not a schema this build reads, which fails every check below.
+  const schemaVersion =
+    typeof candidate.schemaVersion === "number" &&
+    Number.isInteger(candidate.schemaVersion) &&
+    candidate.schemaVersion >= 1 &&
+    candidate.schemaVersion <= LATEST_GAME_SCHEMA_VERSION
+      ? candidate.schemaVersion
+      : 0;
   const isLegacySettings =
     candidate.schemaVersion === 1 &&
     !!candidate.settings &&
@@ -319,11 +347,7 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
     Array.isArray(candidate.settings?.tableSeatPlacements) &&
     candidate.settings.tableSeatPlacements.every(isValidSeatPlacement);
   const hasCurrentSettings =
-    (candidate.schemaVersion === 3 ||
-      candidate.schemaVersion === 4 ||
-      candidate.schemaVersion === 5 ||
-      candidate.schemaVersion === 6 ||
-      candidate.schemaVersion === 7) &&
+    schemaVersion >= 3 &&
     isValidTableShape(candidate.settings?.tableShape) &&
     Array.isArray(candidate.settings?.tableSeatPlacements) &&
     candidate.settings.tableSeatPlacements.every(isValidSeatPlacement) &&
@@ -342,31 +366,20 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
   );
 
   return (
-    (candidate.schemaVersion === 1 ||
-      candidate.schemaVersion === 2 ||
-      candidate.schemaVersion === 3 ||
-      candidate.schemaVersion === 4 ||
-      candidate.schemaVersion === 5 ||
-      candidate.schemaVersion === 6 ||
-      candidate.schemaVersion === 7) &&
-    (candidate.schemaVersion !== 6 &&
-      candidate.schemaVersion !== 7 ||
+    schemaVersion >= 1 &&
+    (schemaVersion < 6 ||
       (typeof candidate.localGameId === "string" &&
         candidate.localGameId.length >= 8 &&
         candidate.localGameId.length <= 160)) &&
     !!candidate.settings &&
     Array.isArray(candidate.players) &&
     Array.isArray(candidate.transactions) &&
-    candidate.settings.currencyCode === "USD" &&
+    isValidCurrencyForSchema(schemaVersion, candidate.settings.currencyCode) &&
     typeof candidate.settings.defaultBuyInCents === "number" &&
     typeof candidate.settings.gameName === "string" &&
     typeof candidate.settings.createdAt === "string" &&
     (isLegacySettings || isV2Settings || hasCurrentSettings) &&
-    ((candidate.schemaVersion !== 3 &&
-      candidate.schemaVersion !== 4 &&
-      candidate.schemaVersion !== 5 &&
-      candidate.schemaVersion !== 6 &&
-      candidate.schemaVersion !== 7) ||
+    (schemaVersion < 3 ||
       (Array.isArray(candidate.cashOutDrafts) &&
         candidate.cashOutDrafts.every(isValidCashOutDraft) &&
         candidate.cashOutDrafts.every((draft) => persistedPlayerIds.has(draft.playerId)) &&
@@ -384,11 +397,7 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
         typeof transaction.id === "string" &&
         typeof transaction.type === "string" &&
         TRANSACTION_TYPES.has(transaction.type as TransactionType) &&
-        (transaction.type !== "debt_coverage" ||
-          candidate.schemaVersion === 4 ||
-          candidate.schemaVersion === 5 ||
-          candidate.schemaVersion === 6 ||
-          candidate.schemaVersion === 7) &&
+        (transaction.type !== "debt_coverage" || schemaVersion >= 4) &&
         typeof transaction.createdAt === "string" &&
         typeof transaction.amountCents === "number" &&
         Number.isSafeInteger(transaction.amountCents) &&
@@ -397,9 +406,7 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
           transaction.category === "food");
       if (!basic) return false;
       if (
-        (candidate.schemaVersion === 5 ||
-          candidate.schemaVersion === 6 ||
-          candidate.schemaVersion === 7) &&
+        schemaVersion >= 5 &&
         transaction.type === "bank_cash_out" &&
         (transaction.cashOutKind !== "partial" && transaction.cashOutKind !== "final")
       ) {

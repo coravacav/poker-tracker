@@ -1,4 +1,4 @@
-import { formatCurrency } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 
 type TransferQuickAmountButtonsProps = {
   defaultBuyInCents: number;
@@ -18,6 +18,7 @@ export function TransferQuickAmountButtons({
   disabled = false,
   onSelect
 }: TransferQuickAmountButtonsProps) {
+  const formatCurrency = useFormatCurrency();
   return transferAmounts.map(({ label, numerator, denominator }) => {
     const amountCents = Math.round((defaultBuyInCents * numerator) / denominator);
 

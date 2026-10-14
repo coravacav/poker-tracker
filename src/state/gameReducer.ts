@@ -30,12 +30,19 @@ import type { RecentTransactionAction } from "../domain/recentTransactionAction"
 import { isValidPersonId, nameKey } from "../domain/people";
 import { MAX_SETTLEMENT_PINS, sanitizeSettlementPins } from "../domain/settlement";
 import { normalizeVenmoHandle } from "../domain/venmo";
+import { isSupportedCurrencyCode, type CurrencyCode } from "../domain/money";
+import { schemaVersionForCurrency } from "../domain/validation";
 import { migratePersistedState } from "./persistence";
 import { createDefaultGameState, createId } from "./seedGame";
 
 export type GameAction =
   | { type: "set_game_name"; name: string }
   | { type: "set_default_buy_in"; amountCents: number }
+  /**
+   * Relabels every amount in the game; nothing is converted. Unsupported codes
+   * are ignored. Also moves the save between schema 7 (USD) and 8 (others).
+   */
+  | { type: "set_currency"; currencyCode: CurrencyCode }
   | { type: "set_chip_denominations"; denominations: ChipDenomination[] }
   | { type: "set_table_shape"; shape: GameState["settings"]["tableShape"] }
   | { type: "move_table_seat"; seatIndex: number; rail: SeatRail; order: number }
@@ -217,6 +224,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         settings: {
           ...state.settings,
           defaultBuyInCents: action.amountCents
+        }
+      };
+
+    case "set_currency":
+      if (
+        !isSupportedCurrencyCode(action.currencyCode) ||
+        action.currencyCode === state.settings.currencyCode
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        schemaVersion: schemaVersionForCurrency(action.currencyCode),
+        settings: {
+          ...state.settings,
+          currencyCode: action.currencyCode
         }
       };
 
@@ -859,7 +882,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return reconcileSeatIndexes(migratePersistedState(action.state));
 
     case "reset_game":
-      return createDefaultGameState();
+      // The next game is most likely played in the same currency.
+      return createDefaultGameState(state.settings.currencyCode);
 
     default:
       return state;

@@ -107,7 +107,7 @@ describe("ChipDenominationPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply to editor" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Line 1: enter a positive USD value for Red."
+      "Line 1: enter a positive chip value for Red."
     );
     expect(screen.getByLabelText("Chip colors and values (one per line)")).toBeVisible();
     expect(dispatch).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import { formatCurrency } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 import { chipCountLineTotalCents, chipCountTotalCents } from "../domain/chipCounts";
 import type { ChipCountLine } from "../domain/pokerTypes";
 
@@ -8,6 +8,7 @@ type ChipBreakdownProps = {
 };
 
 function BreakdownContent({ lines }: { lines: ChipCountLine[] }) {
+  const formatCurrency = useFormatCurrency();
   return (
     <div className="chip-breakdown-list">
       {lines.length === 0 ? <p className="muted">Confirmed with no chips.</p> : null}

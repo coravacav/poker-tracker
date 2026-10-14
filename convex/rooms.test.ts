@@ -111,6 +111,80 @@ describe("shared room authority", () => {
     expect(hostAfter.activity.events[0].summary).toBe(`Set the Venmo username for ${snapshot.players[1].name}`);
   });
 
+  it("keeps the game currency in snapshots, guest views, and audit text", async () => {
+    const { test, snapshot } = await createRoom((snapshot) => {
+      snapshot.schemaVersion = 8;
+      snapshot.settings.currencyCode = "EUR";
+    });
+    const host = await test.query(api.rooms.hostView, { publicId, hostSecret, controllerId });
+    expect(host.state.schemaVersion).toBe(8);
+    expect(host.state.settings.currencyCode).toBe("EUR");
+
+    const bought = await test.mutation(api.rooms.applyAction, {
+      publicId,
+      hostSecret,
+      controllerId,
+      expectedVersion: 0,
+      clientActionId: "action_eur_buy_in_1234",
+      action: {
+        type: "add_transaction",
+        transaction: { type: "bank_buy_in", amountCents: 2050, toPlayerId: snapshot.players[0].id }
+      }
+    });
+    expect(bought.state.settings.currencyCode).toBe("EUR");
+
+    await test.mutation(api.rooms.join, { publicId, inviteSecret, guestSecret, displayName: "Observer" });
+    const guest = await test.query(api.rooms.guestView, { publicId, guestSecret });
+    expect(guest.state.settings.currencyCode).toBe("EUR");
+
+    const switched = await test.mutation(api.rooms.applyAction, {
+      publicId,
+      hostSecret,
+      controllerId,
+      expectedVersion: bought.version,
+      clientActionId: "action_set_currency_1234",
+      action: { type: "set_currency", currencyCode: "USD" }
+    });
+    // Back to US dollars, the room returns to the schema older clients accept.
+    expect(switched.state.schemaVersion).toBe(7);
+    expect(switched.state.settings.currencyCode).toBe("USD");
+
+    await expect(
+      test.mutation(api.rooms.applyAction, {
+        publicId,
+        hostSecret,
+        controllerId,
+        expectedVersion: switched.version,
+        clientActionId: "action_bad_currency_1234",
+        action: { type: "set_currency", currencyCode: "JPY" }
+      })
+    ).rejects.toThrow(/did not apply/);
+
+    const hostAfter = await test.query(api.rooms.hostView, { publicId, hostSecret, controllerId });
+    expect(hostAfter.activity.events.map((event: { summary: string }) => event.summary)).toEqual(
+      expect.arrayContaining([
+        "Changed the currency to USD",
+        `${snapshot.players[0].name} bought in for 20.50 EUR`
+      ])
+    );
+  });
+
+  it("rejects a snapshot whose currency does not match its schema", async () => {
+    const test = setup();
+    const snapshot = createDefaultGameState();
+    (snapshot.settings as { currencyCode: string }).currencyCode = "EUR";
+    await expect(
+      test.mutation(api.rooms.create, {
+        publicId,
+        localGameId: snapshot.localGameId,
+        snapshot,
+        hostSecret,
+        inviteSecret,
+        controllerId
+      })
+    ).rejects.toThrow(/current schema/);
+  });
+
   it("enforces host capability, controller ownership, and room versions", async () => {
     const { test } = await createRoom();
     await expect(

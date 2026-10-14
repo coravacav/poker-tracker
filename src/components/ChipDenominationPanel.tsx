@@ -6,6 +6,7 @@ import {
   suggestedChipColorHex
 } from "../domain/chipKeyFastEntry";
 import { centsToInputValue, parseMoneyToCents } from "../domain/money";
+import { useCurrencyCode, useFormatCurrency } from "./CurrencyContext";
 import type { ChipDenomination } from "../domain/pokerTypes";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
@@ -45,6 +46,8 @@ export function ChipDenominationPanel({
   dispatch,
   readOnly
 }: ChipDenominationPanelProps) {
+  const currencyCode = useCurrencyCode();
+  const formatCurrency = useFormatCurrency();
   const [rows, setRows] = useState(() => denominations.map(toEditable));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -214,7 +217,7 @@ export function ChipDenominationPanel({
             />
           </label>
           <span className="inline-hint">
-            Examples: Red = 5, Light Blue 0.25, or Black, $100.
+            Examples: Red = 5, Light Blue 0.25, or Black, {formatCurrency(10000, { trimWholeCents: true })}.
           </span>
           {fastEntryError ? (
             <span className="inline-error" role="alert">
@@ -300,7 +303,7 @@ export function ChipDenominationPanel({
           )}
 
           <div className="chip-key-footer">
-            <span className="muted">Values are saved in USD and may be changed later.</span>
+            <span className="muted">Values are in {currencyCode} and may be changed later.</span>
             <button
               className="primary-button"
               type="button"

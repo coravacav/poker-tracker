@@ -56,13 +56,13 @@ function splitChipLine(line: string): [string, string] | null {
   const commaIndex = line.indexOf(",");
   if (commaIndex >= 0) {
     const possibleLabel = line.slice(0, commaIndex);
-    if (!/[$\d]/.test(possibleLabel)) {
+    if (!/[$€£₹\d]/.test(possibleLabel)) {
       return splitAt(line, commaIndex);
     }
   }
 
   const whitespaceMatch = line.match(
-    /^(.*?)\s+((?:\$\s*)?-?[\d.,]+)$/
+    /^(.*?)\s+((?:[$€£₹]\s*)?-?[\d.,]+(?:\s*[$€£₹])?)$/
   );
   return whitespaceMatch ? [whitespaceMatch[1], whitespaceMatch[2]] : null;
 }
@@ -106,7 +106,7 @@ export function parseChipFastEntry(input: string): ChipFastEntryParseResult {
     if (!valueCents || valueCents <= 0 || !Number.isSafeInteger(valueCents)) {
       return {
         ok: false,
-        error: `Line ${line.lineNumber}: enter a positive USD value for ${label}.`
+        error: `Line ${line.lineNumber}: enter a positive chip value for ${label}.`
       };
     }
 

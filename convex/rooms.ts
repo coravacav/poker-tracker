@@ -1,5 +1,6 @@
 import { Presence } from "@convex-dev/presence";
 import { ConvexError, v } from "convex/values";
+import { formatPlainCurrency } from "../src/domain/money";
 import type { GameState, SettlementPin, Transaction } from "../src/domain/pokerTypes";
 import {
   applyHostedAction,
@@ -192,8 +193,9 @@ function fail(code: RoomErrorCode, message: string): never {
   throw new ConvexError({ code, message });
 }
 
-function formatAmount(amountCents: number): string {
-  return `$${(amountCents / 100).toFixed(2)}`;
+/** Audit text is shared by everyone in the room, so it avoids locale-dependent formatting. */
+function formatAmount(amountCents: number, state: GameState): string {
+  return formatPlainCurrency(amountCents, state.settings.currencyCode);
 }
 
 function playerName(state: GameState, playerId: string | undefined): string {
@@ -211,7 +213,7 @@ function transactionPlayerIds(transaction: Transaction): string[] {
 }
 
 function describeTransaction(transaction: Transaction, state: GameState): string {
-  const amount = formatAmount(transaction.amountCents);
+  const amount = formatAmount(transaction.amountCents, state);
 
   if (transaction.type === "bank_buy_in") {
     const recipient = playerName(state, transaction.toPlayerId);
@@ -267,7 +269,7 @@ function settlementPinById(state: GameState, pinId: unknown): SettlementPin | un
 
 function describeSettlementPin(pin: SettlementPin | undefined, state: GameState): string {
   if (!pin) return "a settlement payment";
-  return `${playerName(state, pin.fromPlayerId)} pays ${playerName(state, pin.toPlayerId)} ${formatAmount(pin.amountCents)}`;
+  return `${playerName(state, pin.fromPlayerId)} pays ${playerName(state, pin.toPlayerId)} ${formatAmount(pin.amountCents, state)}`;
 }
 
 function actionPlayerIds(action: unknown): string[] {
@@ -327,7 +329,9 @@ function auditSummary(
     case "set_game_name":
       return `Renamed the game to ${typeof candidate.name === "string" ? candidate.name.trim() || "Poker Night" : "Poker Night"}`;
     case "set_default_buy_in":
-      return `Changed the default buy-in to ${formatAmount(typeof candidate.amountCents === "number" ? candidate.amountCents : 0)}`;
+      return `Changed the default buy-in to ${formatAmount(typeof candidate.amountCents === "number" ? candidate.amountCents : 0, after)}`;
+    case "set_currency":
+      return `Changed the currency to ${after.settings.currencyCode}`;
     case "set_chip_denominations":
       return "Updated the chip value key";
     case "set_table_shape":

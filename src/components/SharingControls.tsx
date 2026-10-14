@@ -2,7 +2,7 @@ import { Copy, Radio, RefreshCw, Share2, StopCircle, UserRound, WifiOff, X } fro
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { formatCurrency } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 import type { HostRecovery, HostRoomProjection } from "../session/types";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -61,6 +61,7 @@ export function HostSharingControls({
   onRotateInvite,
   onRevokeGuest
 }: HostSharingControlsProps) {
+  const formatCurrency = useFormatCurrency();
   const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState(false);
   const duplicate = room?.controllerStatus === "duplicate";

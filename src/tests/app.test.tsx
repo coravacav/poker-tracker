@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { createDefaultGameState } from "../state/seedGame";
 import { STORAGE_KEY } from "../state/persistence";
@@ -531,5 +531,54 @@ describe("App", () => {
     firstRender.unmount();
     renderGameApp();
     expect(screen.getByRole("button", { name: "Undo recent transaction action" })).toBeVisible();
+  });
+
+  it("changes the game currency from Setup and relabels every amount", () => {
+    renderGameApp();
+    fireEvent.click(screen.getByRole("button", { name: "Setup" }));
+
+    const picker = screen.getByRole("combobox", { name: "Currency" });
+    expect(picker).toHaveValue("USD");
+    expect(within(picker).getByRole("option", { name: "EUR · Euro" })).toBeInTheDocument();
+
+    // No transactions yet, so no confirmation is needed.
+    const confirm = vi.spyOn(window, "confirm");
+    fireEvent.change(picker, { target: { value: "EUR" } });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(picker).toHaveValue("EUR");
+    expect(screen.getByRole("button", { name: "Set buy-in to €50" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Set buy-in to $50" })).not.toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null")).toMatchObject({
+      schemaVersion: 8,
+      settings: { currencyCode: "EUR" }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    expect(screen.getByText("Default buy-in €20.00")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add default buy-in to all" }));
+    expect(within(screen.getAllByRole("region", { name: "Chip pool" })[0]).getAllByText(/€120\.00/).length)
+      .toBeGreaterThan(0);
+    expect(document.body.textContent).not.toMatch(/\$\d/);
+
+    // With transactions recorded, switching asks first; declining keeps the currency.
+    fireEvent.click(screen.getByRole("button", { name: "Setup" }));
+    confirm.mockReturnValueOnce(false);
+    fireEvent.change(screen.getByRole("combobox", { name: "Currency" }), { target: { value: "GBP" } });
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("nothing is converted"));
+    expect(screen.getByRole("combobox", { name: "Currency" })).toHaveValue("EUR");
+
+    confirm.mockReturnValueOnce(true);
+    fireEvent.change(screen.getByRole("combobox", { name: "Currency" }), { target: { value: "GBP" } });
+    expect(screen.getByRole("combobox", { name: "Currency" })).toHaveValue("GBP");
+    expect(screen.getByRole("button", { name: "Set buy-in to £20" })).toHaveAttribute("aria-pressed", "true");
+    confirm.mockRestore();
+  });
+
+  it("opens a saved game in its own currency", () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(createDefaultGameState("CAD")));
+    renderGameApp();
+    fireEvent.click(screen.getByRole("button", { name: "Setup" }));
+    expect(screen.getByRole("combobox", { name: "Currency" })).toHaveValue("CAD");
+    expect(screen.getByRole("button", { name: "Set buy-in to CA$20" })).toBeInTheDocument();
   });
 });

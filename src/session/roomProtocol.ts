@@ -3,7 +3,8 @@ import { isValidPersonId } from "../domain/people";
 import { normalizeLegacyPlayerTransaction } from "../domain/playerTransactions";
 import { sanitizeSettlementPins } from "../domain/settlement";
 import { normalizeVenmoHandle } from "../domain/venmo";
-import { validatePersistedState } from "../domain/validation";
+import { toCurrencyCode } from "../domain/money";
+import { schemaVersionForCurrency, validatePersistedState } from "../domain/validation";
 import { gameReducer, type GameAction } from "../state/gameReducer";
 
 export const MAX_ROOM_SNAPSHOT_BYTES = 700_000;
@@ -17,6 +18,7 @@ export const MAX_ROOM_GUEST_RECORDS = 200;
 const HOSTED_ACTION_TYPES = new Set<GameAction["type"]>([
   "set_game_name",
   "set_default_buy_in",
+  "set_currency",
   "set_chip_denominations",
   "set_table_shape",
   "move_table_seat",
@@ -54,12 +56,15 @@ function jsonSize(value: unknown): number {
 
 export function normalizeGameState(state: GameState): GameState {
   const settlementPins = sanitizeSettlementPins(state.settlementPins, state.players);
+  // Validated before it gets here; the fallback only guards the type.
+  const currencyCode = toCurrencyCode(state.settings.currencyCode);
   const normalized: GameState = {
-    schemaVersion: 7,
+    // 7 for US dollars so rooms keep the shape older clients sent and accept.
+    schemaVersion: schemaVersionForCurrency(currencyCode),
     localGameId: state.localGameId,
     settings: {
       gameName: state.settings.gameName,
-      currencyCode: "USD",
+      currencyCode,
       defaultBuyInCents: state.settings.defaultBuyInCents,
       tableShape: state.settings.tableShape,
       tableSeatPlacements: state.settings.tableSeatPlacements.map(({ seatIndex, rail, order }) => ({
@@ -153,7 +158,7 @@ export function normalizeGameState(state: GameState): GameState {
 export function roomStateError(state: unknown): string | null {
   if (
     !validatePersistedState(state) ||
-    (state.schemaVersion !== 6 && state.schemaVersion !== 7)
+    (state.schemaVersion !== 6 && state.schemaVersion !== 7 && state.schemaVersion !== 8)
   ) {
     return "Game state does not match the current schema.";
   }

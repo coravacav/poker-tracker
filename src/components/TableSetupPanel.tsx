@@ -1,7 +1,15 @@
 import { ShieldCheck, ShieldOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Dispatch } from "react";
-import { centsToInputValue, parseMoneyToCents } from "../domain/money";
+import {
+  CURRENCY_NAMES,
+  SUPPORTED_CURRENCY_CODES,
+  centsToInputValue,
+  formatCurrency,
+  isSupportedCurrencyCode,
+  parseMoneyToCents
+} from "../domain/money";
+import { venmoSupportsCurrency } from "../domain/venmo";
 import type { GameState } from "../domain/pokerTypes";
 import type { GameAction } from "../state/gameReducer";
 import { ExportImportControls } from "./ExportImportControls";
@@ -47,6 +55,27 @@ export function TableSetupPanel({
     setBuyIn(cents);
   }
 
+  const currencyCode = state.settings.currencyCode;
+
+  function changeCurrency(nextCode: string) {
+    if (!isSupportedCurrencyCode(nextCode) || nextCode === currencyCode) return;
+    // Amounts are stored as cents and only relabeled, so changing is allowed anytime,
+    // but recorded amounts would silently mean something else; make that explicit.
+    if (
+      state.transactions.length > 0 &&
+      !window.confirm(
+        `This game already has transactions. Switching to ${nextCode} relabels every recorded amount; nothing is converted. Switch anyway?`
+      )
+    ) {
+      return;
+    }
+    dispatch({ type: "set_currency", currencyCode: nextCode });
+  }
+
+  const venmoHidden =
+    !venmoSupportsCurrency(currencyCode) &&
+    state.players.some((player) => player.isActive && player.venmoHandle);
+
   return (
     <section className="panel setup-settings-panel" aria-label="Game setup">
       <div className="panel-heading">
@@ -57,7 +86,7 @@ export function TableSetupPanel({
       </div>
 
       <div className="setup-panel">
-        <label className="compact-field">
+        <label className="compact-field setup-field-wide">
           <span>Game</span>
           <input
             disabled={readOnly}
@@ -67,6 +96,21 @@ export function TableSetupPanel({
               dispatch({ type: "set_game_name", name: event.currentTarget.value })
             }
           />
+        </label>
+
+        <label className="compact-field">
+          <span>Currency</span>
+          <select
+            disabled={readOnly}
+            value={currencyCode}
+            onChange={(event) => changeCurrency(event.currentTarget.value)}
+          >
+            {SUPPORTED_CURRENCY_CODES.map((code) => (
+              <option key={code} value={code}>
+                {code} · {CURRENCY_NAMES[code]}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="compact-field money-field">
@@ -85,18 +129,18 @@ export function TableSetupPanel({
           <span>Quick buy-in</span>
           <div>
             {quickBuyInAmountsCents.map((amountCents) => {
-              const amountDollars = amountCents / 100;
+              const amountLabel = formatCurrency(amountCents, currencyCode, { trimWholeCents: true });
 
               return (
                 <button
-                  aria-label={`Set buy-in to $${amountDollars}`}
+                  aria-label={`Set buy-in to ${amountLabel}`}
                   aria-pressed={state.settings.defaultBuyInCents === amountCents}
                   key={amountCents}
                   disabled={readOnly}
                   type="button"
                   onClick={() => setBuyIn(amountCents)}
                 >
-                  ${amountDollars}
+                  {amountLabel}
                 </button>
               );
             })}
@@ -115,6 +159,11 @@ export function TableSetupPanel({
 
         <ExportImportControls dispatch={dispatch} readOnly={readOnly} state={state} />
         {buyInError ? <span className="inline-error">{buyInError}</span> : null}
+        {venmoHidden ? (
+          <span className="inline-hint setup-field-wide">
+            Venmo pay links are only offered for USD games.
+          </span>
+        ) : null}
       </div>
     </section>
   );

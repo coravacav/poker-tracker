@@ -1,5 +1,7 @@
+import { DEFAULT_CURRENCY_CODE, type CurrencyCode } from "../domain/money";
 import type { GameState, Player } from "../domain/pokerTypes";
 import { createDefaultSeatPlacements } from "../domain/tableLayout";
+import { schemaVersionForCurrency } from "../domain/validation";
 
 export function createId(prefix: string): string {
   const webCrypto = typeof globalThis.crypto === "undefined"
@@ -27,15 +29,15 @@ export function createDefaultPlayers(count = 6): Player[] {
   }));
 }
 
-export function createDefaultGameState(): GameState {
+export function createDefaultGameState(currencyCode: CurrencyCode = DEFAULT_CURRENCY_CODE): GameState {
   const players = createDefaultPlayers();
 
   return {
-    schemaVersion: 7,
+    schemaVersion: schemaVersionForCurrency(currencyCode),
     localGameId: createId("game"),
     settings: {
       gameName: "Poker Night",
-      currencyCode: "USD",
+      currencyCode,
       defaultBuyInCents: 2000,
       tableShape: "rectangle",
       tableSeatPlacements: createDefaultSeatPlacements(players.length, "rectangle"),

@@ -21,7 +21,8 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Dispatch } from "react";
-import { centsToInputValue, formatCurrency, parseMoneyToCents } from "../domain/money";
+import { centsToInputValue, parseMoneyToCents } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 import type {
   Player,
   PlayerId,
@@ -231,6 +232,7 @@ export function PokerTable({
   tableShape,
   summaryByPlayerId
 }: PokerTableProps) {
+  const formatCurrency = useFormatCurrency();
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 }

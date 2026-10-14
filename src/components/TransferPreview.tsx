@@ -1,4 +1,4 @@
-import { formatCurrency } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 
 type TransferPreviewProps = {
   amountCents: number;
@@ -34,6 +34,7 @@ function FormulaCard({
   name,
   role
 }: FormulaCardProps) {
+  const formatCurrency = useFormatCurrency();
   const nextNetCents = currentNetCents + deltaCents;
   const deltaSign = deltaCents >= 0 ? "+" : "-";
 

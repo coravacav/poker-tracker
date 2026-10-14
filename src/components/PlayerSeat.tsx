@@ -10,6 +10,7 @@ import {
   Move
 } from "lucide-react";
 import { describeSignedMoney } from "../domain/money";
+import { useCurrencyCode } from "./CurrencyContext";
 import type { Player, PlayerLedgerSummary } from "../domain/pokerTypes";
 
 type PlayerSeatProps = {
@@ -39,6 +40,7 @@ export function PlayerSeat({
   onSeatElementChange,
   onStartTransfer
 }: PlayerSeatProps) {
+  const currencyCode = useCurrencyCode();
   const seatDrag = useDraggable({
     id: layoutEditing ? `table-seat:${player.seatIndex}` : `seat:${player.id}`,
     disabled: readOnly || !layoutEditing
@@ -107,7 +109,7 @@ export function PlayerSeat({
           </button>
         ) : null}
       </div>
-      <p className={`seat-net ${netClass}`}>{describeSignedMoney(netCents)}</p>
+      <p className={`seat-net ${netClass}`}>{describeSignedMoney(netCents, currencyCode)}</p>
 
       {!hideActions ? <div className="seat-actions">
         <button

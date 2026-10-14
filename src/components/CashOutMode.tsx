@@ -10,7 +10,7 @@ import {
   mergeChipCountLines,
   snapshotNonzeroChipCountLines
 } from "../domain/chipCounts";
-import { formatCurrency } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 import type {
   BankSummary,
   CashOutDraft,
@@ -46,6 +46,7 @@ export function CashOutMode({
   summaries,
   transactions
 }: CashOutModeProps) {
+  const formatCurrency = useFormatCurrency();
   const [rawInputs, setRawInputs] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const summaryByPlayer = useMemo(
@@ -315,7 +316,7 @@ export function CashOutMode({
                   <div className="cash-out-card-actions">
                     {draft ? <button className="text-button" type="button" disabled={readOnly} onClick={() => clearDraft(player.id)}><Trash2 size={15} />Clear draft</button> : null}
                     <button className="primary-button" type="button" disabled={readOnly || !!errors[player.id] || (denominations.length === 0 && lines.length === 0)} onClick={() => recordPlayer(player)}>
-                      {totalCents === 0 ? "Confirm $0" : draft?.correctingTransactionId ? "Record correction" : "Record cash-out"}
+                      {totalCents === 0 ? `Confirm ${formatCurrency(0, { trimWholeCents: true })}` : draft?.correctingTransactionId ? "Record correction" : "Record cash-out"}
                     </button>
                   </div>
                 </>

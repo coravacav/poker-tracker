@@ -194,9 +194,9 @@ describe("Player History grouping", () => {
     ];
     const stats = buildPlayerHistoryStats(games, people);
     expect(stats).toEqual([
-      expect.objectContaining({ key: "name:stranger", name: "Stranger", games: 1, totalNetCents: -50 }),
-      expect.objectContaining({ key: "name:alex", name: "Alex", games: 2, totalNetCents: -200, lastPlayedAt: "2026-10-03T00:00:00.000Z" }),
-      expect.objectContaining({ key: "person:person_mike", personId: "person_mike", name: "Michael", games: 3, totalNetCents: -1000 })
+      expect.objectContaining({ key: "name:stranger", name: "Stranger", games: 1, results: [expect.objectContaining({ currencyCode: "USD", games: 1, totalNetCents: -50 })] }),
+      expect.objectContaining({ key: "name:alex", name: "Alex", games: 2, results: [expect.objectContaining({ currencyCode: "USD", totalNetCents: -200 })], lastPlayedAt: "2026-10-03T00:00:00.000Z" }),
+      expect.objectContaining({ key: "person:person_mike", personId: "person_mike", name: "Michael", games: 3, results: [expect.objectContaining({ currencyCode: "USD", totalNetCents: -1000 })] })
     ]);
 
     // Without a directory, every row falls back to names, as before.

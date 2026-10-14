@@ -229,6 +229,9 @@ describe("SettlementPanel", () => {
 
     rerender(panel({ currencyCode: "EUR" }));
     expect(screen.queryByRole("link", { name: /with Venmo/ })).not.toBeInTheDocument();
+    // Amounts follow the game's currency.
+    expect(screen.getAllByText(/€10\.00/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/\$\d/)).not.toBeInTheDocument();
 
     rerender(panel({ players }));
     expect(screen.queryByRole("link", { name: /with Venmo/ })).not.toBeInTheDocument();

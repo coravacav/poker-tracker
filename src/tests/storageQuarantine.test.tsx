@@ -30,7 +30,7 @@ function playedGame(name: string) {
 }
 
 function newerVersionGame(name: string) {
-  return { ...playedGame(name), schemaVersion: 8, someFutureField: { nested: true } };
+  return { ...playedGame(name), schemaVersion: 9, someFutureField: { nested: true } };
 }
 
 function readBlob(blob: Blob): Promise<string> {

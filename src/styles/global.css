@@ -278,6 +278,10 @@ td {
   align-items: center;
 }
 
+.history-stat-spacer {
+  min-height: 0;
+}
+
 .history-stat-select {
   display: flex;
   gap: 10px;
@@ -832,7 +836,15 @@ td {
 
 .setup-buy-in-presets button {
   min-width: 0;
+  padding-inline: 4px;
   font-weight: 700;
+  /* Longer currency labels (e.g. "CHF 100") wrap instead of overflowing on phones. */
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+.setup-field-wide {
+  grid-column: 1 / -1;
 }
 
 .compact-field {

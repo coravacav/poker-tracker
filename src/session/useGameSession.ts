@@ -107,7 +107,7 @@ const DEPLOYMENT_MISMATCH_COPY =
 function normalizeRoomState(value: unknown): GameState | null {
   if (
     !validatePersistedState(value) ||
-    (value.schemaVersion !== 6 && value.schemaVersion !== 7)
+    (value.schemaVersion !== 6 && value.schemaVersion !== 7 && value.schemaVersion !== 8)
   ) {
     return null;
   }

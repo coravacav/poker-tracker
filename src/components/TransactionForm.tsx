@@ -1,7 +1,8 @@
 import { PlusCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { centsToInputValue, formatCurrency, parseMoneyToCents } from "../domain/money";
+import { centsToInputValue, parseMoneyToCents } from "../domain/money";
+import { useFormatCurrency } from "./CurrencyContext";
 import type {
   BankDirection,
   ChipDenomination,
@@ -52,6 +53,7 @@ export function TransactionForm({
   allowFinalCashOut = false,
   chipDenominations = []
 }: TransactionFormProps) {
+  const formatCurrency = useFormatCurrency();
   const [type, setType] = useState<TransactionEntryType>("bank_buy_in");
   const [bankPlayerId, setBankPlayerId] = useState(players[0]?.id ?? "");
   const [fromPlayerId, setFromPlayerId] = useState(players[0]?.id ?? "");
@@ -116,7 +118,7 @@ export function TransactionForm({
       : parseMoneyToCents(amountInput);
 
     if (amountCents === null) {
-      setError("Enter a valid dollar amount.");
+      setError("Enter a valid amount.");
       return;
     }
 

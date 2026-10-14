@@ -6,6 +6,7 @@ import type {
   SettlementPin,
   SettlementPinStatus
 } from "./pokerTypes";
+import { formatCurrency } from "./money";
 import { buildVenmoPayUrl, venmoSettlementNote, venmoSupportsCurrency } from "./venmo";
 
 /** Only the fields settlement needs, so callers can pass adjusted balances. */
@@ -409,24 +410,21 @@ export function settlementVenmoPayUrl(
 
 export type SettlementSummaryOptions = {
   currencyCode?: string;
+  /** Number formatting locale; defaults to the user's. */
+  locale?: string;
   /** Append Venmo pay links to unpaid payments (default true); off while balances can still change. */
   venmoLinks?: boolean;
 };
-
-function formatSummaryAmount(amountCents: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(amountCents / 100);
-}
 
 export function buildSettlementSummaryText(
   gameName: string,
   players: Player[],
   summaries: PlayerLedgerSummary[],
   pins: readonly SettlementPin[] = [],
-  { currencyCode = "USD", venmoLinks = true }: SettlementSummaryOptions = {}
+  { currencyCode = "USD", locale, venmoLinks = true }: SettlementSummaryOptions = {}
 ): string {
+  const formatSummaryAmount = (amountCents: number) =>
+    formatCurrency(amountCents, currencyCode, locale ? { locale } : {});
   const plan = buildSettlementPlan(summaries, pins);
   const outstanding = plan.payments.filter((payment) => payment.status !== "paid");
   const paid = plan.payments.filter((payment) => payment.status === "paid");

@@ -20,7 +20,11 @@ describe("session history", () => {
     state.players[0].name = "Alex";
     state.transactions = [{ id: "buy", type: "bank_buy_in", toPlayerId: state.players[0].id, amountCents: 2000, createdAt: "now" }];
     const stats = buildPlayerHistoryStats([{ archivedAt: "now", state }]);
-    expect(stats[0]).toMatchObject({ name: "Alex", games: 1, totalNetCents: -2000 });
+    expect(stats[0]).toMatchObject({
+      name: "Alex",
+      games: 1,
+      results: [{ currencyCode: "USD", games: 1, totalNetCents: -2000, averageNetCents: -2000 }]
+    });
   });
 
   it("merges restored games, keeping the newest copy of each", async () => {
