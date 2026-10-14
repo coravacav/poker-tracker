@@ -4,15 +4,25 @@ import type { GameState, Transaction } from "../src/domain/pokerTypes";
 import {
   applyHostedAction,
   MAX_ROOM_ACTIONS,
+  MAX_ROOM_GUEST_RECORDS,
   MAX_ROOM_GUESTS,
   normalizeGameState,
   roomStateError,
   sanitizeGuestState
 } from "../src/session/roomProtocol";
+import {
+  CREATION_LIMITED_CODE,
+  ROOM_CREATION_LIMITED_MESSAGE
+} from "../src/session/creationLimits";
 import { components, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { hashSecret, sameHash, validIdentifier, validSecret } from "./lib/capabilities";
+import {
+  creationLimiter,
+  releaseActiveRoomSlot,
+  reserveActiveRoomSlot
+} from "./lib/creationLimits";
 import {
   clearLegacyActiveRoom,
   isDiscoverable,
@@ -152,7 +162,8 @@ type RoomErrorCode =
   | "ROOM_ENDED"
   | "VERSION_CONFLICT"
   | "DUPLICATE_CONTROLLER"
-  | "ROOM_LIMIT_REACHED";
+  | "ROOM_LIMIT_REACHED"
+  | typeof CREATION_LIMITED_CODE;
 
 type AuditEventKind = "transaction" | "cash_out" | "correction" | "game";
 
@@ -584,11 +595,16 @@ export async function joinRoomAsGuest(
   if (existingGuest) {
     await ctx.db.patch(existingGuest._id, { displayName });
   } else {
+    // Count every guest record, revoked ones included, so neither the active
+    // guest count nor the total number of guest rows per room is unbounded.
     const guests = await ctx.db
       .query("roomGuests")
       .withIndex("by_room_id", (index) => index.eq("roomId", room._id))
-      .take(MAX_ROOM_GUESTS + 1);
-    if (guests.filter((guest) => guest.revokedAt === undefined).length >= MAX_ROOM_GUESTS) {
+      .take(MAX_ROOM_GUEST_RECORDS);
+    if (
+      guests.length >= MAX_ROOM_GUEST_RECORDS ||
+      guests.filter((guest) => guest.revokedAt === undefined).length >= MAX_ROOM_GUESTS
+    ) {
       fail("ROOM_LIMIT_REACHED", "This room has reached its guest limit.");
     }
     guestId = await ctx.db.insert("roomGuests", {
@@ -685,6 +701,21 @@ export const create = mutation({
       hostProfile = check.profile;
     }
 
+    // Creation limits run last so that invalid requests are rejected with
+    // their specific error. A failure anywhere in this mutation rolls back
+    // the consumed tokens and the reserved slot.
+    const globalLimit = await creationLimiter.limit(ctx, "roomCreation");
+    if (!globalLimit.ok) fail(CREATION_LIMITED_CODE, ROOM_CREATION_LIMITED_MESSAGE);
+    if (hostProfile) {
+      const profileLimit = await creationLimiter.limit(ctx, "profileRoomCreation", {
+        key: hostProfile._id
+      });
+      if (!profileLimit.ok) fail(CREATION_LIMITED_CODE, ROOM_CREATION_LIMITED_MESSAGE);
+    }
+    if (!(await reserveActiveRoomSlot(ctx))) {
+      fail(CREATION_LIMITED_CODE, ROOM_CREATION_LIMITED_MESSAGE);
+    }
+
     const now = Date.now();
     const roomId = await ctx.db.insert("rooms", {
       publicId: args.publicId,
@@ -700,6 +731,7 @@ export const create = mutation({
       inviteSecretHash: await hashSecret(args.inviteSecret),
       joiningOpen: true,
       hostControllerId: args.controllerId,
+      countedActive: true,
       ...(hostProfile ? {
         hostProfileId: hostProfile._id,
         visibleToFriends: args.visibleToFriends ?? true
@@ -1277,6 +1309,7 @@ export const end = mutation({
     }
     const endedAt = Date.now();
     await ctx.db.patch(room._id, { status: "ended", endedAt, lastActivityAt: endedAt });
+    await releaseActiveRoomSlot(ctx, room);
     if (room.hostProfileId) {
       await syncFriendRoomListing(ctx, { ...room, status: "ended" });
       await clearLegacyActiveRoom(ctx, room, endedAt);
@@ -1312,11 +1345,14 @@ const ACTIVE_ROOM_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
 const ENDED_DETAIL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 10;
 const CLEANUP_DOCUMENTS_PER_ROOM = 25;
+// Room documents can be large (bounded game snapshots), so guest cleanup reads
+// few rooms per transaction and runs in its own transaction chain.
+const GUEST_CLEANUP_ROOMS_PER_STATUS = 5;
 
 export const runRoomLifecycle = internalMutation({
-  args: {},
+  args: { continuation: v.optional(v.boolean()) },
   returns: v.object({ expiredRooms: v.number(), prunedDocuments: v.number() }),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const now = Date.now();
     const staleActiveRooms = await ctx.db
       .query("rooms")
@@ -1326,6 +1362,7 @@ export const runRoomLifecycle = internalMutation({
       .take(CLEANUP_BATCH_SIZE);
     for (const room of staleActiveRooms) {
       await ctx.db.patch(room._id, { status: "expired", endedAt: now, lastActivityAt: now });
+      await releaseActiveRoomSlot(ctx, room);
       if (room.hostProfileId) {
         await syncFriendRoomListing(ctx, { ...room, status: "expired" });
         await clearLegacyActiveRoom(ctx, room, now);
@@ -1381,8 +1418,82 @@ export const runRoomLifecycle = internalMutation({
     // Keep going until the backlog is cleared so stale rooms do not remain
     // active (and discoverable by followers) beyond the idle window.
     if (staleActiveRooms.length === CLEANUP_BATCH_SIZE || morePruningPending) {
-      await ctx.scheduler.runAfter(0, internal.rooms.runRoomLifecycle, {});
+      await ctx.scheduler.runAfter(0, internal.rooms.runRoomLifecycle, { continuation: true });
+    }
+    // The daily run (not its continuations) starts one guest-record cleanup
+    // chain, which reschedules itself until its own backlog is drained.
+    if (args.continuation !== true) {
+      await ctx.scheduler.runAfter(0, internal.rooms.pruneOldGuestRecords, {});
     }
     return { expiredRooms: staleActiveRooms.length, prunedDocuments };
+  }
+});
+
+/**
+ * For rooms ended or expired more than 30 days ago, deletes revoked guest
+ * sessions and every guest request (approved, rejected, or still pending and
+ * therefore expired with the room). Good-standing guest sessions are kept so
+ * guests can still review the ended room from their device. Each room is
+ * marked with `guestRecordsPrunedAt` once drained, so every run makes
+ * progress; the job reschedules itself while a backlog remains.
+ */
+export const pruneOldGuestRecords = internalMutation({
+  args: {},
+  returns: v.object({ deletedGuests: v.number(), deletedRequests: v.number() }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const roomsToClean: Doc<"rooms">[] = [];
+    let morePending = false;
+    for (const status of ["ended", "expired"] as const) {
+      const batch = await ctx.db
+        .query("rooms")
+        .withIndex("by_status_and_guest_records_pruned_at_and_last_activity_at", (index) =>
+          index
+            .eq("status", status)
+            .eq("guestRecordsPrunedAt", undefined)
+            .lt("lastActivityAt", now - ENDED_DETAIL_RETENTION_MS)
+        )
+        .take(GUEST_CLEANUP_ROOMS_PER_STATUS);
+      if (batch.length === GUEST_CLEANUP_ROOMS_PER_STATUS) morePending = true;
+      roomsToClean.push(...batch);
+    }
+
+    let deletedGuests = 0;
+    let deletedRequests = 0;
+    for (const room of roomsToClean) {
+      const requests = await ctx.db
+        .query("roomGuestRequests")
+        .withIndex("by_room_id_and_status", (index) => index.eq("roomId", room._id))
+        .take(CLEANUP_DOCUMENTS_PER_ROOM);
+      // Index range excludes good-standing guests (revokedAt undefined sorts
+      // before every number), so they are never read or touched.
+      const revokedGuests = await ctx.db
+        .query("roomGuests")
+        .withIndex("by_room_id_and_revoked_at", (index) =>
+          index.eq("roomId", room._id).gte("revokedAt", 0)
+        )
+        .take(CLEANUP_DOCUMENTS_PER_ROOM);
+      for (const request of requests) {
+        await ctx.db.delete(request._id);
+        deletedRequests += 1;
+      }
+      for (const guest of revokedGuests) {
+        await ctx.db.delete(guest._id);
+        deletedGuests += 1;
+      }
+      if (
+        requests.length < CLEANUP_DOCUMENTS_PER_ROOM &&
+        revokedGuests.length < CLEANUP_DOCUMENTS_PER_ROOM
+      ) {
+        await ctx.db.patch(room._id, { guestRecordsPrunedAt: now });
+      } else {
+        morePending = true;
+      }
+    }
+
+    if (morePending) {
+      await ctx.scheduler.runAfter(0, internal.rooms.pruneOldGuestRecords, {});
+    }
+    return { deletedGuests, deletedRequests };
   }
 });

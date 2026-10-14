@@ -159,6 +159,40 @@ describe("realtime sharing UI", () => {
     expect(screen.queryByText(/VITE_|Convex|configured/i)).not.toBeInTheDocument();
   });
 
+  it("keeps playing locally when room creation is rate limited", async () => {
+    const local = createDefaultGameState();
+    local.settings.gameName = "Local only night";
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+    const fake = fakeTransport();
+    fake.createRoom.mockRejectedValueOnce(
+      Object.assign(new Error("[CONVEX M(rooms:create)] Uncaught ConvexError"), {
+        data: {
+          code: "RATE_LIMITED",
+          message: "Too many new shared rooms right now. Try again in a few minutes."
+        }
+      })
+    );
+    renderGameApp(fake.transport);
+
+    fireEvent.click(screen.getByRole("button", { name: "Share game" }));
+
+    expect(
+      await screen.findByText("Too many new shared rooms right now. Try again in a few minutes.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/CONVEX|rooms:create/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Share game" })).not.toBeInTheDocument();
+    expect(localStorage.getItem("poker-tracker:v1:hosted-room")).toBeNull();
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null")).toMatchObject({
+      localGameId: local.localGameId,
+      settings: { gameName: "Local only night" }
+    });
+
+    // Sharing can be retried once the limit clears.
+    fireEvent.click(screen.getByRole("button", { name: "Share game" }));
+    expect(await screen.findByRole("dialog", { name: "Share game" })).toBeInTheDocument();
+    expect(fake.createRoom).toHaveBeenCalledTimes(2);
+  });
+
   it("moves a missing host room into recoverable local mode", async () => {
     const local = createDefaultGameState();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(local));

@@ -64,9 +64,9 @@ The first slice stores one bounded game snapshot per room:
 - 24 players maximum
 - 5,000 transactions maximum
 - 10,000 accepted actions maximum
-- 50 non-revoked guest sessions maximum
+- 50 non-revoked guest sessions maximum (200 guest records per room including revoked ones)
 
-These limits preserve headroom below Convex’s 1 MB document limit. Before raising them, move transactions and other growing collections into normalized, room-indexed tables. Abandoned active rooms automatically expire after seven days without a host edit. A daily bounded cleanup removes processed-action, audit-event, and notification-cursor detail from ended or expired rooms after 30 days. The final bounded room snapshot and participant capability records remain available, so a host or guest can still review old rooms from the device where they participated.
+These limits preserve headroom below Convex’s 1 MB document limit. Before raising them, move transactions and other growing collections into normalized, room-indexed tables. Abandoned active rooms automatically expire after seven days without a host edit. A daily bounded cleanup removes processed-action, audit-event, and notification-cursor detail from ended or expired rooms after 30 days. The same daily job then removes, for those rooms, revoked guest sessions and all guest requests (approved, rejected, or still pending and therefore expired with the room). Each pass touches a small bounded batch, marks rooms it has finished, and reschedules itself until the backlog is drained. The final bounded room snapshot, the host capability, and every good-standing guest session remain available, so a host or guest can still review old rooms from the device where they participated.
 
 Shared rooms retain the 500 most recent audit events. The host and every guest have an independent notification read cursor; new guests start caught up, while later transfers, cash-outs, and corrections appear for all current participants.
 
@@ -74,8 +74,9 @@ Shared rooms retain the 500 most recent audit events. The host and every guest h
 
 - Room IDs do not authorize writes. Host, invitation, and guest capabilities are cryptographically random and stored in Convex only as SHA-256 verifiers.
 - Every mutation checks the host capability and active controller server-side. Guest queries require a non-revoked guest capability and return a projection without host cash-out drafts.
-- Public functions validate arguments; room/action/guest limits provide basic abuse boundaries.
-- There are no accounts, mutual friend approvals, IP-based creation limits, or CAPTCHA. A friend code is a bearer discovery capability: anyone holding it can see the host's active rooms marked visible to followers (at most five per host) and join while joining is open. Rotating a friend code immediately stops discovery and joining through the old code, and guests of rooms created before the rotation no longer see the host profile. A compromised browser profile exposes its profile-owner and active room capabilities.
+- Public functions validate arguments; room/action/guest limits provide basic abuse boundaries. Unauthenticated writes that create documents are bounded per room: guest joins by the guest limits above, and guest requests by at most 10 pending per guest until the host decides them.
+- Creation is rate limited with the `@convex-dev/rate-limiter` component. Convex does not expose client IPs, so limits are global token buckets: new friend profiles (burst 20, refilling 30 per hour) and new shared rooms (burst 30, refilling 60 per hour), plus a stricter per-friend-profile bucket for rooms linked to that profile (burst 5, refilling 6 per hour). At most 300 rooms may be active at once. When a limit is hit the app shows a generic "try again in a few minutes" message; local games are never affected. Because the limits are global, a determined flood can temporarily block new shares for everyone, but it cannot grow storage faster than these rates.
+- There are no accounts, mutual friend approvals, per-IP limits, or CAPTCHA. A friend code is a bearer discovery capability: anyone holding it can see the host's active rooms marked visible to followers (at most five per host) and join while joining is open. Rotating a friend code immediately stops discovery and joining through the old code, and guests of rooms created before the rotation no longer see the host profile. A compromised browser profile exposes its profile-owner and active room capabilities.
 
 ## Convex usage
 

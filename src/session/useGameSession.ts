@@ -39,6 +39,7 @@ import {
 import {
   configuredDeploymentUrl,
   convexRoomTransport,
+  friendProfileErrorMessage,
   roomErrorMessage,
   roomErrorCode,
   SHARING_UNAVAILABLE_MESSAGE
@@ -757,7 +758,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       if (!saveFriendProfile(saved)) throw new Error("Your friend profile could not be saved on this device.");
       setFriendProfile(saved);
     } catch (error) {
-      setFriendError(error instanceof Error ? error.message : "Friend profile creation failed.");
+      setFriendError(friendProfileErrorMessage(error, "Friend profile creation failed."));
     } finally {
       setFriendPending(false);
     }
@@ -779,7 +780,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       if (!saveFriendProfile(saved)) throw new Error("Your updated profile could not be saved on this device.");
       setFriendProfile(saved);
     } catch (error) {
-      setFriendError(error instanceof Error ? error.message : "The display name could not be updated.");
+      setFriendError(friendProfileErrorMessage(error, "The display name could not be updated."));
     } finally {
       setFriendPending(false);
     }
@@ -799,7 +800,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       if (!saveFriendProfile(saved)) throw new Error("The new friend code could not be saved on this device.");
       setFriendProfile(saved);
     } catch (error) {
-      setFriendError(error instanceof Error ? error.message : "The friend code could not be regenerated.");
+      setFriendError(friendProfileErrorMessage(error, "The friend code could not be regenerated."));
     } finally {
       setFriendPending(false);
     }
@@ -837,7 +838,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       setInitialFriendCode(null);
       window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     } catch (error) {
-      setFriendError(error instanceof Error ? error.message : "That friend could not be added.");
+      setFriendError(friendProfileErrorMessage(error, "That friend could not be added."));
     } finally {
       setFriendPending(false);
     }
@@ -898,7 +899,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       setLocalEntry(null);
       void refreshRoomHistory();
     } catch (error) {
-      setFriendError(error instanceof Error ? error.message : "The friend's room could not be joined.");
+      setFriendError(friendProfileErrorMessage(error, "The friend's room could not be joined."));
     } finally {
       setFriendPending(false);
     }

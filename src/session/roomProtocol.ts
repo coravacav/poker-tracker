@@ -9,6 +9,8 @@ export const MAX_ROOM_TRANSACTIONS = 5_000;
 export const MAX_ROOM_ACTIONS = 10_000;
 export const MAX_ROOM_GUESTS = 50;
 export const MAX_ROOM_PLAYERS = 24;
+/** Guest records (including revoked ones) a single room may accumulate. */
+export const MAX_ROOM_GUEST_RECORDS = 200;
 
 const HOSTED_ACTION_TYPES = new Set<GameAction["type"]>([
   "set_game_name",

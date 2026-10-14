@@ -1,15 +1,24 @@
 import { ConvexError, v } from "convex/values";
 import { MAX_FOLLOWED_FRIENDS, parseFriendCode } from "../src/session/friendCode";
+import {
+  CREATION_LIMITED_CODE,
+  PROFILE_CREATION_LIMITED_MESSAGE
+} from "../src/session/creationLimits";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import { hashSecret, sameHash, validSecret } from "./lib/capabilities";
+import { creationLimiter } from "./lib/creationLimits";
 import {
   discoverableRooms,
   profileByFriendCode,
   verifyProfileOwner
 } from "./lib/friendDiscovery";
 
-type ProfileErrorCode = "INVALID_ARGUMENT" | "INVALID_CAPABILITY" | "PROFILE_NOT_FOUND";
+type ProfileErrorCode =
+  | "INVALID_ARGUMENT"
+  | "INVALID_CAPABILITY"
+  | "PROFILE_NOT_FOUND"
+  | typeof CREATION_LIMITED_CODE;
 
 function failProfile(code: ProfileErrorCode, message: string): never {
   throw new ConvexError({ code, message });
@@ -90,6 +99,11 @@ export const create = mutation({
       }
       return { friendCode, displayName };
     }
+
+    // Only genuinely new profiles consume the global creation budget; the
+    // owner's idempotent refreshes above are never limited.
+    const limit = await creationLimiter.limit(ctx, "friendProfileCreation");
+    if (!limit.ok) failProfile(CREATION_LIMITED_CODE, PROFILE_CREATION_LIMITED_MESSAGE);
 
     await ctx.db.insert("friendProfiles", {
       friendCode,

@@ -13,6 +13,11 @@ import {
   validFriendCode
 } from "../session/friendProfiles";
 import { parseFriendCode } from "../session/friendCode";
+import { friendProfileErrorMessage, roomErrorMessage } from "../session/convexRoomTransport";
+import {
+  PROFILE_CREATION_LIMITED_MESSAGE,
+  ROOM_CREATION_LIMITED_MESSAGE
+} from "../session/creationLimits";
 
 describe("device friend profiles", () => {
   beforeEach(() => localStorage.clear());
@@ -58,5 +63,27 @@ describe("device friend profiles", () => {
     expect(loadFollowedFriends()).toEqual([friend]);
     expect(saveFollowedFriends([friend])).toBe(true);
     expect(JSON.parse(localStorage.getItem(FRIEND_PROFILE_KEY) ?? "null")).toEqual(profile);
+  });
+});
+
+describe("creation limit errors", () => {
+  function limited(message?: string) {
+    return Object.assign(new Error("[CONVEX M(friendProfiles:create)] Uncaught ConvexError"), {
+      data: { code: "RATE_LIMITED", ...(message ? { message } : {}) }
+    });
+  }
+
+  it("shows the server's generic limit message instead of raw Convex errors", () => {
+    expect(friendProfileErrorMessage(limited(PROFILE_CREATION_LIMITED_MESSAGE), "Failed."))
+      .toBe(PROFILE_CREATION_LIMITED_MESSAGE);
+    expect(roomErrorMessage(limited(ROOM_CREATION_LIMITED_MESSAGE)))
+      .toBe(ROOM_CREATION_LIMITED_MESSAGE);
+    expect(roomErrorMessage(limited())).toBe(ROOM_CREATION_LIMITED_MESSAGE);
+    expect(friendProfileErrorMessage(limited(), "Failed.")).toBe("Failed.");
+  });
+
+  it("keeps local device errors readable", () => {
+    expect(friendProfileErrorMessage(new Error("Could not save on this device."), "Failed."))
+      .toBe("Could not save on this device.");
   });
 });

@@ -1,5 +1,6 @@
 import { ConvexClient } from "convex/browser";
 import { api } from "../../convex/_generated/api";
+import { CREATION_LIMITED_CODE, ROOM_CREATION_LIMITED_MESSAGE } from "./creationLimits";
 import type { RoomTransport } from "./types";
 
 const roomApi = api.rooms;
@@ -127,6 +128,9 @@ export const convexRoomTransport: RoomTransport = {
 
 export function roomErrorMessage(error: unknown): string {
   const data = convexErrorData(error);
+  if (data?.code === CREATION_LIMITED_CODE) {
+    return data.message ?? ROOM_CREATION_LIMITED_MESSAGE;
+  }
   if (data?.message) {
     return data.message;
   }
@@ -136,6 +140,17 @@ export function roomErrorMessage(error: unknown): string {
   return error instanceof Error && error.message === SHARING_UNAVAILABLE_MESSAGE
     ? SHARING_UNAVAILABLE_MESSAGE
     : SHARING_REQUEST_FAILED_MESSAGE;
+}
+
+/**
+ * Message for friend-profile requests: server-provided messages (including
+ * creation limits) are shown as-is, local errors keep their own text.
+ */
+export function friendProfileErrorMessage(error: unknown, fallback: string): string {
+  const data = convexErrorData(error);
+  if (data?.message) return data.message;
+  if (data) return fallback;
+  return error instanceof Error && error.message ? error.message : fallback;
 }
 
 export function roomErrorCode(error: unknown): string | null {

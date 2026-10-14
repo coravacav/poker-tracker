@@ -20,7 +20,13 @@ export default defineSchema({
     hostProfileId: v.optional(v.id("friendProfiles")),
     visibleToFriends: v.optional(v.boolean()),
     // Set once the lifecycle job has pruned an ended/expired room's details.
-    detailsPrunedAt: v.optional(v.number())
+    detailsPrunedAt: v.optional(v.number()),
+    // Set once the lifecycle job has removed an old room's revoked guest
+    // sessions and guest requests. Good-standing guest sessions are kept.
+    guestRecordsPrunedAt: v.optional(v.number()),
+    // True while this room holds a slot in the active-room counter. Rooms
+    // created before the counter existed are absent and never decrement it.
+    countedActive: v.optional(v.boolean())
   })
     .index("by_public_id", ["publicId"])
     .index("by_local_game_id_and_status", ["localGameId", "status"])
@@ -29,7 +35,18 @@ export default defineSchema({
       "status",
       "detailsPrunedAt",
       "lastActivityAt"
+    ])
+    .index("by_status_and_guest_records_pruned_at_and_last_activity_at", [
+      "status",
+      "guestRecordsPrunedAt",
+      "lastActivityAt"
     ]),
+
+  // Small denormalized counters, one row per name (e.g. "activeRooms").
+  roomCounters: defineTable({
+    name: v.string(),
+    value: v.number()
+  }).index("by_name", ["name"]),
 
   friendProfiles: defineTable({
     friendCode: v.string(),
@@ -62,7 +79,8 @@ export default defineSchema({
     revokedAt: v.optional(v.number())
   })
     .index("by_room_id", ["roomId"])
-    .index("by_room_id_and_guest_secret_hash", ["roomId", "guestSecretHash"]),
+    .index("by_room_id_and_guest_secret_hash", ["roomId", "guestSecretHash"])
+    .index("by_room_id_and_revoked_at", ["roomId", "revokedAt"]),
 
   processedActions: defineTable({
     roomId: v.id("rooms"),

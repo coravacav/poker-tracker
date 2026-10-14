@@ -2,6 +2,7 @@
 /// <reference types="vite/client" />
 
 import presenceTest from "@convex-dev/presence/test";
+import rateLimiterTest from "@convex-dev/rate-limiter/test";
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultGameState } from "../src/state/seedGame";
@@ -21,6 +22,7 @@ const publicId = "room_abcdefghijklmnop";
 function setup() {
   const test = convexTest(schema, modules);
   presenceTest.register(test);
+  rateLimiterTest.register(test);
   return test;
 }
 
@@ -465,6 +467,8 @@ describe("friend discovery authorization", () => {
     await createProfile(test);
     const roomIds = Array.from({ length: 11 }, (_, index) => `room_stale_${index}_abcdefghij`);
     for (const [index, roomId] of roomIds.entries()) {
+      // Space creations past the per-profile room creation limit.
+      vi.advanceTimersByTime(11 * 60 * 1000);
       await createRoomWith(test, {
         publicId: roomId,
         hostSecret: `host_stale_${index}_abcdefghijklmnopqrstuvwxyz0123`,
