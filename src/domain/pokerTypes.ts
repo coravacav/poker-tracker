@@ -36,6 +36,11 @@ export type Player = {
    * Additive and optional, so it needs no schema bump: older builds ignore it.
    */
   personId?: string;
+  /**
+   * Venmo username (without @) that settlement pay links send money to.
+   * Optional and additive like personId; values this build cannot use are dropped on load.
+   */
+  venmoHandle?: string;
 };
 
 export type TableSeatLayout = "top_bottom" | "left_right" | "rectangle" | "round";

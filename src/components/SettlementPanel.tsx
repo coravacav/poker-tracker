@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Copy, Lock, LockOpen, Plus, Printer, Scale, X } from "lucide-react";
+import { ArrowRight, Check, Copy, Lock, LockOpen, Plus, Printer, Scale, Send, X } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { formatCurrency, parseMoneyToCents } from "../domain/money";
 import type {
@@ -12,6 +12,7 @@ import {
   buildSettlementPlan,
   buildSettlementSummaryText,
   playerNameById,
+  settlementVenmoPayUrl,
   type SettlementPlanPayment
 } from "../domain/settlement";
 import type { GameAction } from "../state/gameReducer";
@@ -30,6 +31,8 @@ export type SettlementPinAction = Extract<
 
 type SettlementPanelProps = {
   bankSummary: BankSummary;
+  /** Venmo pay links are offered only for US dollar games. */
+  currencyCode?: string;
   imbalanceCents: number;
   hideActions?: boolean;
   gameName?: string;
@@ -58,6 +61,7 @@ type PinDraft = {
 
 export function SettlementPanel({
   bankSummary,
+  currencyCode = "USD",
   gameName = "Poker Night",
   imbalanceCents,
   hideActions = false,
@@ -91,8 +95,12 @@ export function SettlementPanel({
   );
 
   const settlementSummaryText = useMemo(
-    () => buildSettlementSummaryText(gameName, players, summaries, settlementPins),
-    [gameName, players, settlementPins, summaries]
+    () =>
+      buildSettlementSummaryText(gameName, players, summaries, settlementPins, {
+        currencyCode,
+        venmoLinks: settlementReady
+      }),
+    [currencyCode, gameName, players, settlementPins, settlementReady, summaries]
   );
 
   async function copySummary() {
@@ -392,6 +400,10 @@ export function SettlementPanel({
                 const isPaid = payment.status === "paid";
                 const isLocked = payment.status === "locked";
                 const description = `${fromPlayerName} to ${toPlayerName} ${amount}`;
+                // Only once balances are final, so nobody pays a provisional amount.
+                const venmoUrl = settlementReady
+                  ? settlementVenmoPayUrl(payment, players, gameName, currencyCode)
+                  : null;
 
                 return (
                   <div
@@ -435,6 +447,19 @@ export function SettlementPanel({
                       >
                         {isLocked ? <Lock size={15} /> : <LockOpen size={15} />}
                       </button>
+                    ) : null}
+                    {venmoUrl ? (
+                      <a
+                        className="venmo-pay-link"
+                        href={venmoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`${fromPlayerName}: pay ${toPlayerName} ${amount} with Venmo`}
+                        title={`Opens Venmo to pay ${toPlayerName} ${amount}`}
+                      >
+                        <Send size={14} aria-hidden="true" />
+                        Pay with Venmo
+                      </a>
                     ) : null}
                   </div>
                 );

@@ -11,6 +11,7 @@ import {
   linkGamePlayers,
   mergePeopleDirectories,
   parsePeopleDirectory,
+  setPersonVenmoHandle,
   type PeopleDirectory
 } from "../domain/people";
 import type { GameState } from "../domain/pokerTypes";
@@ -132,6 +133,14 @@ export function updatePeopleDirectory(
 export function mergeStoredPeople(incoming: PeopleDirectory): boolean {
   if (incoming.people.length === 0) return true;
   return updatePeopleDirectory((current) => mergePeopleDirectories(current, incoming)) !== null;
+}
+
+/** Remembers (or, with null, forgets) a person's Venmo username for later games. */
+export function savePersonVenmoHandle(personId: string, handle: string | null, now = new Date()): boolean {
+  return (
+    updatePeopleDirectory((directory) => setPersonVenmoHandle(directory, personId, handle, now.toISOString())) !==
+    null
+  );
 }
 
 /**

@@ -6,6 +6,7 @@ import type {
   SettlementPin,
   SettlementPinStatus
 } from "./pokerTypes";
+import { buildVenmoPayUrl, venmoSettlementNote, venmoSupportsCurrency } from "./venmo";
 
 /** Only the fields settlement needs, so callers can pass adjusted balances. */
 export type SettlementBalance = Pick<PlayerLedgerSummary, "playerId" | "netCents">;
@@ -387,6 +388,31 @@ export function playerNameById(players: Player[], playerId: string): string {
   return players.find((player) => player.id === playerId)?.name ?? "Unknown player";
 }
 
+/**
+ * A Venmo link for the payer to send this payment, or null when it is paid,
+ * the recipient has no Venmo username, or the game is not in US dollars.
+ */
+export function settlementVenmoPayUrl(
+  payment: SettlementPlanPayment,
+  players: readonly Player[],
+  gameName: string,
+  currencyCode: string
+): string | null {
+  if (payment.status === "paid" || !venmoSupportsCurrency(currencyCode)) return null;
+  const recipient = players.find((player) => player.id === payment.toPlayerId);
+  return buildVenmoPayUrl({
+    handle: recipient?.venmoHandle,
+    amountCents: payment.amountCents,
+    note: venmoSettlementNote(gameName)
+  });
+}
+
+export type SettlementSummaryOptions = {
+  currencyCode?: string;
+  /** Append Venmo pay links to unpaid payments (default true); off while balances can still change. */
+  venmoLinks?: boolean;
+};
+
 function formatSummaryAmount(amountCents: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -398,7 +424,8 @@ export function buildSettlementSummaryText(
   gameName: string,
   players: Player[],
   summaries: PlayerLedgerSummary[],
-  pins: readonly SettlementPin[] = []
+  pins: readonly SettlementPin[] = [],
+  { currencyCode = "USD", venmoLinks = true }: SettlementSummaryOptions = {}
 ): string {
   const plan = buildSettlementPlan(summaries, pins);
   const outstanding = plan.payments.filter((payment) => payment.status !== "paid");
@@ -422,8 +449,9 @@ export function buildSettlementSummaryText(
     lines.push("All payments are settled.");
   } else {
     for (const payment of outstanding) {
+      const venmoUrl = venmoLinks ? settlementVenmoPayUrl(payment, players, gameName, currencyCode) : null;
       lines.push(
-        `${playerNameById(players, payment.fromPlayerId)} pays ${playerNameById(players, payment.toPlayerId)} ${formatSummaryAmount(payment.amountCents)}`
+        `${playerNameById(players, payment.fromPlayerId)} pays ${playerNameById(players, payment.toPlayerId)} ${formatSummaryAmount(payment.amountCents)}${venmoUrl ? ` - Venmo: ${venmoUrl}` : ""}`
       );
     }
   }

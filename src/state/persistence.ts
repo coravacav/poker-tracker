@@ -13,6 +13,7 @@ import {
 import { normalizeLegacyPlayerTransactions } from "../domain/playerTransactions";
 import { isValidPersonId } from "../domain/people";
 import { sanitizeSettlementPins } from "../domain/settlement";
+import { normalizeVenmoHandle } from "../domain/venmo";
 import { validatePersistedState } from "../domain/validation";
 import { createDefaultGameState, createId } from "./seedGame";
 import {
@@ -151,6 +152,25 @@ function withUsablePersonIds(state: GameState): GameState {
 }
 
 /**
+ * Player.venmoHandle is optional and additive like personId: validation
+ * ignores it, and values this build cannot use as a Venmo username are dropped.
+ */
+function withUsableVenmoHandles(state: GameState): GameState {
+  if (state.players.every((player) => player.venmoHandle === undefined || normalizeVenmoHandle(player.venmoHandle) === player.venmoHandle)) {
+    return state;
+  }
+  return {
+    ...state,
+    players: state.players.map((player) => {
+      if (player.venmoHandle === undefined) return player;
+      const { venmoHandle: raw, ...rest } = player;
+      const venmoHandle = normalizeVenmoHandle(raw);
+      return venmoHandle ? { ...rest, venmoHandle } : rest;
+    })
+  };
+}
+
+/**
  * settlementPins is optional and additive like Player.personId: validation
  * ignores it and pins this build cannot use are dropped here.
  */
@@ -162,7 +182,7 @@ function withUsableSettlementPins(state: GameState): GameState {
 }
 
 export function migratePersistedState(state: AnyPersistedGameState): GameState {
-  return withUsableSettlementPins(withUsablePersonIds(migrateSchema(state)));
+  return withUsableSettlementPins(withUsableVenmoHandles(withUsablePersonIds(migrateSchema(state))));
 }
 
 function migrateSchema(state: AnyPersistedGameState): GameState {

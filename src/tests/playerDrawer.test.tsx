@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PlayerDrawer } from "../components/PlayerDrawer";
 import type { Player } from "../domain/pokerTypes";
+import { loadPeopleDirectory, PEOPLE_KEY, resetPeopleStoreForTests } from "../state/peopleStore";
 
 const defaultPlayers: Player[] = [
   { id: "p1", name: "Player 1", seatIndex: 0, isActive: true },
@@ -196,5 +197,56 @@ describe("PlayerDrawer", () => {
       "title",
       "Fast entry is unavailable after transactions or cash-out drafts exist"
     );
+  });
+
+  it("edits a player's Venmo username and remembers it for the linked person", () => {
+    localStorage.setItem(
+      PEOPLE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        people: [{ id: "person_alex", name: "Alex", aliases: [], createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }]
+      })
+    );
+    resetPeopleStoreForTests();
+    const dispatch = vi.fn();
+    renderDrawer({ dispatch, players: [{ ...defaultPlayers[0], name: "Alex", personId: "person_alex" }] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Venmo username for Alex" }));
+    const input = screen.getByRole("textbox", { name: /Venmo username/ });
+    fireEvent.change(input, { target: { value: "bad" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/5–30 letters/);
+    expect(dispatch).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "@alex-pays" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "set_player_venmo_handle", playerId: "p1", venmoHandle: "alex-pays" });
+    expect(loadPeopleDirectory().people[0].venmoHandle).toBe("alex-pays");
+    expect(screen.queryByRole("textbox", { name: /Venmo username/ })).not.toBeInTheDocument();
+  });
+
+  it("brings a linked person's Venmo username along when a name is committed", () => {
+    localStorage.setItem(
+      PEOPLE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        people: [
+          { id: "person_alex", name: "Alex", aliases: [], venmoHandle: "alex-pays", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
+        ]
+      })
+    );
+    resetPeopleStoreForTests();
+    const dispatch = vi.fn();
+    renderDrawer({ dispatch, players: [defaultPlayers[0]] });
+    const input = screen.getByRole("textbox", { name: "Player name" });
+    fireEvent.change(input, { target: { value: "alex" } });
+    fireEvent.blur(input);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "rename_player",
+      playerId: "p1",
+      name: "alex",
+      personId: "person_alex",
+      venmoHandle: "alex-pays"
+    });
   });
 });

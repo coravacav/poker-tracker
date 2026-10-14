@@ -37,14 +37,17 @@ import {
   getTableLayoutMetrics,
   type TableSeatSlot
 } from "../domain/tableLayout";
-import { resolvePersonForName } from "../domain/people";
+import { resolvePersonForName, venmoHandleForLink } from "../domain/people";
+import { normalizeVenmoHandle, venmoHandleError } from "../domain/venmo";
 import type { GameAction } from "../state/gameReducer";
+import { savePersonVenmoHandle } from "../state/peopleStore";
 import { createId } from "../state/seedGame";
 import { usePersonSuggestions } from "../state/usePeople";
 import { PersonNameAssist } from "./PersonNameAssist";
 import { PlayerSeat } from "./PlayerSeat";
 import { LedgerImpactPreview, TransferPreview } from "./TransferPreview";
 import { TransferQuickAmountButtons } from "./TransferQuickAmountButtons";
+import { VenmoHandleInput } from "./VenmoHandleInput";
 
 type PokerTableProps = {
   activePlayers: Player[];
@@ -80,6 +83,8 @@ type RenameDraft = {
   nameInput: string;
   /** Person picked from suggestions (or the player's link when the dialog opened). */
   personId?: string;
+  /** Typed Venmo username; until then the field follows the linked person's. */
+  venmoInput?: string;
 };
 
 type PlayerArrangement = "rotate_left" | "rotate_right" | "reverse";
@@ -624,6 +629,15 @@ export function PokerTable({
     }
   }
 
+  /** The Venmo username the rename dialog shows: typed, or else the one the new link implies. */
+  function renameVenmoHandle(draft: RenameDraft): string {
+    if (draft.venmoInput !== undefined) return draft.venmoInput;
+    const player = activePlayers.find((candidate) => candidate.id === draft.playerId);
+    const personId = resolvePersonForName(peopleDirectory, draft.nameInput, draft.personId);
+    const linked = venmoHandleForLink(peopleDirectory, player, personId);
+    return linked === undefined ? player?.venmoHandle ?? "" : linked ?? "";
+  }
+
   function confirmRename() {
     if (!renameDraft) {
       return;
@@ -634,12 +648,27 @@ export function PokerTable({
       setRenameError("Enter a player name.");
       return;
     }
+    const venmoError = venmoHandleError(renameVenmoHandle(renameDraft));
+    if (venmoError) {
+      setRenameError(venmoError);
+      return;
+    }
 
     const player = activePlayers.find((candidate) => candidate.id === renameDraft.playerId);
     const personId = resolvePersonForName(peopleDirectory, name, renameDraft.personId);
-    if (name !== player?.name || personId !== (player?.personId ?? null)) {
-      dispatch({ type: "rename_player", playerId: renameDraft.playerId, name, personId });
+    const venmoHandle = normalizeVenmoHandle(renameVenmoHandle(renameDraft));
+    const venmoChanged = venmoHandle !== (player?.venmoHandle ?? null);
+    if (name !== player?.name || personId !== (player?.personId ?? null) || venmoChanged) {
+      dispatch({
+        type: "rename_player",
+        playerId: renameDraft.playerId,
+        name,
+        personId,
+        ...(venmoChanged ? { venmoHandle } : {})
+      });
     }
+    // A username typed here is remembered for this person's later games.
+    if (renameDraft.venmoInput !== undefined && personId) savePersonVenmoHandle(personId, venmoHandle);
     setRenameDraft(null);
     setRenameError(null);
   }
@@ -1144,12 +1173,8 @@ export function PokerTable({
               <input
                 value={renameDraft.nameInput}
                 onChange={(event) =>
-                  setRenameDraft({
-                    playerId: renameDraft.playerId,
-                    nameInput: event.currentTarget.value,
-                    // Typing keeps the link only while the name still belongs to that person.
-                    ...(renameDraft.personId ? { personId: renameDraft.personId } : {})
-                  })
+                  // Typing keeps the link only while the name still belongs to that person.
+                  setRenameDraft({ ...renameDraft, nameInput: event.currentTarget.value })
                 }
               />
             </label>
@@ -1164,9 +1189,17 @@ export function PokerTable({
                 setRenameDraft({
                   playerId: renameDraft.playerId,
                   nameInput: suggestion.name,
-                  ...(suggestion.personId ? { personId: suggestion.personId } : {})
+                  ...(suggestion.personId ? { personId: suggestion.personId } : {}),
+                  ...(renameDraft.venmoInput !== undefined ? { venmoInput: renameDraft.venmoInput } : {})
                 })
               }
+            />
+            <VenmoHandleInput
+              value={renameVenmoHandle(renameDraft)}
+              onChange={(venmoInput) => {
+                setRenameDraft({ ...renameDraft, venmoInput });
+                setRenameError(null);
+              }}
             />
             {renameError ? <div className="notice notice-warning">{renameError}</div> : null}
             <div className="modal-actions">

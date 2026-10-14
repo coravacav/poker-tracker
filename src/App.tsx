@@ -569,6 +569,7 @@ function GameApp({
             ) : null}
             <SettlementPanel
               bankSummary={bankSummary}
+              currencyCode={state.settings.currencyCode}
               gameName={state.settings.gameName}
               hideActions={guest}
               imbalanceCents={imbalanceCents}

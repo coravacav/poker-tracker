@@ -68,6 +68,23 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { name: "Transaction Audit" })).not.toBeInTheDocument();
   });
 
+  it("sets a Venmo username from the rename dialog", () => {
+    renderGameApp();
+    fireEvent.click(screen.getAllByTitle("Rename player")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Rename player" });
+    const venmo = within(dialog).getByRole("textbox", { name: /Venmo username/ });
+    expect(venmo).toHaveValue("");
+    fireEvent.change(venmo, { target: { value: "no" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save name" }));
+    expect(within(dialog).getByText(/5–30 letters/)).toBeInTheDocument();
+    fireEvent.change(venmo, { target: { value: "@player-one" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save name" }));
+    expect(screen.queryByRole("dialog", { name: "Rename player" })).not.toBeInTheDocument();
+
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as { players: Array<{ venmoHandle?: string }> };
+    expect(saved.players[0].venmoHandle).toBe("player-one");
+  });
+
   it("switches to Setup mode and shows configuration plus player controls", () => {
     renderGameApp();
 

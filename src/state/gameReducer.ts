@@ -29,6 +29,7 @@ import {
 import type { RecentTransactionAction } from "../domain/recentTransactionAction";
 import { isValidPersonId, nameKey } from "../domain/people";
 import { MAX_SETTLEMENT_PINS, sanitizeSettlementPins } from "../domain/settlement";
+import { normalizeVenmoHandle } from "../domain/venmo";
 import { migratePersistedState } from "./persistence";
 import { createDefaultGameState, createId } from "./seedGame";
 
@@ -46,6 +47,8 @@ export type GameAction =
       names: string[];
       /** Parallel to `names`; see rename_player for how a missing entry is treated. */
       personIds?: Array<string | null | undefined>;
+      /** Parallel to `names`; see rename_player's venmoHandle. */
+      venmoHandles?: Array<string | null | undefined>;
     }
   | {
       type: "rename_player";
@@ -56,7 +59,14 @@ export type GameAction =
        * (older clients), the link is kept only if the name is unchanged apart from case.
        */
       personId?: string | null;
+      /**
+       * Venmo username to go with the new link (e.g. the linked person's). A
+       * string sets it, null clears it, omitted keeps the current one.
+       */
+      venmoHandle?: string | null;
     }
+  /** Sets (string) or clears (null) a player's Venmo username for settlement pay links. */
+  | { type: "set_player_venmo_handle"; playerId: PlayerId; venmoHandle: string | null }
   | { type: "archive_player"; playerId: PlayerId }
   | { type: "reorder_players"; orderedPlayerIds: PlayerId[] }
   | { type: "add_transaction"; transaction: Transaction }
@@ -149,6 +159,19 @@ function withPersonLink(next: Player, previous: Player, personId: string | null 
       : unlinked;
   }
   return isValidPersonId(personId) ? { ...unlinked, personId } : unlinked;
+}
+
+/**
+ * Applies a Venmo username from an action: undefined keeps the current one,
+ * null clears it, and a string sets it when it is a usable username.
+ */
+function withVenmoHandle(player: Player, venmoHandle: string | null | undefined): Player {
+  if (venmoHandle === undefined) return player;
+  const normalized = venmoHandle === null ? null : normalizeVenmoHandle(venmoHandle);
+  if (venmoHandle !== null && !normalized) return player;
+  if ((player.venmoHandle ?? null) === normalized) return player;
+  const { venmoHandle: _previous, ...rest } = player;
+  return normalized ? { ...rest, venmoHandle: normalized } : rest;
 }
 
 /** Stores pins without an empty array, so pin-free games keep their old shape. */
@@ -353,7 +376,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
 
       const entries = action.names
-        .map((name, index) => ({ name: name.trim(), personId: action.personIds?.[index] }))
+        .map((name, index) => ({
+          name: name.trim(),
+          personId: action.personIds?.[index],
+          venmoHandle: action.venmoHandles?.[index]
+        }))
         .filter((entry) => entry.name);
       const names = entries.map((entry) => entry.name);
       if (names.length === 0) {
@@ -376,19 +403,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           return { ...player, isActive: false };
         }
 
-        return withPersonLink(
-          { ...player, name: names[index], seatIndex: index },
-          player,
-          entries[index].personId
+        return withVenmoHandle(
+          withPersonLink({ ...player, name: names[index], seatIndex: index }, player, entries[index].personId),
+          entries[index].venmoHandle
         );
       });
-      const newPlayers = entries.slice(activePlayers.length).map(({ name, personId }, offset): Player => ({
-        id: createId("player"),
-        name,
-        seatIndex: activePlayers.length + offset,
-        isActive: true,
-        ...(isValidPersonId(personId) ? { personId } : {})
-      }));
+      const newPlayers = entries.slice(activePlayers.length).map(({ name, personId, venmoHandle }, offset): Player =>
+        withVenmoHandle(
+          {
+            id: createId("player"),
+            name,
+            seatIndex: activePlayers.length + offset,
+            isActive: true,
+            ...(isValidPersonId(personId) ? { personId } : {})
+          },
+          venmoHandle
+        )
+      );
 
       return reconcileSeatIndexes({
         ...state,
@@ -402,10 +433,24 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         players: state.players.map((player) =>
           player.id === action.playerId
-            ? withPersonLink({ ...player, name: action.name.trim() }, player, action.personId)
+            ? withVenmoHandle(
+                withPersonLink({ ...player, name: action.name.trim() }, player, action.personId),
+                action.venmoHandle
+              )
             : player
         )
       };
+
+    case "set_player_venmo_handle": {
+      const target = state.players.find((player) => player.id === action.playerId);
+      if (!target || (action.venmoHandle !== null && typeof action.venmoHandle !== "string")) return state;
+      const updated = withVenmoHandle(target, action.venmoHandle);
+      if (updated === target) return state;
+      return {
+        ...state,
+        players: state.players.map((player) => (player.id === action.playerId ? updated : player))
+      };
+    }
 
     case "archive_player":
       if (hasPlayerTransactions(action.playerId, state.transactions)) {

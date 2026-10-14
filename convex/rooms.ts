@@ -344,6 +344,10 @@ function auditSummary(
       return `Updated the player list (${after.players.filter((player) => player.isActive).length} active)`;
     case "rename_player":
       return `Renamed ${firstPlayer}`;
+    case "set_player_venmo_handle":
+      return typeof candidate.venmoHandle === "string"
+        ? `Set the Venmo username for ${firstPlayer}`
+        : `Removed the Venmo username for ${firstPlayer}`;
     case "archive_player":
       return `Archived ${firstPlayer}`;
     case "reorder_players":

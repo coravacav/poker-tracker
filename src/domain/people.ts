@@ -12,6 +12,7 @@
  */
 import { hasPlayerTransactions } from "./ledger";
 import type { GameState, Player, Transaction } from "./pokerTypes";
+import { isValidVenmoHandle, normalizeVenmoHandle } from "./venmo";
 
 export const PEOPLE_SCHEMA_VERSION = 1;
 export const MAX_PERSON_NAME_LENGTH = 80;
@@ -26,6 +27,8 @@ export type Person = {
   aliases: string[];
   /** Set when this person was merged into another; cleared again by separating it. */
   mergedIntoId?: string;
+  /** Venmo username (without @), remembered for settlement pay links in later games. */
+  venmoHandle?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -70,11 +73,14 @@ function parsePerson(value: unknown): Person | null {
   if (candidate.aliases !== undefined && !Array.isArray(candidate.aliases)) return null;
   if (candidate.mergedIntoId !== undefined && !isValidPersonId(candidate.mergedIntoId)) return null;
   const createdAt = typeof candidate.createdAt === "string" ? candidate.createdAt : new Date(0).toISOString();
+  // Optional and additive: an unusable handle is dropped rather than skipping the person.
+  const venmoHandle = normalizeVenmoHandle(candidate.venmoHandle);
   return {
     id: candidate.id,
     name,
     aliases: (candidate.aliases ?? []).filter((alias): alias is string => typeof alias === "string"),
     ...(candidate.mergedIntoId ? { mergedIntoId: candidate.mergedIntoId } : {}),
+    ...(venmoHandle ? { venmoHandle } : {}),
     createdAt,
     updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : createdAt
   };
@@ -411,6 +417,55 @@ export function mergeIntoPerson(
   };
 }
 
+/**
+ * The Venmo username remembered for a person: its own, or else one from a
+ * person merged into it.
+ */
+export function personVenmoHandle(index: PeopleIndex, personId: string): string | undefined {
+  const root = index.root(personId);
+  if (!root) return undefined;
+  if (root.venmoHandle) return root.venmoHandle;
+  return index.directory.people.find(
+    (person) => person.venmoHandle && index.rootId(person.id) === root.id
+  )?.venmoHandle;
+}
+
+/** Sets (or, with null, clears) a person's Venmo username; unchanged when invalid or the same. */
+export function setPersonVenmoHandle(
+  directory: PeopleDirectory,
+  personId: string,
+  handle: string | null,
+  now: string
+): PeopleDirectory {
+  const person = indexPeople(directory).root(personId);
+  if (!person) return directory;
+  const venmoHandle = handle === null ? null : normalizeVenmoHandle(handle);
+  if (handle !== null && !venmoHandle) return directory;
+  if ((person.venmoHandle ?? null) === venmoHandle) return directory;
+  const { venmoHandle: _venmoHandle, ...rest } = person;
+  return replacePeople(directory, [{ ...rest, ...(venmoHandle ? { venmoHandle } : {}), updatedAt: now }]);
+}
+
+/**
+ * The Venmo username a player entry should get when its person link is set
+ * to `nextPersonId`: the person's remembered username when the link changes
+ * (null, clearing it, when that person has none or there is no link), or the
+ * person's username when the player has none yet. Undefined means keep the
+ * player's current username.
+ */
+export function venmoHandleForLink(
+  directory: PeopleDirectory,
+  player: Pick<Player, "personId" | "venmoHandle"> | undefined,
+  nextPersonId: string | null
+): string | null | undefined {
+  const index = indexPeople(directory);
+  const remembered = nextPersonId ? personVenmoHandle(index, nextPersonId) ?? null : null;
+  const previousPersonId = player?.personId ?? null;
+  if (previousPersonId !== nextPersonId) return remembered;
+  if (!player?.venmoHandle && remembered) return remembered;
+  return undefined;
+}
+
 /** Separates a merged-in name: games matched only by that name stop counting for this person. */
 export function separateAlias(
   directory: PeopleDirectory,
@@ -499,5 +554,11 @@ export function linkGamePlayers(
     current = created.directory;
     return { ...player, personId: id };
   });
-  return changed ? { state: { ...state, players }, directory: current } : { state, directory };
+  // Remember usernames entered during the game for people who have none yet.
+  for (const player of players) {
+    if (!player.personId || !isValidVenmoHandle(player.venmoHandle)) continue;
+    if (personVenmoHandle(indexPeople(current), player.personId)) continue;
+    current = setPersonVenmoHandle(current, player.personId, player.venmoHandle, now);
+  }
+  return changed ? { state: { ...state, players }, directory: current } : { state, directory: current };
 }

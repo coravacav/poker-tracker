@@ -2,6 +2,7 @@ import type { GameState, Transaction } from "../domain/pokerTypes";
 import { isValidPersonId } from "../domain/people";
 import { normalizeLegacyPlayerTransaction } from "../domain/playerTransactions";
 import { sanitizeSettlementPins } from "../domain/settlement";
+import { normalizeVenmoHandle } from "../domain/venmo";
 import { validatePersistedState } from "../domain/validation";
 import { gameReducer, type GameAction } from "../state/gameReducer";
 
@@ -24,6 +25,7 @@ const HOSTED_ACTION_TYPES = new Set<GameAction["type"]>([
   "add_player",
   "replace_active_players",
   "rename_player",
+  "set_player_venmo_handle",
   "archive_player",
   "reorder_players",
   "add_transaction",
@@ -70,14 +72,19 @@ export function normalizeGameState(state: GameState): GameState {
       ),
       createdAt: state.settings.createdAt
     },
-    players: state.players.map(({ id, name, seatIndex, isActive, personId }) => ({
-      id,
-      name,
-      seatIndex,
-      isActive,
-      // Host-device people links ride along so the host's copy keeps them.
-      ...(isValidPersonId(personId) ? { personId } : {})
-    })),
+    players: state.players.map(({ id, name, seatIndex, isActive, personId, venmoHandle }) => {
+      const usableVenmoHandle = normalizeVenmoHandle(venmoHandle);
+      return {
+        id,
+        name,
+        seatIndex,
+        isActive,
+        // Host-device people links ride along so the host's copy keeps them.
+        ...(isValidPersonId(personId) ? { personId } : {}),
+        // Set by the host for settlement pay links; guests see it too.
+        ...(usableVenmoHandle ? { venmoHandle: usableVenmoHandle } : {})
+      };
+    }),
     transactions: state.transactions.map(
       ({
         id,

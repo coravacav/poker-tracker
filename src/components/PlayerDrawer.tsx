@@ -1,13 +1,16 @@
-import { Archive, ListPlus, MapPin, Plus } from "lucide-react";
+import { Archive, AtSign, ListPlus, MapPin, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import { hasPlayerTransactions } from "../domain/ledger";
-import { resolvePersonForName } from "../domain/people";
+import { indexPeople, personVenmoHandle, resolvePersonForName, venmoHandleForLink } from "../domain/people";
 import type { Player, Transaction } from "../domain/pokerTypes";
 import type { PersonSuggestion } from "../domain/sessionHistory";
+import { normalizeVenmoHandle, venmoHandleError } from "../domain/venmo";
 import type { GameAction } from "../state/gameReducer";
+import { savePersonVenmoHandle } from "../state/peopleStore";
 import { usePersonSuggestions } from "../state/usePeople";
 import { PersonNameAssist } from "./PersonNameAssist";
+import { VenmoHandleInput } from "./VenmoHandleInput";
 
 type PlayerDrawerProps = {
   dispatch: Dispatch<GameAction>;
@@ -29,6 +32,9 @@ export function PlayerDrawer({
   const [fastEntryDraft, setFastEntryDraft] = useState("");
   const [fastEntryError, setFastEntryError] = useState<string | null>(null);
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const [venmoEditor, setVenmoEditor] = useState<{ playerId: string; input: string; error: string | null } | null>(
+    null
+  );
   const { directory, suggestions } = usePersonSuggestions();
   // A person picked from suggestions, kept until the name is typed over (a shared room may not have echoed it yet).
   const pickedPeople = useRef(new Map<string, { name: string; personId: string | null }>());
@@ -93,14 +99,47 @@ export function PlayerDrawer({
     const picked = pickedPeople.current.get(player.id);
     const current = picked ?? { name: player.name, personId: player.personId ?? null };
     const personId = resolvePersonForName(directory, draftName, current.personId ?? undefined);
-    if (draftName !== current.name || personId !== current.personId) {
+    // A pick already sent its person's username (a shared room may not have echoed it yet).
+    const venmoHandle = picked && personId === picked.personId
+      ? undefined
+      : venmoHandleForLink(directory, { personId: current.personId ?? undefined, venmoHandle: player.venmoHandle }, personId);
+    const venmoChanged = venmoHandle !== undefined && venmoHandle !== (player.venmoHandle ?? null);
+    if (draftName !== current.name || personId !== current.personId || venmoChanged) {
       dispatch({
         type: "rename_player",
         playerId: player.id,
         name: draftName,
-        personId
+        personId,
+        ...(venmoChanged ? { venmoHandle } : {})
       });
     }
+  }
+
+  function openVenmoEditor(player: Player) {
+    if (venmoEditor?.playerId === player.id) {
+      setVenmoEditor(null);
+      return;
+    }
+    const personId = resolvePersonForName(directory, player.name, player.personId);
+    const remembered = personId ? personVenmoHandle(indexPeople(directory), personId) : undefined;
+    setVenmoEditor({ playerId: player.id, input: player.venmoHandle ?? remembered ?? "", error: null });
+  }
+
+  function saveVenmoHandle(player: Player) {
+    if (!venmoEditor || venmoEditor.playerId !== player.id) return;
+    const error = venmoHandleError(venmoEditor.input);
+    if (error) {
+      setVenmoEditor({ ...venmoEditor, error });
+      return;
+    }
+    const venmoHandle = normalizeVenmoHandle(venmoEditor.input);
+    if (venmoHandle !== (player.venmoHandle ?? null)) {
+      dispatch({ type: "set_player_venmo_handle", playerId: player.id, venmoHandle });
+    }
+    // Remember it for this person's later games.
+    const personId = resolvePersonForName(directory, player.name, player.personId);
+    if (personId) savePersonVenmoHandle(personId, venmoHandle);
+    setVenmoEditor(null);
   }
 
   function pickPerson(player: Player, suggestion: PersonSuggestion) {
@@ -108,8 +147,20 @@ export function PlayerDrawer({
     const current = pickedPeople.current.get(player.id) ?? { name: player.name, personId: player.personId ?? null };
     const personId = suggestion.personId ?? resolvePersonForName(directory, suggestion.name);
     pickedPeople.current.set(player.id, { name: suggestion.name, personId });
-    if (suggestion.name !== current.name || personId !== current.personId) {
-      dispatch({ type: "rename_player", playerId: player.id, name: suggestion.name, personId });
+    const venmoHandle = venmoHandleForLink(
+      directory,
+      { personId: current.personId ?? undefined, venmoHandle: player.venmoHandle },
+      personId
+    );
+    const venmoChanged = venmoHandle !== undefined && venmoHandle !== (player.venmoHandle ?? null);
+    if (suggestion.name !== current.name || personId !== current.personId || venmoChanged) {
+      dispatch({
+        type: "rename_player",
+        playerId: player.id,
+        name: suggestion.name,
+        personId,
+        ...(venmoChanged ? { venmoHandle } : {})
+      });
     }
   }
 
@@ -162,10 +213,13 @@ export function PlayerDrawer({
       return;
     }
 
+    const personIds = names.map((name, index) => resolvePersonForName(directory, name, players[index]?.personId));
+    const venmoHandles = personIds.map((personId, index) => venmoHandleForLink(directory, players[index], personId));
     dispatch({
       type: "replace_active_players",
       names,
-      personIds: names.map((name, index) => resolvePersonForName(directory, name, players[index]?.personId))
+      personIds,
+      ...(venmoHandles.some((handle) => handle !== undefined) ? { venmoHandles } : {})
     });
     setDraftNames({});
     setFastEntryOpen(false);
@@ -288,6 +342,46 @@ export function PlayerDrawer({
                 >
                   <Archive size={15} />
                 </button>
+                <button
+                  className={`icon-button player-venmo-toggle ${player.venmoHandle ? "has-handle" : ""}`}
+                  type="button"
+                  disabled={readOnly}
+                  aria-expanded={venmoEditor?.playerId === player.id}
+                  aria-label={`Venmo username for ${player.name}`}
+                  title={player.venmoHandle ? `Venmo @${player.venmoHandle}` : "Add a Venmo username"}
+                  onClick={() => openVenmoEditor(player)}
+                >
+                  <AtSign size={15} />
+                </button>
+                {player.venmoHandle && venmoEditor?.playerId !== player.id ? (
+                  <span className="player-venmo-handle">Venmo @{player.venmoHandle}</span>
+                ) : null}
+                {venmoEditor?.playerId === player.id && !readOnly ? (
+                  <div className="player-venmo-editor">
+                    <VenmoHandleInput
+                      autoFocus
+                      value={venmoEditor.input}
+                      error={venmoEditor.error}
+                      onChange={(input) => setVenmoEditor({ playerId: player.id, input, error: null })}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          saveVenmoHandle(player);
+                        } else if (event.key === "Escape") {
+                          setVenmoEditor(null);
+                        }
+                      }}
+                    />
+                    <div className="player-venmo-editor-row">
+                      <button className="text-button" type="button" onClick={() => setVenmoEditor(null)}>
+                        Cancel
+                      </button>
+                      <button className="primary-button" type="button" onClick={() => saveVenmoHandle(player)}>
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {duplicate ? <span className="inline-error">Duplicate</span> : null}
                 {editingPlayerId === player.id && !readOnly ? (
                   <PersonNameAssist

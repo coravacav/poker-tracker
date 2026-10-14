@@ -84,6 +84,33 @@ describe("shared room authority", () => {
     expect(guest.state.players.some((player: object) => "personId" in player)).toBe(false);
   });
 
+  it("shares host-set Venmo usernames with guests and drops unusable ones", async () => {
+    const { test, snapshot } = await createRoom((snapshot) => {
+      snapshot.players[0] = { ...snapshot.players[0], venmoHandle: "mike-pays" };
+      snapshot.players[1] = { ...snapshot.players[1], venmoHandle: "not a handle!" };
+    });
+    const host = await test.query(api.rooms.hostView, { publicId, hostSecret, controllerId });
+    expect(host.state.players[0].venmoHandle).toBe("mike-pays");
+    expect(host.state.players[1]).not.toHaveProperty("venmoHandle");
+
+    const updated = await test.mutation(api.rooms.applyAction, {
+      publicId,
+      hostSecret,
+      controllerId,
+      expectedVersion: 0,
+      clientActionId: "action_set_venmo_1234",
+      action: { type: "set_player_venmo_handle", playerId: snapshot.players[1].id, venmoHandle: "@Blair_V" }
+    });
+    expect(updated.state.players[1].venmoHandle).toBe("Blair_V");
+
+    await test.mutation(api.rooms.join, { publicId, inviteSecret, guestSecret, displayName: "Observer" });
+    const guest = await test.query(api.rooms.guestView, { publicId, guestSecret });
+    expect(guest.state.players.slice(0, 2).map((player: { venmoHandle?: string }) => player.venmoHandle))
+      .toEqual(["mike-pays", "Blair_V"]);
+    const hostAfter = await test.query(api.rooms.hostView, { publicId, hostSecret, controllerId });
+    expect(hostAfter.activity.events[0].summary).toBe(`Set the Venmo username for ${snapshot.players[1].name}`);
+  });
+
   it("enforces host capability, controller ownership, and room versions", async () => {
     const { test } = await createRoom();
     await expect(

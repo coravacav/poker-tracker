@@ -2144,7 +2144,7 @@ dd {
 
 .player-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -2630,6 +2630,8 @@ dd {
   .settlement-pin-controls,
   .settlement-pin-form,
   .payment-lock-button,
+  .venmo-pay-link,
+  .player-venmo-toggle,
   .cover-debt-button {
     display: none !important;
   }
@@ -2673,7 +2675,73 @@ dd {
 }
 
 .payment-line {
+  flex-wrap: wrap;
   justify-content: flex-start;
+}
+
+.venmo-pay-link {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  margin-left: auto;
+  border-radius: 999px;
+  padding: 4px 11px;
+  color: #fff;
+  background: #0074de;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.venmo-pay-link:hover,
+.venmo-pay-link:focus-visible {
+  background: #005fb8;
+}
+
+.player-venmo-editor {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+}
+
+.player-venmo-editor-row {
+  justify-content: flex-end;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.player-venmo-editor-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.player-venmo-handle {
+  grid-column: 2 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.player-venmo-toggle.has-handle {
+  color: #0074de;
+}
+
+.venmo-handle-field {
+  display: grid;
+  gap: 4px;
+}
+
+.table-action-modal .venmo-handle-field {
+  margin-top: 10px;
+}
+
+.venmo-field-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .payment-line input {

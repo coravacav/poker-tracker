@@ -191,6 +191,49 @@ describe("SettlementPanel", () => {
     expect(screen.queryByRole("button", { name: "Add payment" })).not.toBeInTheDocument();
   });
 
+  it("offers Venmo pay links on unpaid payments to recipients with a username", () => {
+    const withHandles = players.map((player) =>
+      player.id === "alex" ? player : { ...player, venmoHandle: `${player.id}-pays` }
+    );
+    const panel = (props: Partial<React.ComponentProps<typeof SettlementPanel>>) => (
+      <SettlementPanel
+        bankSummary={bankSummary}
+        gameName="Friday Game"
+        hideActions
+        imbalanceCents={0}
+        onAddTransaction={vi.fn(() => true)}
+        players={withHandles}
+        readOnly
+        settlementPins={[
+          { id: "pin", fromPlayerId: "alex", toPlayerId: "casey", amountCents: 2000, status: "paid" }
+        ]}
+        settlementReady={true}
+        summaries={summaries}
+        {...props}
+      />
+    );
+    const { rerender } = render(panel({}));
+
+    // Guests see links too; the paid payment has none.
+    const links = screen.getAllByRole("link", { name: /with Venmo/ });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAccessibleName("Alex: pay Blair $10.00 with Venmo");
+    expect(links[0]).toHaveAttribute(
+      "href",
+      "https://venmo.com/blair-pays?txn=pay&amount=10.00&note=Friday+Game+poker+settlement"
+    );
+    expect(links[0]).toHaveTextContent("Pay with Venmo");
+
+    rerender(panel({ settlementReady: false }));
+    expect(screen.queryByRole("link", { name: /with Venmo/ })).not.toBeInTheDocument();
+
+    rerender(panel({ currencyCode: "EUR" }));
+    expect(screen.queryByRole("link", { name: /with Venmo/ })).not.toBeInTheDocument();
+
+    rerender(panel({ players }));
+    expect(screen.queryByRole("link", { name: /with Venmo/ })).not.toBeInTheDocument();
+  });
+
   it("disables payment marks in read-only mode", () => {
     const onSettlementPinAction = vi.fn();
     render(
