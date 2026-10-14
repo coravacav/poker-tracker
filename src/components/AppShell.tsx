@@ -1,4 +1,4 @@
-import { Undo2 } from "lucide-react";
+import { Home, Undo2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -16,6 +16,7 @@ type AppShellProps = {
   layoutEditingDisabled: boolean;
   mode: AppMode;
   onLayoutEditingChange: (layoutEditing: boolean) => void;
+  onHome?: () => void;
   onModeChange: (mode: AppMode) => void;
   onUndoRecentTransaction: (action: RecentTransactionAction) => void;
   readOnly: boolean;
@@ -98,6 +99,7 @@ export function AppShell({
   layoutEditingDisabled,
   mode,
   onLayoutEditingChange,
+  onHome,
   onModeChange,
   onUndoRecentTransaction,
   play,
@@ -117,6 +119,11 @@ export function AppShell({
           <p className="eyebrow">{ledgerLabel}</p>
           <h1>Poker Tracker</h1>
         </div>
+        {onHome ? (
+          <button className="text-button" type="button" onClick={onHome}>
+            <Home size={16} /> Home
+          </button>
+        ) : null}
         {sessionControls}
         <PwaControls />
         {notifications}

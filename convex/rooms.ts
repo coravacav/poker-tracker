@@ -22,6 +22,97 @@ const MAX_PUBLIC_SHARED_AUDIT_EVENTS = 200;
 // send every 30 seconds, leaving a five-minute grace period for mobile sleep.
 const GUEST_PRESENCE_INTERVAL_MS = 2 * 60 * 1000;
 
+const roomStatusValidator = v.union(
+  v.literal("active"),
+  v.literal("ended"),
+  v.literal("expired")
+);
+const publicRoomValidator = v.object({
+  publicId: v.string(),
+  status: roomStatusValidator,
+  name: v.string(),
+  state: v.any(),
+  version: v.number(),
+  endedAt: v.union(v.number(), v.null())
+});
+const activityValidator = v.object({
+  events: v.array(v.object({
+    id: v.string(),
+    version: v.number(),
+    actionType: v.string(),
+    kind: v.union(
+      v.literal("transaction"),
+      v.literal("cash_out"),
+      v.literal("correction"),
+      v.literal("game")
+    ),
+    summary: v.string(),
+    transactionIds: v.array(v.string()),
+    playerIds: v.array(v.string()),
+    actorLabel: v.string(),
+    createdAt: v.number(),
+    notify: v.boolean()
+  })),
+  notifications: v.array(v.object({
+    id: v.string(),
+    eventId: v.string(),
+    title: v.string(),
+    summary: v.string(),
+    playerIds: v.array(v.string()),
+    createdAt: v.number(),
+    version: v.number(),
+    read: v.boolean()
+  })),
+  unreadNotificationCount: v.number()
+});
+const guestRoomValidator = publicRoomValidator.extend({
+  displayName: v.string(),
+  hostProfile: v.union(
+    v.null(),
+    v.object({ friendCode: v.string(), displayName: v.string() })
+  ),
+  activity: activityValidator
+});
+const guestViewValidator = guestRoomValidator.extend({
+  guestRequests: v.array(v.object({
+    id: v.id("roomGuestRequests"),
+    transaction: v.any(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    createdAt: v.number(),
+    decidedAt: v.union(v.number(), v.null())
+  }))
+});
+const hostRoomValidator = publicRoomValidator.extend({
+  activity: activityValidator,
+  guestCount: v.number(),
+  joiningOpen: v.boolean(),
+  visibleToFriends: v.boolean(),
+  friendProfileLinked: v.boolean(),
+  guests: v.array(v.object({
+    id: v.id("roomGuests"),
+    displayName: v.string(),
+    joinedAt: v.number(),
+    connected: v.boolean(),
+    revoked: v.boolean()
+  })),
+  guestRequests: v.array(v.object({
+    id: v.id("roomGuestRequests"),
+    displayName: v.string(),
+    transaction: v.any(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    createdAt: v.number()
+  })),
+  controllerStatus: v.union(v.literal("active"), v.literal("duplicate"))
+});
+
 type RoomErrorCode =
   | "INVALID_ARGUMENT"
   | "INVALID_CAPABILITY"
@@ -65,6 +156,18 @@ function validIdentifier(value: string): boolean {
 
 function validSecret(value: string): boolean {
   return /^[A-Za-z0-9_-]{32,256}$/.test(value);
+}
+
+function normalizeFriendCode(value: string): string {
+  return value.trim().toUpperCase().replace(/[\s-]+/g, "");
+}
+
+function validFriendCode(value: string): boolean {
+  return /^[2-9A-HJ-NP-Z]{20,32}$/.test(value);
+}
+
+function validProfileOwnerSecret(value: string): boolean {
+  return validSecret(value);
 }
 
 async function hashSecret(secret: string): Promise<string> {
@@ -456,6 +559,86 @@ function publicRoom<T extends Record<string, unknown> = Record<never, never>>(
   };
 }
 
+async function publicHostProfile(
+  ctx: QueryCtx | MutationCtx,
+  room: Doc<"rooms">
+): Promise<{ friendCode: string; displayName: string } | null> {
+  if (!room.hostProfileId) return null;
+  const profile = await ctx.db.get("friendProfiles", room.hostProfileId);
+  return profile
+    ? { friendCode: profile.friendCode, displayName: profile.displayName }
+    : null;
+}
+
+export async function joinRoomAsGuest(
+  ctx: MutationCtx,
+  room: Doc<"rooms">,
+  guestSecret: string,
+  rawDisplayName: string
+) {
+  if (!validSecret(guestSecret)) {
+    fail("INVALID_CAPABILITY", "Guest capability is invalid.");
+  }
+  if (room.status !== "active") fail("ROOM_ENDED", "This shared room has ended.");
+  if (room.joiningOpen === false) fail("ROOM_NOT_ACTIVE", "This room is not accepting new guests.");
+  const displayName = rawDisplayName.trim();
+  if (displayName.length < 1 || displayName.length > 40) {
+    fail("INVALID_ARGUMENT", "Display name must be between 1 and 40 characters.");
+  }
+
+  const guestSecretHash = await hashSecret(guestSecret);
+  const existingGuest = await ctx.db
+    .query("roomGuests")
+    .withIndex("by_room_id_and_guest_secret_hash", (index) =>
+      index.eq("roomId", room._id).eq("guestSecretHash", guestSecretHash)
+    )
+    .unique();
+  const now = Date.now();
+  let guestId = existingGuest?._id;
+  if (existingGuest && existingGuest.revokedAt === undefined) {
+    await ctx.db.patch(existingGuest._id, { displayName });
+  } else {
+    const guests = await ctx.db
+      .query("roomGuests")
+      .withIndex("by_room_id", (index) => index.eq("roomId", room._id))
+      .take(MAX_ROOM_GUESTS + 1);
+    if (guests.filter((guest) => guest.revokedAt === undefined).length >= MAX_ROOM_GUESTS) {
+      fail("ROOM_LIMIT_REACHED", "This room has reached its guest limit.");
+    }
+    guestId = await ctx.db.insert("roomGuests", {
+      roomId: room._id,
+      displayName,
+      guestSecretHash,
+      joinedAt: now
+    });
+  }
+  if (!guestId) {
+    fail("INVALID_CAPABILITY", "Guest session could not be created.");
+  }
+  const guestRecipientKey = String(guestId);
+  const existingCursor = await ctx.db
+    .query("roomNotificationCursors")
+    .withIndex("by_room_id_and_recipient_key", (index) =>
+      index.eq("roomId", room._id).eq("recipientKey", guestRecipientKey)
+    )
+    .unique();
+  if (!existingCursor) {
+    await ctx.db.insert("roomNotificationCursors", {
+      roomId: room._id,
+      recipientKey: guestRecipientKey,
+      lastReadVersion: room.version,
+      updatedAt: now
+    });
+  }
+  return await publicRoomWithActivity(
+    ctx,
+    room,
+    sanitizeGuestState(room.state as GameState),
+    guestRecipientKey,
+    { displayName, hostProfile: await publicHostProfile(ctx, room) }
+  );
+}
+
 export const create = mutation({
   args: {
     publicId: v.string(),
@@ -463,9 +646,12 @@ export const create = mutation({
     snapshot: v.any(),
     hostSecret: v.string(),
     inviteSecret: v.string(),
-    controllerId: v.string()
+    controllerId: v.string(),
+    friendCode: v.optional(v.string()),
+    profileOwnerSecret: v.optional(v.string()),
+    visibleToFriends: v.optional(v.boolean())
   },
-  returns: v.any(),
+  returns: publicRoomValidator,
   handler: async (ctx, args) => {
     if (
       !validIdentifier(args.publicId) ||
@@ -498,6 +684,26 @@ export const create = mutation({
       fail("ROOM_LIMIT_REACHED", "This local game already has an active shared room.");
     }
 
+    let hostProfile: Doc<"friendProfiles"> | null = null;
+    if ((args.friendCode === undefined) !== (args.profileOwnerSecret === undefined)) {
+      fail("INVALID_ARGUMENT", "Friend code and profile owner secret must be provided together.");
+    }
+    if (args.friendCode !== undefined && args.profileOwnerSecret !== undefined) {
+      const friendCode = normalizeFriendCode(args.friendCode);
+      if (!validFriendCode(friendCode) || !validProfileOwnerSecret(args.profileOwnerSecret)) {
+        fail("INVALID_ARGUMENT", "Friend profile capability is invalid.");
+      }
+      hostProfile = await ctx.db
+        .query("friendProfiles")
+        .withIndex("by_friend_code", (index) => index.eq("friendCode", friendCode))
+        .unique();
+      if (!hostProfile) fail("INVALID_CAPABILITY", "Friend profile capability is invalid.");
+      const profileSecretHash = await hashSecret(args.profileOwnerSecret);
+      if (!sameHash(hostProfile.ownerSecretHash, profileSecretHash)) {
+        fail("INVALID_CAPABILITY", "Friend profile capability is invalid.");
+      }
+    }
+
     const now = Date.now();
     const roomId = await ctx.db.insert("rooms", {
       publicId: args.publicId,
@@ -512,8 +718,15 @@ export const create = mutation({
       hostSecretHash: await hashSecret(args.hostSecret),
       inviteSecretHash: await hashSecret(args.inviteSecret),
       joiningOpen: true,
-      hostControllerId: args.controllerId
+      hostControllerId: args.controllerId,
+      ...(hostProfile ? {
+        hostProfileId: hostProfile._id,
+        visibleToFriends: args.visibleToFriends ?? true
+      } : {})
     });
+    if (hostProfile) {
+      await ctx.db.patch(hostProfile._id, { activeRoomId: roomId, updatedAt: now });
+    }
     await ctx.db.insert("roomNotificationCursors", {
       roomId,
       recipientKey: HOST_RECIPIENT_KEY,
@@ -570,81 +783,55 @@ export const join = mutation({
     guestSecret: v.string(),
     displayName: v.string()
   },
-  returns: v.any(),
+  returns: guestRoomValidator,
   handler: async (ctx, args) => {
     if (!validSecret(args.inviteSecret) || !validSecret(args.guestSecret)) {
       fail("INVALID_CAPABILITY", "Invitation is invalid.");
     }
     const room = await roomByPublicId(ctx, args.publicId);
     if (!room) fail("ROOM_NOT_FOUND", "Shared room was not found.");
-    if (room.status !== "active") fail("ROOM_ENDED", "This shared room has ended.");
-    if (room.joiningOpen === false) fail("ROOM_NOT_ACTIVE", "This room is not accepting new guests.");
     const inviteHash = await hashSecret(args.inviteSecret);
     if (!sameHash(room.inviteSecretHash, inviteHash)) {
       fail("INVALID_CAPABILITY", "Invitation is invalid.");
     }
-    const displayName = args.displayName.trim();
-    if (displayName.length < 1 || displayName.length > 40) {
-      fail("INVALID_ARGUMENT", "Display name must be between 1 and 40 characters.");
-    }
+    return await joinRoomAsGuest(ctx, room, args.guestSecret, args.displayName);
+  }
+});
 
-    const guestSecretHash = await hashSecret(args.guestSecret);
-    const existingGuest = await ctx.db
-      .query("roomGuests")
-      .withIndex("by_room_id_and_guest_secret_hash", (index) =>
-        index.eq("roomId", room._id).eq("guestSecretHash", guestSecretHash)
-      )
+export const joinFriend = mutation({
+  args: {
+    publicId: v.string(),
+    friendCode: v.string(),
+    guestSecret: v.string(),
+    displayName: v.string()
+  },
+  returns: guestRoomValidator,
+  handler: async (ctx, args) => {
+    const friendCode = normalizeFriendCode(args.friendCode);
+    if (!validFriendCode(friendCode)) {
+      fail("INVALID_CAPABILITY", "Friend code is invalid.");
+    }
+    const profile = await ctx.db
+      .query("friendProfiles")
+      .withIndex("by_friend_code", (index) => index.eq("friendCode", friendCode))
       .unique();
-    const now = Date.now();
-    let guestId = existingGuest?._id;
-    if (existingGuest && existingGuest.revokedAt === undefined) {
-      await ctx.db.patch(existingGuest._id, { displayName });
-    } else {
-      const guests = await ctx.db
-        .query("roomGuests")
-        .withIndex("by_room_id", (index) => index.eq("roomId", room._id))
-        .take(MAX_ROOM_GUESTS + 1);
-      if (guests.filter((guest) => guest.revokedAt === undefined).length >= MAX_ROOM_GUESTS) {
-        fail("ROOM_LIMIT_REACHED", "This room has reached its guest limit.");
-      }
-      guestId = await ctx.db.insert("roomGuests", {
-        roomId: room._id,
-        displayName,
-        guestSecretHash,
-        joinedAt: now
-      });
+    if (!profile) fail("INVALID_CAPABILITY", "Friend code is invalid.");
+    const room = await roomByPublicId(ctx, args.publicId);
+    if (
+      !room ||
+      profile.activeRoomId !== room._id ||
+      room.hostProfileId !== profile._id ||
+      room.visibleToFriends !== true
+    ) {
+      fail("ROOM_NOT_FOUND", "This friend is not sharing that room.");
     }
-    if (!guestId) {
-      fail("INVALID_CAPABILITY", "Guest session could not be created.");
-    }
-    const guestRecipientKey = String(guestId);
-    const existingCursor = await ctx.db
-      .query("roomNotificationCursors")
-      .withIndex("by_room_id_and_recipient_key", (index) =>
-        index.eq("roomId", room._id).eq("recipientKey", guestRecipientKey)
-      )
-      .unique();
-    if (!existingCursor) {
-      await ctx.db.insert("roomNotificationCursors", {
-        roomId: room._id,
-        recipientKey: guestRecipientKey,
-        lastReadVersion: room.version,
-        updatedAt: now
-      });
-    }
-    return await publicRoomWithActivity(
-      ctx,
-      room,
-      sanitizeGuestState(room.state as GameState),
-      guestRecipientKey,
-      { displayName }
-    );
+    return await joinRoomAsGuest(ctx, room, args.guestSecret, args.displayName);
   }
 });
 
 export const guestView = query({
   args: { publicId: v.string(), guestSecret: v.string() },
-  returns: v.any(),
+  returns: guestViewValidator,
   handler: async (ctx, args) => {
     const { room, guest } = await requireGuest(ctx, args.publicId, args.guestSecret);
     return await publicRoomWithActivity(
@@ -654,6 +841,7 @@ export const guestView = query({
       String(guest._id),
       {
         displayName: guest.displayName,
+        hostProfile: await publicHostProfile(ctx, room),
         guestRequests: await guestRequestsForGuest(ctx, guest)
       }
     );
@@ -744,7 +932,7 @@ export const heartbeat = mutation({
 
 export const hostView = query({
   args: { publicId: v.string(), hostSecret: v.string(), controllerId: v.string() },
-  returns: v.any(),
+  returns: hostRoomValidator,
   handler: async (ctx, args) => {
     const room = await requireHost(ctx, args.publicId, args.hostSecret);
     const presentGuests = await presence.listRoom(ctx, room.publicId, true, MAX_ROOM_GUESTS);
@@ -758,6 +946,8 @@ export const hostView = query({
     return await publicRoomWithActivity(ctx, room, room.state as GameState, HOST_RECIPIENT_KEY, {
       guestCount,
       joiningOpen: room.joiningOpen !== false,
+      visibleToFriends: room.visibleToFriends === true,
+      friendProfileLinked: room.hostProfileId !== undefined,
       guests: guestDocs.map((guest) => ({
         id: guest._id,
         displayName: guest.displayName,
@@ -785,6 +975,27 @@ export const setJoiningOpen = mutation({
     const room = await requireHost(ctx, args.publicId, args.hostSecret);
     if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
     await ctx.db.patch(room._id, { joiningOpen: args.open });
+    return null;
+  }
+});
+
+export const setFriendVisibility = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    visible: v.boolean()
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const room = await requireHost(ctx, args.publicId, args.hostSecret);
+    if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
+    if (!room.hostProfileId) {
+      fail("INVALID_ARGUMENT", "This room is not linked to a friend profile.");
+    }
+    await ctx.db.patch(room._id, {
+      visibleToFriends: args.visible,
+      lastActivityAt: Date.now()
+    });
     return null;
   }
 });
@@ -1089,6 +1300,12 @@ export const end = mutation({
     }
     const endedAt = Date.now();
     await ctx.db.patch(room._id, { status: "ended", endedAt, lastActivityAt: endedAt });
+    if (room.hostProfileId) {
+      const profile = await ctx.db.get("friendProfiles", room.hostProfileId);
+      if (profile?.activeRoomId === room._id) {
+        await ctx.db.patch(profile._id, { activeRoomId: undefined, updatedAt: endedAt });
+      }
+    }
     await appendAuditEvent(ctx, room._id, {
       eventId: `event_${crypto.randomUUID()}`,
       version: room.version,
@@ -1134,6 +1351,12 @@ export const runRoomLifecycle = internalMutation({
       .take(CLEANUP_BATCH_SIZE);
     for (const room of staleActiveRooms) {
       await ctx.db.patch(room._id, { status: "expired", endedAt: now, lastActivityAt: now });
+      if (room.hostProfileId) {
+        const profile = await ctx.db.get("friendProfiles", room.hostProfileId);
+        if (profile?.activeRoomId === room._id) {
+          await ctx.db.patch(profile._id, { activeRoomId: undefined, updatedAt: now });
+        }
+      }
     }
 
     const oldEndedRooms = await ctx.db

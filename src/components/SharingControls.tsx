@@ -26,6 +26,7 @@ type HostSharingControlsProps = {
     decision: "approved" | "rejected"
   ) => void;
   onSetJoiningOpen: (open: boolean) => void;
+  onSetFriendVisibility: (visible: boolean) => void;
   onRotateInvite: () => void;
   onRevokeGuest: (guestId: Id<"roomGuests">) => void;
 };
@@ -56,6 +57,7 @@ export function HostSharingControls({
   onCreateNewShare,
   onDecideGuestTransaction,
   onSetJoiningOpen,
+  onSetFriendVisibility,
   onRotateInvite,
   onRevokeGuest
 }: HostSharingControlsProps) {
@@ -163,6 +165,16 @@ export function HostSharingControls({
                           <RefreshCw size={15} /> Rotate invite
                         </button>
                       </div>
+                      {room.friendProfileLinked ? (
+                        <label className="friend-visibility-toggle">
+                          <input
+                            type="checkbox"
+                            checked={room.visibleToFriends}
+                            onChange={(event) => onSetFriendVisibility(event.currentTarget.checked)}
+                          />
+                          Show this room to followers on Home
+                        </label>
+                      ) : null}
                       <div className="guest-count"><UserRound size={16} /> {room.guestCount} currently online</div>
                       {(room.guests?.length ?? 0) > 0 ? (
                         <div className="guest-management-list">
@@ -239,16 +251,27 @@ export function GuestSessionControls({
   connected,
   ended,
   displayName,
+  hostProfile,
+  followingHost,
+  onFollowHost,
   onLeave
 }: {
   connected: boolean;
   ended: boolean;
   displayName: string;
+  hostProfile?: { friendCode: string; displayName: string } | null;
+  followingHost?: boolean;
+  onFollowHost?: () => void;
   onLeave: () => void;
 }) {
   return (
     <div className="guest-session-controls">
       <span>{ended ? "Session ended" : connected ? `Viewing as ${displayName}` : "Reconnecting"}</span>
+      {hostProfile ? (
+        <button className="text-button" type="button" disabled={followingHost} onClick={onFollowHost}>
+          <UserRound size={15} /> {followingHost ? `Following ${hostProfile.displayName}` : `Follow ${hostProfile.displayName}`}
+        </button>
+      ) : null}
       <button className="text-button" type="button" onClick={onLeave}>Leave</button>
     </div>
   );

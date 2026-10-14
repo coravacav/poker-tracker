@@ -18,6 +18,16 @@ import type {
   RoomTransport
 } from "../session/types";
 
+function renderGameApp(transport: RoomTransport) {
+  const result = render(<App roomTransport={transport} />);
+  const continueButton = screen.queryByRole("button", { name: /^Continue / });
+  const startButton = screen.queryByRole("button", { name: "Start new game" });
+  if (continueButton || startButton) fireEvent.click(continueButton ?? startButton!);
+  const playButton = screen.queryByRole("button", { name: "Play" });
+  if (playButton && playButton.getAttribute("aria-pressed") !== "true") fireEvent.click(playButton);
+  return result;
+}
+
 function projection(state: GameState): RoomProjection {
   return {
     publicId: "room_public_123456",
@@ -124,7 +134,7 @@ describe("realtime sharing UI", () => {
 
   it("creates a host room and never puts host authority in the invitation", async () => {
     const fake = fakeTransport();
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
 
     fireEvent.click(screen.getByRole("button", { name: "Share game" }));
     const dialog = await screen.findByRole("dialog", { name: "Share game" });
@@ -139,7 +149,7 @@ describe("realtime sharing UI", () => {
   it("shows a generic message when sharing is unavailable", async () => {
     const fake = fakeTransport();
     fake.transport.configured = false;
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
 
     fireEvent.click(screen.getByRole("button", { name: "Share game" }));
 
@@ -164,7 +174,7 @@ describe("realtime sharing UI", () => {
     });
     const fake = fakeTransport(local);
 
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
     expect(await screen.findByText("Restoring the shared room…")).toBeInTheDocument();
 
     const accepted = {
@@ -219,7 +229,7 @@ describe("realtime sharing UI", () => {
       lastKnownVersion: 4
     });
     const fake = fakeTransport(local);
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
     await screen.findByText("Restoring the shared room…");
     act(() => fake.emitHostError(new Error("Shared room was not found.")));
     await screen.findByText("Shared room unavailable.");
@@ -254,7 +264,7 @@ describe("realtime sharing UI", () => {
       "/#/join/room_public_123456/invite_abcdefghijklmnopqrstuvwxyz0123456789"
     );
 
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
     expect(await screen.findByRole("heading", { name: "Remote table" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "Display name" }), {
       target: { value: "Observer" }
@@ -288,7 +298,7 @@ describe("realtime sharing UI", () => {
     });
     window.history.replaceState(null, "", "/#/room/room_public_123456");
 
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
     act(() => {
       fake.emitGuest({ ...projection(remote), displayName: "Observer" });
     });
@@ -316,7 +326,7 @@ describe("realtime sharing UI", () => {
     });
     window.history.replaceState(null, "", "/#/room/room_public_123456");
 
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
     expect(fake.heartbeat).not.toHaveBeenCalled();
 
     act(() => fake.setConnected(true));
@@ -326,7 +336,7 @@ describe("realtime sharing UI", () => {
 
   it("saves the confirmed final room state locally when sharing ends", async () => {
     const fake = fakeTransport();
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
     fireEvent.click(screen.getByRole("button", { name: "Share game" }));
     await screen.findByRole("dialog", { name: "Share game" });
 
@@ -352,7 +362,7 @@ describe("realtime sharing UI", () => {
   it("keeps recovery metadata and reports recovery when final confirmation fails", async () => {
     const fake = fakeTransport();
     fake.endRoom.mockRejectedValueOnce(new Error("network unavailable"));
-    render(<App roomTransport={fake.transport} />);
+    renderGameApp(fake.transport);
     fireEvent.click(screen.getByRole("button", { name: "Share game" }));
     await screen.findByRole("dialog", { name: "Share game" });
     fireEvent.click(screen.getByRole("button", { name: "Stop sharing" }));

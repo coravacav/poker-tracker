@@ -83,8 +83,21 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
     return (
       <StartPage
         entry={gameSession.localEntry}
+        friendFeatureAvailable={gameSession.friendFeatureAvailable}
+        friendProfile={gameSession.friendProfile}
+        followedFriends={gameSession.followedFriends}
+        friendActivity={gameSession.friendActivity}
+        friendPending={gameSession.friendPending}
+        friendError={gameSession.friendError}
+        initialFriendCode={gameSession.initialFriendCode}
         onContinue={gameSession.continueLocalGame}
         onStartNew={gameSession.startNewLocalGame}
+        onCreateFriendProfile={(displayName) => void gameSession.createFriendProfile(displayName)}
+        onRenameFriendProfile={(displayName) => void gameSession.renameFriendProfile(displayName)}
+        onRotateFriendCode={() => void gameSession.rotateFriendCode()}
+        onAddFriend={(friendCode) => void gameSession.addFriend(friendCode)}
+        onRemoveFriend={gameSession.removeFriend}
+        onJoinFriendRoom={(activity) => void gameSession.joinFriendRoom(activity)}
       />
     );
   }
@@ -103,6 +116,13 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         connected={session.connected}
         displayName={session.credentials.displayName}
         ended={session.room?.status !== "active"}
+        hostProfile={session.room?.hostProfile}
+        followingHost={Boolean(session.room?.hostProfile && gameSession.followedFriends.some(
+          (friend) => friend.friendCode === session.room?.hostProfile?.friendCode
+        ))}
+        onFollowHost={() => {
+          if (session.room?.hostProfile) void gameSession.addFriend(session.room.hostProfile.friendCode);
+        }}
         onLeave={gameSession.leaveGuest}
       />
     );
@@ -122,6 +142,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
           void gameSession.decideGuestTransaction(requestId, decision)
         }
         onSetJoiningOpen={(open) => void gameSession.setJoiningOpen(open)}
+        onSetFriendVisibility={(visible) => void gameSession.setFriendVisibility(visible)}
         onRotateInvite={() => void gameSession.rotateInvite()}
         onRevokeGuest={(guestId) => void gameSession.revokeGuest(guestId)}
         pending={session.pending}
@@ -165,6 +186,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       roomHistory={gameSession.roomHistory}
       state={gameSession.state}
       initialMode={gameSession.localEntryDestination}
+      onHome={session.mode === "local" ? gameSession.openHome : undefined}
     />
   );
 }
@@ -182,6 +204,7 @@ type GameAppProps = {
   onSubmitGuestTransaction: (transaction: Transaction) => void;
   roomHistory: RoomHistoryProjection[];
   initialMode: AppMode;
+  onHome?: () => void;
 };
 
 function GameApp({
@@ -196,7 +219,8 @@ function GameApp({
   sessionControls,
   sessionNotice,
   sharedActivity,
-  initialMode
+  initialMode,
+  onHome
 }: GameAppProps) {
   const [mode, setMode] = useState<AppMode>(() => initialMode);
   const [manualReadOnly, setManualReadOnly] = useState(false);
@@ -374,6 +398,7 @@ function GameApp({
         hideLayoutEditing={compactPlayerView}
         mode={mode}
         onLayoutEditingChange={setLayoutEditing}
+        onHome={onHome}
         onModeChange={changeMode}
         onUndoRecentTransaction={(action) =>
           dispatch({

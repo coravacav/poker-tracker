@@ -39,7 +39,9 @@ Neither value is a host or guest room credential. Do not commit `.env.local`, de
 ## Local and shared behavior
 
 - Local games use `poker-tracker:v1:current-game` in `localStorage`. Schema v6 adds a stable `localGameId`; older saves migrate in place.
-- On a first visit or after more than 24 hours away, the local start page offers a saved-game continuation or a new game. Returning from a hidden or unfocused tab uses the same check; shared-room and recovery sessions keep their existing routing.
+- Fresh local loads open on Home, which offers saved-game continuation, active rooms from followed hosts, or a new game. Returning from a hidden or unfocused tab after 24 hours also returns to Home; active shared-room and recovery sessions keep their existing routing.
+- Friend profiles are device-bound and require no account. A personal 100-bit friend code can be shared by QR or manual entry; followed codes are stored locally and their discoverable active rooms update reactively.
+- A hosted room linked to a friend profile is visible to followers by default. The host can hide it without ending the room or changing the ordinary invitation link. Rotating a friend code revokes future discovery through the old code.
 - Sharing is explicit. Convex receives a bounded snapshot only when the host chooses **Share game**.
 - While active, Convex is authoritative. The host sends versioned reducer actions, waits for server acceptance, and only then caches the accepted state locally. Financial actions are not optimistic or queued offline.
 - Host recovery credentials use a separate local-storage record. A tab-scoped controller ID ensures only one host tab can edit; another tab may explicitly take control.
@@ -47,7 +49,7 @@ Neither value is a host or guest room credential. Do not commit `.env.local`, de
 - Guests receive a revocable, tab-scoped capability in `sessionStorage`. Guest room snapshots never write to normal local-game storage.
 - Stopping sharing marks the room ended and confirms its final authoritative snapshot before replacing the host’s local state. If that write fails or the response cannot be confirmed, recovery metadata remains and the host sees **Recovery needed** with a retry action.
 
-QR codes contain the guest invitation URL, not host authority. The invitation secret is in the URL fragment so it is not sent in ordinary HTTP requests. Pairing and realtime updates still use Convex over the internet; this is not LAN-only or peer-to-peer transport.
+Room QR codes contain the guest invitation URL, not host authority. Personal friend QR codes contain the stable friend code and never contain profile-owner or host authority. Invitation and friend codes use URL fragments so they are not sent in ordinary HTTP requests. Pairing and realtime updates still use Convex over the internet; this is not LAN-only or peer-to-peer transport.
 
 ## Snapshot boundary and retention
 
@@ -68,7 +70,7 @@ Shared rooms retain the 500 most recent audit events. The host and every guest h
 - Room IDs do not authorize writes. Host, invitation, and guest capabilities are cryptographically random and stored in Convex only as SHA-256 verifiers.
 - Every mutation checks the host capability and active controller server-side. Guest queries require a non-revoked guest capability and return a projection without host cash-out drafts.
 - Public functions validate arguments; room/action/guest limits provide basic abuse boundaries.
-- There are no accounts, IP-based creation limits, CAPTCHA, guest-management UI, or automated cleanup yet. Anyone holding a current invite may join as a read-only guest until the room ends. A compromised host browser storage exposes its active host capability.
+- There are no accounts, mutual friend approvals, IP-based creation limits, or CAPTCHA. A friend code is a bearer discovery capability: anyone holding it can see rooms marked visible to followers and join while joining is open. A compromised browser profile exposes its profile-owner and active room capabilities.
 
 ## Convex usage
 

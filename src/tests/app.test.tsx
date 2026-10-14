@@ -5,6 +5,15 @@ import { createDefaultGameState } from "../state/seedGame";
 import { STORAGE_KEY } from "../state/persistence";
 import { LAST_VISIT_KEY } from "../session/localEntry";
 
+function renderGameApp() {
+  const result = render(<App />);
+  const continueButton = screen.queryByRole("button", { name: /^Continue / });
+  fireEvent.click(continueButton ?? screen.getByRole("button", { name: "Start new game" }));
+  const playButton = screen.queryByRole("button", { name: "Play" });
+  if (playButton && playButton.getAttribute("aria-pressed") !== "true") fireEvent.click(playButton);
+  return result;
+}
+
 describe("App", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -12,7 +21,7 @@ describe("App", () => {
   });
 
   it("defaults to Play mode with the table, chip pool, and icon key visible", () => {
-    render(<App />);
+    renderGameApp();
 
     expect(screen.getByRole("heading", { name: "Poker Tracker" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Setup" })).toBeInTheDocument();
@@ -60,7 +69,7 @@ describe("App", () => {
   });
 
   it("switches to Setup mode and shows configuration plus player controls", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Setup" }));
 
@@ -129,7 +138,7 @@ describe("App", () => {
   });
 
   it("changes shape and shows layout insertion targets in edit mode", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit layout" }));
 
@@ -154,7 +163,7 @@ describe("App", () => {
   });
 
   it("rotates and reverses players without moving the physical seats", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit layout" }));
     const pokerSeating = screen.getByLabelText("Poker seating");
@@ -208,7 +217,7 @@ describe("App", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
 
     try {
-      render(<App />);
+      renderGameApp();
 
       expect(screen.queryByRole("button", { name: "Edit layout" }))
         .not.toBeInTheDocument();
@@ -260,7 +269,7 @@ describe("App", () => {
   });
 
   it("disables layout editing in read-only mode", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Setup" }));
     fireEvent.click(screen.getByRole("button", { name: "Editable" }));
@@ -271,7 +280,7 @@ describe("App", () => {
   });
 
   it("switches to Cash Out mode and shows full-page player counting", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Cash Out" }));
 
@@ -282,7 +291,7 @@ describe("App", () => {
   });
 
   it("keeps Settle focused on settlement and transaction audit", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Settle" }));
 
@@ -340,7 +349,7 @@ describe("App", () => {
     ];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 
-    render(<App />);
+    renderGameApp();
     fireEvent.click(screen.getByRole("button", { name: "Settle" }));
 
     expect(screen.queryByText(/Missing cash-outs/)).not.toBeInTheDocument();
@@ -351,7 +360,7 @@ describe("App", () => {
   });
 
   it("opens transaction entry as a Play drawer instead of permanent page content", () => {
-    render(<App />);
+    renderGameApp();
 
     expect(screen.queryByRole("heading", { name: "Add Transaction" })).not.toBeInTheDocument();
 
@@ -362,7 +371,7 @@ describe("App", () => {
   });
 
   it("opens transaction audit from Play", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Transaction Audit" }));
 
@@ -370,7 +379,7 @@ describe("App", () => {
   });
 
   it("adds the default buy-in to every active player from Play", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Add default buy-in to all" }));
 
@@ -385,7 +394,7 @@ describe("App", () => {
   });
 
   it("offers give-chips and covered-buy-in actions directly from a player card", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getAllByTitle("Start player transaction")[0]);
     const dialog = screen.getByRole("dialog", { name: "Player transaction" });
@@ -408,7 +417,7 @@ describe("App", () => {
   });
 
   it("records a confirmed partial cash-out from a player card", () => {
-    render(<App />);
+    renderGameApp();
 
     fireEvent.click(screen.getAllByTitle("Record partial cash-out")[0]);
     const dialog = screen.getByRole("dialog", { name: "Partial cash-out" });
@@ -475,7 +484,7 @@ describe("App", () => {
     ];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 
-    render(<App />);
+    renderGameApp();
     fireEvent.click(screen.getByRole("button", { name: "Settle" }));
     fireEvent.click(screen.getByRole("button", { name: "Cover debt" }));
     fireEvent.click(screen.getByRole("button", { name: "Record debt coverage" }));
@@ -499,11 +508,11 @@ describe("App", () => {
     ];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 
-    const firstRender = render(<App />);
+    const firstRender = renderGameApp();
     expect(screen.getByRole("button", { name: "Undo recent transaction action" })).toBeVisible();
 
     firstRender.unmount();
-    render(<App />);
+    renderGameApp();
     expect(screen.getByRole("button", { name: "Undo recent transaction action" })).toBeVisible();
   });
 });

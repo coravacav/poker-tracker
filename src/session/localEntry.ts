@@ -52,10 +52,8 @@ export function shouldShowLocalEntry(
   return now - lastVisitAt > LOCAL_ENTRY_TIMEOUT_MS;
 }
 
-export function loadInitialLocalEntry(now = Date.now()): LocalEntry | null {
+export function loadInitialLocalEntry(_now = Date.now()): LocalEntry | null {
   const lastVisitAt = readLastVisitAt();
-  if (!shouldShowLocalEntry(lastVisitAt, now)) return null;
-
   return {
     reason: lastVisitAt === null ? "first_visit" : "stale_return",
     savedGame: loadSavedGameState()

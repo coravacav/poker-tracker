@@ -55,6 +55,7 @@ describe("shared room authority", () => {
     });
     const guestView = await test.query(api.rooms.guestView, { publicId, guestSecret });
     expect(guestView.displayName).toBe("Observer");
+    expect(guestView.hostProfile).toBeNull();
     expect(guestView.state.cashOutDrafts).toEqual([]);
     expect(guestView.state).not.toHaveProperty("accidentalSecret");
   });
@@ -132,6 +133,8 @@ describe("shared room authority", () => {
       hostSecret,
       controllerId
     });
+    expect(latest.friendProfileLinked).toBe(false);
+    expect(latest.visibleToFriends).toBe(false);
     expect(latest.version).toBe(1);
     expect(latest.state.transactions).toHaveLength(1);
   });

@@ -16,11 +16,22 @@ export default defineSchema({
     hostSecretHash: v.string(),
     inviteSecretHash: v.string(),
     joiningOpen: v.optional(v.boolean()),
-    hostControllerId: v.string()
+    hostControllerId: v.string(),
+    hostProfileId: v.optional(v.id("friendProfiles")),
+    visibleToFriends: v.optional(v.boolean())
   })
     .index("by_public_id", ["publicId"])
     .index("by_local_game_id_and_status", ["localGameId", "status"])
     .index("by_status_and_last_activity_at", ["status", "lastActivityAt"]),
+
+  friendProfiles: defineTable({
+    friendCode: v.string(),
+    displayName: v.string(),
+    ownerSecretHash: v.string(),
+    activeRoomId: v.optional(v.id("rooms")),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_friend_code", ["friendCode"]),
 
   roomGuests: defineTable({
     roomId: v.id("rooms"),

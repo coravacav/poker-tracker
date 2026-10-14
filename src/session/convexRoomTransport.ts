@@ -51,6 +51,24 @@ export const convexRoomTransport: RoomTransport = {
   async joinRoom(args) {
     return await getClient().mutation(roomApi.join, args);
   },
+  async joinFriendRoom(args) {
+    return await getClient().mutation(roomApi.joinFriend, args);
+  },
+  async createFriendProfile(args) {
+    return await getClient().mutation(api.friendProfiles.create, args);
+  },
+  async lookupFriendProfile(friendCode) {
+    return await getClient().query(api.friendProfiles.lookup, { friendCode });
+  },
+  async updateFriendProfileName(args) {
+    return await getClient().mutation(api.friendProfiles.updateName, args);
+  },
+  async rotateFriendCode(args) {
+    return await getClient().mutation(api.friendProfiles.rotateCode, args);
+  },
+  subscribeFriendActivity(friendCodes, onUpdate, onError) {
+    return getClient().onUpdate(api.friendProfiles.listActivity, { friendCodes }, onUpdate, onError);
+  },
   subscribeHost(args, onUpdate, onError) {
     return getClient().onUpdate(roomApi.hostView, args, onUpdate, onError);
   },
@@ -68,6 +86,9 @@ export const convexRoomTransport: RoomTransport = {
   },
   async setJoiningOpen(args) {
     await getClient().mutation(roomApi.setJoiningOpen, clean(args));
+  },
+  async setFriendVisibility(args) {
+    await getClient().mutation(roomApi.setFriendVisibility, args);
   },
   async rotateInvite(args) {
     await getClient().mutation(roomApi.rotateInvite, clean(args));

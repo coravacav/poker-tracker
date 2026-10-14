@@ -90,6 +90,7 @@ describe("local start page", () => {
     localStorage.setItem(LAST_VISIT_KEY, String(now.getTime()));
 
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Continue Poker Night" }));
     expect(screen.getByRole("heading", { name: "Poker Tracker" })).toBeInTheDocument();
 
     fireEvent.blur(window);

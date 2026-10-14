@@ -50,12 +50,24 @@ export type RoomProjection = {
   activity?: SharedActivity;
 };
 
+export type FriendActivity = {
+  friendCode: string;
+  displayName: string;
+  room: {
+    publicId: string;
+    name: string;
+    createdAt: number;
+  } | null;
+};
+
 export type HostRoomProjection = RoomProjection & {
   guestCount: number;
   controllerStatus: "active" | "duplicate";
   guestRequests?: GuestTransactionRequest[];
   joiningOpen?: boolean;
   guests?: HostGuestSession[];
+  visibleToFriends?: boolean;
+  friendProfileLinked?: boolean;
 };
 
 export type HostGuestSession = {
@@ -68,6 +80,7 @@ export type HostGuestSession = {
 
 export type GuestRoomProjection = RoomProjection & {
   displayName: string;
+  hostProfile?: { friendCode: string; displayName: string } | null;
   guestRequests?: GuestTransactionRequest[];
 };
 
@@ -129,6 +142,9 @@ export type RoomTransport = {
     hostSecret: string;
     inviteSecret: string;
     controllerId: string;
+    friendCode?: string;
+    profileOwnerSecret?: string;
+    visibleToFriends?: boolean;
   }) => Promise<RoomProjection>;
   getInvitePreview: (
     publicId: string,
@@ -140,6 +156,35 @@ export type RoomTransport = {
     guestSecret: string;
     displayName: string;
   }) => Promise<GuestRoomProjection>;
+  joinFriendRoom?: (args: {
+    publicId: string;
+    friendCode: string;
+    guestSecret: string;
+    displayName: string;
+  }) => Promise<GuestRoomProjection>;
+  createFriendProfile?: (args: {
+    friendCode: string;
+    displayName: string;
+    ownerSecret: string;
+  }) => Promise<{ friendCode: string; displayName: string }>;
+  lookupFriendProfile?: (
+    friendCode: string
+  ) => Promise<{ friendCode: string; displayName: string } | null>;
+  updateFriendProfileName?: (args: {
+    friendCode: string;
+    ownerSecret: string;
+    displayName: string;
+  }) => Promise<{ friendCode: string; displayName: string }>;
+  rotateFriendCode?: (args: {
+    friendCode: string;
+    ownerSecret: string;
+    newFriendCode: string;
+  }) => Promise<{ friendCode: string; displayName: string }>;
+  subscribeFriendActivity?: (
+    friendCodes: string[],
+    onUpdate: (activity: FriendActivity[]) => void,
+    onError: (error: Error) => void
+  ) => () => void;
   subscribeHost: (
     args: { publicId: string; hostSecret: string; controllerId: string },
     onUpdate: (room: HostRoomProjection) => void,
@@ -168,6 +213,11 @@ export type RoomTransport = {
     publicId: string;
     hostSecret: string;
     open: boolean;
+  }) => Promise<void>;
+  setFriendVisibility?: (args: {
+    publicId: string;
+    hostSecret: string;
+    visible: boolean;
   }) => Promise<void>;
   rotateInvite: (args: {
     publicId: string;

@@ -938,12 +938,22 @@ label span {
 .start-page {
   display: grid;
   min-height: 100dvh;
-  place-items: center;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
   overflow: auto;
   padding: 24px;
   background:
     radial-gradient(circle at 50% 0, rgba(223, 244, 232, 0.8), transparent 45%),
     var(--bg);
+}
+
+.home-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 560px));
+  width: min(1160px, 100%);
+  gap: 18px;
+  align-items: start;
 }
 
 .start-card {
@@ -952,6 +962,111 @@ label span {
   gap: 12px;
   padding: clamp(24px, 5vw, 42px);
   text-align: center;
+}
+
+.friend-home-card {
+  display: grid;
+  gap: 14px;
+  padding: clamp(24px, 4vw, 36px);
+}
+
+.friend-home-heading,
+.friend-profile-card,
+.friend-list-item,
+.friend-list-actions {
+  display: flex;
+  align-items: center;
+}
+
+.friend-home-heading,
+.friend-list-item {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.friend-home-heading > svg {
+  color: var(--green);
+}
+
+.friend-profile-setup,
+.friend-profile-name,
+.friend-add-form,
+.friend-list {
+  display: grid;
+  gap: 10px;
+}
+
+.friend-profile-setup label,
+.friend-profile-name label,
+.friend-add-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.friend-profile-card {
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface-alt);
+}
+
+.friend-profile-card > svg {
+  flex: 0 0 auto;
+  max-width: 38%;
+  height: auto;
+}
+
+.friend-profile-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.friend-code {
+  overflow-wrap: anywhere;
+  font-size: clamp(1rem, 2.4vw, 1.35rem);
+  letter-spacing: 0.06em;
+}
+
+.friend-profile-name,
+.friend-add-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.friend-list {
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
+}
+
+.friend-list-item {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.friend-list-item > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.friend-list-item span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.friend-list-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.friend-code-rotate {
+  justify-self: start;
+  color: var(--red);
 }
 
 .start-card > svg {
@@ -1081,6 +1196,19 @@ label span {
 
   .start-card {
     padding: 24px 18px;
+  }
+
+  .home-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .friend-home-card {
+    padding: 22px 18px;
+  }
+
+  .friend-profile-name,
+  .friend-add-form {
+    grid-template-columns: 1fr;
   }
 
 }

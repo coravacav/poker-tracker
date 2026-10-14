@@ -25,6 +25,18 @@ import {
   type LocalEntry
 } from "./localEntry";
 import {
+  createFriendCode,
+  friendCodeFromHash,
+  loadFollowedFriends,
+  loadFriendProfile,
+  normalizeFriendCode,
+  saveFollowedFriends,
+  saveFriendProfile,
+  validFriendCode,
+  type FollowedFriend,
+  type FriendProfile
+} from "./friendProfiles";
+import {
   configuredDeploymentUrl,
   convexRoomTransport,
   roomErrorMessage,
@@ -45,6 +57,7 @@ import {
 } from "./sessionPersistence";
 import type {
   GuestRoomProjection,
+  FriendActivity,
   GuestSession,
   HostRecovery,
   HostRoomProjection,
@@ -169,6 +182,12 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const [localEntryDestination, setLocalEntryDestination] =
     useState<LocalEntryDestination>("play");
   const [roomHistory, setRoomHistory] = useState<RoomHistoryProjection[]>([]);
+  const [friendProfile, setFriendProfile] = useState<FriendProfile | null>(loadFriendProfile);
+  const [followedFriends, setFollowedFriends] = useState<FollowedFriend[]>(loadFollowedFriends);
+  const [friendActivity, setFriendActivity] = useState<FriendActivity[]>([]);
+  const [friendPending, setFriendPending] = useState(false);
+  const [friendError, setFriendError] = useState<string | null>(null);
+  const [initialFriendCode, setInitialFriendCode] = useState<string | null>(friendCodeFromHash);
   const sessionRef = useRef(session);
   const localStateRef = useRef(localState);
   const lastAcceptedHostStateRef = useRef(localState);
@@ -192,6 +211,30 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   useEffect(() => {
     void refreshRoomHistory();
   }, [refreshRoomHistory]);
+
+  useEffect(() => {
+    if (!transport.configured || !transport.subscribeFriendActivity || followedFriends.length === 0) {
+      setFriendActivity([]);
+      return;
+    }
+    return transport.subscribeFriendActivity(
+      followedFriends.map((friend) => friend.friendCode),
+      (activity) => {
+        setFriendActivity(activity);
+        setFollowedFriends((current) => {
+          const names = new Map(activity.map((item) => [item.friendCode, item.displayName]));
+          const next = current.map((friend) => ({
+            ...friend,
+            displayName: names.get(friend.friendCode) ?? friend.displayName
+          }));
+          if (JSON.stringify(next) !== JSON.stringify(current)) saveFollowedFriends(next);
+          return next;
+        });
+        setFriendError(null);
+      },
+      () => setFriendError("Friend rooms could not be refreshed. Please try again.")
+    );
+  }, [followedFriends.map((friend) => friend.friendCode).join("|"), transport]);
 
   useEffect(() => {
     if (session.mode === "hosting" && session.recovery) {
@@ -590,7 +633,14 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         snapshot: sourceState,
         hostSecret,
         inviteSecret,
-        controllerId
+        controllerId,
+        ...(friendProfile
+          ? {
+              friendCode: friendProfile.friendCode,
+              profileOwnerSecret: friendProfile.ownerSecret,
+              visibleToFriends: true
+            }
+          : {})
       });
       const normalizedState = normalizeRoomState(room.state);
       if (!normalizedState) {
@@ -632,7 +682,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
       if (provisionalRecovery) clearHostRecovery();
       setSession({ mode: "local", notice: roomErrorMessage(error) });
     }
-  }, [deploymentUrl, refreshRoomHistory, transport]);
+  }, [deploymentUrl, friendProfile, refreshRoomHistory, transport]);
 
   const joinGame = useCallback(
     async (displayName: string) => {
@@ -687,6 +737,167 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     },
     [refreshRoomHistory, transport]
   );
+
+  const createFriendProfileForDevice = useCallback(async (displayName: string) => {
+    const name = displayName.trim();
+    if (!name || name.length > 40 || !transport.createFriendProfile) return;
+    setFriendPending(true);
+    setFriendError(null);
+    try {
+      const profile: FriendProfile = {
+        schemaVersion: 1,
+        friendCode: createFriendCode(),
+        displayName: name,
+        ownerSecret: createCapability()
+      };
+      const created = await transport.createFriendProfile(profile);
+      const saved = { ...profile, ...created };
+      if (!saveFriendProfile(saved)) throw new Error("Your friend profile could not be saved on this device.");
+      setFriendProfile(saved);
+    } catch (error) {
+      setFriendError(error instanceof Error ? error.message : "Friend profile creation failed.");
+    } finally {
+      setFriendPending(false);
+    }
+  }, [transport]);
+
+  const renameFriendProfile = useCallback(async (displayName: string) => {
+    if (!friendProfile || !transport.updateFriendProfileName) return;
+    const name = displayName.trim();
+    if (!name || name.length > 40) return;
+    setFriendPending(true);
+    setFriendError(null);
+    try {
+      const updated = await transport.updateFriendProfileName({
+        friendCode: friendProfile.friendCode,
+        ownerSecret: friendProfile.ownerSecret,
+        displayName: name
+      });
+      const saved = { ...friendProfile, ...updated };
+      if (!saveFriendProfile(saved)) throw new Error("Your updated profile could not be saved on this device.");
+      setFriendProfile(saved);
+    } catch (error) {
+      setFriendError(error instanceof Error ? error.message : "The display name could not be updated.");
+    } finally {
+      setFriendPending(false);
+    }
+  }, [friendProfile, transport]);
+
+  const rotateFriendCode = useCallback(async () => {
+    if (!friendProfile || !transport.rotateFriendCode) return;
+    setFriendPending(true);
+    setFriendError(null);
+    try {
+      const updated = await transport.rotateFriendCode({
+        friendCode: friendProfile.friendCode,
+        ownerSecret: friendProfile.ownerSecret,
+        newFriendCode: createFriendCode()
+      });
+      const saved = { ...friendProfile, ...updated };
+      if (!saveFriendProfile(saved)) throw new Error("The new friend code could not be saved on this device.");
+      setFriendProfile(saved);
+    } catch (error) {
+      setFriendError(error instanceof Error ? error.message : "The friend code could not be regenerated.");
+    } finally {
+      setFriendPending(false);
+    }
+  }, [friendProfile, transport]);
+
+  const addFriend = useCallback(async (value: string) => {
+    const friendCode = normalizeFriendCode(value);
+    if (!validFriendCode(friendCode)) {
+      setFriendError("Enter a complete friend code in the format ABCD-EFGH-JKLM-NPQR-STUV.");
+      return;
+    }
+    if (friendProfile?.friendCode === friendCode) {
+      setFriendError("That is your own friend code.");
+      return;
+    }
+    if (followedFriends.some((friend) => friend.friendCode === friendCode)) {
+      setFriendError("You already follow that friend.");
+      return;
+    }
+    if (!transport.lookupFriendProfile) return;
+    setFriendPending(true);
+    setFriendError(null);
+    try {
+      const found = await transport.lookupFriendProfile(friendCode);
+      if (!found) {
+        setFriendError("No friend profile was found for that code.");
+        return;
+      }
+      const next = [
+        ...followedFriends,
+        { schemaVersion: 1 as const, friendCode: found.friendCode, displayName: found.displayName }
+      ].slice(0, 50);
+      if (!saveFollowedFriends(next)) throw new Error("That friend could not be saved on this device.");
+      setFollowedFriends(next);
+      setInitialFriendCode(null);
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    } catch (error) {
+      setFriendError(error instanceof Error ? error.message : "That friend could not be added.");
+    } finally {
+      setFriendPending(false);
+    }
+  }, [followedFriends, friendProfile?.friendCode, transport]);
+
+  const removeFriend = useCallback((friendCode: string) => {
+    const next = followedFriends.filter((friend) => friend.friendCode !== friendCode);
+    if (saveFollowedFriends(next)) {
+      setFollowedFriends(next);
+      setFriendError(null);
+    } else {
+      setFriendError("That friend could not be removed from this device.");
+    }
+  }, [followedFriends]);
+
+  const joinFriendRoom = useCallback(async (activity: FriendActivity) => {
+    if (
+      sessionRef.current.mode !== "local" ||
+      !activity.room ||
+      !friendProfile ||
+      !transport.joinFriendRoom
+    ) return;
+    setFriendPending(true);
+    setFriendError(null);
+    try {
+      const guestSecret = createCapability();
+      const room = await transport.joinFriendRoom({
+        publicId: activity.room.publicId,
+        friendCode: activity.friendCode,
+        guestSecret,
+        displayName: friendProfile.displayName
+      });
+      const normalizedState = normalizeRoomState(room.state);
+      if (!normalizedState) throw new Error("The room returned an invalid game snapshot.");
+      const normalizedRoom = { ...room, state: normalizedState };
+      const credentials: GuestSession = {
+        schemaVersion: 1,
+        publicId: activity.room.publicId,
+        guestSecret,
+        presenceSessionId: createCapability(18),
+        displayName: normalizedRoom.displayName
+      };
+      saveGuestSession(credentials);
+      saveRoomHistoryCredential({
+        schemaVersion: 1,
+        publicId: credentials.publicId,
+        role: "guest",
+        secret: credentials.guestSecret,
+        roomName: normalizedRoom.name,
+        joinedAt: Date.now(),
+        displayName: credentials.displayName
+      });
+      window.history.replaceState(null, "", guestRoomHash(credentials.publicId));
+      setSession({ mode: "guest", credentials, room: normalizedRoom, connected: transport.connectionState(), error: null });
+      setLocalEntry(null);
+      void refreshRoomHistory();
+    } catch (error) {
+      setFriendError(error instanceof Error ? error.message : "The friend's room could not be joined.");
+    } finally {
+      setFriendPending(false);
+    }
+  }, [friendProfile, refreshRoomHistory, transport]);
 
   const dispatch = useMemo<Dispatch<GameAction>>(
     () => (action) => {
@@ -937,6 +1148,21 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     }
   }, [transport]);
 
+  const setFriendVisibility = useCallback(async (visible: boolean) => {
+    const current = sessionRef.current;
+    if (current.mode !== "hosting" || !current.recovery || !transport.setFriendVisibility) return;
+    try {
+      await transport.setFriendVisibility({
+        publicId: current.recovery.publicId,
+        hostSecret: current.recovery.hostSecret,
+        visible
+      });
+      setSession({ ...current, error: null });
+    } catch (error) {
+      setSession({ ...current, error: roomErrorMessage(error) });
+    }
+  }, [transport]);
+
   const rotateInvite = useCallback(async () => {
     const current = sessionRef.current;
     if (current.mode !== "hosting" || !current.recovery) return;
@@ -992,6 +1218,12 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     writeLastVisitAt();
     setLocalEntryDestination("play");
     setLocalEntry(null);
+  }, []);
+
+  const openHome = useCallback(() => {
+    if (sessionRef.current.mode !== "local") return;
+    setLocalEntry({ reason: "stale_return", savedGame: localStateRef.current });
+    setLocalEntryDestination("play");
   }, []);
 
   const startNewLocalGame = useCallback(() => {
@@ -1055,14 +1287,31 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     submitGuestTransaction,
     decideGuestTransaction,
     setJoiningOpen,
+    setFriendVisibility,
     rotateInvite,
     revokeGuest,
     leaveGuest,
     dismissInvite,
     localEntry,
     localEntryDestination,
+    openHome,
     continueLocalGame,
     startNewLocalGame,
+    friendFeatureAvailable:
+      transport.configured &&
+      Boolean(transport.createFriendProfile && transport.lookupFriendProfile && transport.subscribeFriendActivity),
+    friendProfile,
+    followedFriends,
+    friendActivity,
+    friendPending,
+    friendError,
+    initialFriendCode,
+    createFriendProfile: createFriendProfileForDevice,
+    renameFriendProfile,
+    rotateFriendCode,
+    addFriend,
+    removeFriend,
+    joinFriendRoom,
     roomHistory,
     refreshRoomHistory
   };
