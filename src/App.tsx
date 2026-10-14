@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Dispatch, ReactNode } from "react";
 import { AppShell, type AppMode } from "./components/AppShell";
 import { BankSummaryPanel } from "./components/BankSummary";
@@ -34,6 +34,7 @@ import { latestRepeatableTransaction, repeatTransaction } from "./domain/quickEn
 import { filterSettlementSummariesForDisplay } from "./domain/settlement";
 import { validateTransaction } from "./domain/validation";
 import type { GameAction } from "./state/gameReducer";
+import { loadArchivedGames } from "./state/gameArchive";
 import { createId } from "./state/seedGame";
 import { useGameSession } from "./session/useGameSession";
 import { useStoragePersistenceRequest } from "./state/useStoragePersistence";
@@ -42,6 +43,10 @@ import type { RoomHistoryProjection, RoomTransport, SharedActivity } from "./ses
 export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
   const gameSession = useGameSession(roomTransport);
   const { session } = gameSession;
+  // Warm the Player History cache (and move it to IndexedDB if needed) so Home and Setup render it without waiting.
+  useEffect(() => {
+    void loadArchivedGames();
+  }, []);
   useStoragePersistenceRequest(
     (!gameSession.isGuest && gameSession.state.transactions.length > 0) ||
       gameSession.friendProfile !== null ||

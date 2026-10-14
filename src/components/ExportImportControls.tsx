@@ -4,8 +4,8 @@ import type { Dispatch } from "react";
 import type { GameAction } from "../state/gameReducer";
 import type { GameState } from "../domain/pokerTypes";
 import { validatePersistedState } from "../domain/validation";
-import { archiveGame, mergeArchivedGames } from "../domain/sessionHistory";
 import { downloadJson, exportFullBackup, parseBackup } from "../state/backup";
+import { archiveGame, mergeArchivedGames } from "../state/gameArchive";
 
 type ExportImportControlsProps = {
   dispatch: Dispatch<GameAction>;
@@ -16,6 +16,7 @@ type ExportImportControlsProps = {
 export function ExportImportControls({ dispatch, readOnly = false, state }: ExportImportControlsProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   function exportGame() {
     downloadJson(`${state.settings.gameName || "poker-tracker"}.json`, state);
@@ -32,13 +33,21 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
       const backup = parseBackup(parsed);
 
       if (backup) {
-        if (!mergeArchivedGames(backup.archivedGames)) {
+        setBusy(true);
+        if (!(await mergeArchivedGames(backup.archivedGames))) {
           setError("Could not restore Player History on this device.");
           return;
         }
         if (backup.currentGame) {
           // Keep an in-progress game that the backup would otherwise replace.
-          if (backup.currentGame.localGameId !== state.localGameId) archiveGame(state);
+          if (
+            backup.currentGame.localGameId !== state.localGameId &&
+            state.transactions.length > 0 &&
+            !(await archiveGame(state))
+          ) {
+            setError("Player History was restored, but the current game could not be saved to it, so it was kept.");
+            return;
+          }
           dispatch({ type: "replace_state_from_import", state: backup.currentGame });
         }
         setError(null);
@@ -55,17 +64,25 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
     } catch {
       setError("Could not read that JSON file.");
     } finally {
+      setBusy(false);
       if (inputRef.current) {
         inputRef.current.value = "";
       }
     }
   }
 
-  function resetGame() {
-    if (window.confirm("Archive this poker session and start a new game?")) {
-      archiveGame(state);
+  async function resetGame() {
+    if (!window.confirm("Archive this poker session and start a new game?")) return;
+    setBusy(true);
+    try {
+      if (state.transactions.length > 0 && !(await archiveGame(state))) {
+        setError("Could not save this game to Player History. Your game is still intact.");
+        return;
+      }
       dispatch({ type: "reset_game" });
       setError(null);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -77,7 +94,7 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
       <button
         className="icon-button"
         type="button"
-        onClick={() => exportFullBackup(state)}
+        onClick={() => void exportFullBackup(state)}
         title="Back up all games"
         aria-label="Back up all games"
       >
@@ -86,13 +103,13 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
       <button
         className="icon-button"
         type="button"
-        disabled={readOnly}
+        disabled={readOnly || busy}
         onClick={() => inputRef.current?.click()}
         title="Import JSON or backup"
       >
         <Upload size={17} />
       </button>
-      <button className="icon-button danger" type="button" disabled={readOnly} onClick={resetGame} title="Archive and start new game">
+      <button className="icon-button danger" type="button" disabled={readOnly || busy} onClick={() => void resetGame()} title="Archive and start new game">
         <RotateCcw size={17} />
       </button>
       <input

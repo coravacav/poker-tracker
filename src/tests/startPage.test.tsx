@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import { LAST_VISIT_KEY, LOCAL_ENTRY_TIMEOUT_MS } from "../session/localEntry";
-import { GAME_ARCHIVE_KEY } from "../domain/sessionHistory";
+import { GAME_ARCHIVE_KEY, loadArchivedGames } from "../state/gameArchive";
 import { STORAGE_KEY } from "../state/persistence";
 import { createDefaultGameState } from "../state/seedGame";
 
@@ -74,9 +74,10 @@ describe("local start page", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Game Setup" })).toBeInTheDocument());
     const nextState = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
-    const archive = JSON.parse(localStorage.getItem(GAME_ARCHIVE_KEY) ?? "[]");
+    const archive = await loadArchivedGames();
     expect(nextState.localGameId).not.toBe(state.localGameId);
     expect(nextState.transactions).toHaveLength(0);
+    expect(localStorage.getItem(GAME_ARCHIVE_KEY)).toBeNull();
     expect(archive).toHaveLength(1);
     expect(archive[0].state.localGameId).toBe(state.localGameId);
   });

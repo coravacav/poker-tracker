@@ -1,7 +1,6 @@
 import { DatabaseBackup } from "lucide-react";
 import { useState } from "react";
 import type { GameState } from "../domain/pokerTypes";
-import { loadArchivedGames } from "../domain/sessionHistory";
 import { exportFullBackup } from "../state/backup";
 import {
   dismissBackupReminder,
@@ -9,15 +8,17 @@ import {
   readLastBackupExportAt,
   shouldShowBackupReminder
 } from "../state/backupReminder";
+import { useArchivedGames } from "../state/useArchivedGames";
 import { useStoragePersistenceStatus } from "../state/useStoragePersistence";
 
 export function BackupReminder({ currentGame }: { currentGame: GameState | null }) {
   const persistence = useStoragePersistenceStatus();
-  const [archivedGames] = useState(loadArchivedGames);
+  const archivedGames = useArchivedGames();
   const [hidden, setHidden] = useState(false);
 
   if (
     hidden ||
+    archivedGames === null ||
     !shouldShowBackupReminder({
       persistence,
       archivedGames,
@@ -45,7 +46,7 @@ export function BackupReminder({ currentGame }: { currentGame: GameState | null 
           className="primary-button"
           type="button"
           onClick={() => {
-            exportFullBackup(currentGame);
+            void exportFullBackup(currentGame);
             setHidden(true);
           }}
         >

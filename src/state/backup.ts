@@ -1,7 +1,8 @@
 import type { GameState } from "../domain/pokerTypes";
-import { loadArchivedGames, parseArchivedGames, type ArchivedGame } from "../domain/sessionHistory";
+import { parseArchivedGames, type ArchivedGame } from "../domain/sessionHistory";
 import { validatePersistedState } from "../domain/validation";
 import { recordBackupExport } from "./backupReminder";
+import { loadArchivedGames } from "./gameArchive";
 import { migratePersistedState } from "./persistence";
 
 export const BACKUP_FORMAT = "poker-tracker-backup";
@@ -58,8 +59,8 @@ export function downloadText(filename: string, text: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function exportFullBackup(currentGame: GameState | null, now = new Date()): void {
-  const backup = buildBackup(currentGame, loadArchivedGames(), now);
+export async function exportFullBackup(currentGame: GameState | null, now = new Date()): Promise<void> {
+  const backup = buildBackup(currentGame, await loadArchivedGames(), now);
   downloadJson(`poker-tracker-backup-${backup.exportedAt.slice(0, 10)}.json`, backup);
   recordBackupExport(now.getTime());
 }

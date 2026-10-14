@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageRecoveryNotice } from "../components/StorageRecoveryNotice";
-import { archiveGame, GAME_ARCHIVE_KEY, loadArchivedGames } from "../domain/sessionHistory";
 import { FRIEND_PROFILE_KEY, loadFriendProfile } from "../session/friendProfiles";
 import { parseBackup } from "../state/backup";
+import { archiveGame, GAME_ARCHIVE_KEY, loadArchivedGames } from "../state/gameArchive";
+import { openArchiveDb, readArchiveRecords } from "../state/gameArchiveIdb";
 import { loadGameState, loadSavedGameState, saveGameState, STORAGE_KEY } from "../state/persistence";
 import { createDefaultGameState } from "../state/seedGame";
 import {
@@ -128,49 +129,92 @@ describe("current game quarantine", () => {
   });
 });
 
+async function storedArchiveEntries(): Promise<unknown[]> {
+  const db = await openArchiveDb(indexedDB, 1000);
+  try {
+    return (await readArchiveRecords(db)).map((record) => record.entry);
+  } finally {
+    db.close();
+  }
+}
+
 describe("game archive quarantine", () => {
-  it("keeps invalid entries, still writes them back, and imports them as a backup", () => {
+  it("keeps invalid entries when moving the archive to IndexedDB", async () => {
     const valid = { archivedAt: "2026-10-01T00:00:00.000Z", state: playedGame("Valid") };
     const future = { archivedAt: "2026-10-02T00:00:00.000Z", state: newerVersionGame("Future") };
     const garbage = { archivedAt: 42 };
     localStorage.setItem(GAME_ARCHIVE_KEY, JSON.stringify([future, valid, garbage]));
 
-    expect(loadArchivedGames().map((game) => game.state.settings.gameName)).toEqual(["Valid"]);
-    loadArchivedGames();
+    expect((await loadArchivedGames()).map((game) => game.state.settings.gameName)).toEqual(["Valid"]);
+    expect(localStorage.getItem(GAME_ARCHIVE_KEY)).toBeNull();
     const copies = listQuarantined();
     expect(copies).toHaveLength(1);
     expect(copies[0]).toMatchObject({ sourceKey: GAME_ARCHIVE_KEY, scope: "entries", entryCount: 2, reason: "invalid" });
-    expect(JSON.parse(copies[0].raw)).toEqual([future, garbage]);
+    expect(JSON.parse(copies[0].raw)).toEqual(expect.arrayContaining([future, garbage]));
 
-    expect(archiveGame(playedGame("Tonight"))).toBe(true);
-    const stored = JSON.parse(localStorage.getItem(GAME_ARCHIVE_KEY) ?? "[]") as unknown[];
+    expect(await archiveGame(playedGame("Tonight"))).toBe(true);
+    const stored = await storedArchiveEntries();
     expect(stored).toHaveLength(4);
     expect(stored).toContainEqual(future);
     expect(stored).toContainEqual(garbage);
+    expect((await loadArchivedGames()).map((game) => game.state.settings.gameName)).toEqual(["Tonight", "Valid"]);
     expect(listQuarantined()).toHaveLength(1);
   });
 
-  it("labels entries that all come from a newer version", () => {
+  it("labels entries that all come from a newer version", async () => {
     const future = { archivedAt: "2026-10-02T00:00:00.000Z", state: newerVersionGame("Future") };
     localStorage.setItem(GAME_ARCHIVE_KEY, JSON.stringify([future]));
-    expect(loadArchivedGames()).toEqual([]);
+    expect(await loadArchivedGames()).toEqual([]);
     expect(listQuarantined()[0]).toMatchObject({ reason: "newer_version", entryCount: 1 });
   });
 
-  it("keeps an unreadable archive before replacing it", () => {
+  it("keeps an unreadable archive before dropping it", async () => {
     localStorage.setItem(GAME_ARCHIVE_KEY, "[{truncated");
-    expect(archiveGame(playedGame("Tonight"))).toBe(true);
+    expect(await archiveGame(playedGame("Tonight"))).toBe(true);
     expect(listQuarantined()).toEqual([
       expect.objectContaining({ sourceKey: GAME_ARCHIVE_KEY, scope: "value", raw: "[{truncated" })
     ]);
-    expect(loadArchivedGames()).toHaveLength(1);
+    expect(localStorage.getItem(GAME_ARCHIVE_KEY)).toBeNull();
+    expect(await loadArchivedGames()).toHaveLength(1);
   });
 
-  it("refuses to replace an unreadable archive when no copy can be kept", () => {
+  it("leaves an unreadable archive in place when no copy can be kept", async () => {
     failQuarantineWrites();
     localStorage.setItem(GAME_ARCHIVE_KEY, "[{truncated");
-    expect(archiveGame(playedGame("Tonight"))).toBe(false);
+    expect(await archiveGame(playedGame("Tonight"))).toBe(true);
     expect(localStorage.getItem(GAME_ARCHIVE_KEY)).toBe("[{truncated");
+    expect(listQuarantined()).toEqual([expect.objectContaining({ raw: "[{truncated", persisted: false })]);
+  });
+
+  describe("without IndexedDB", () => {
+    beforeEach(() => {
+      Object.defineProperty(globalThis, "indexedDB", { configurable: true, writable: true, value: undefined });
+    });
+
+    it("keeps invalid entries and writes them back", async () => {
+      const valid = { archivedAt: "2026-10-01T00:00:00.000Z", state: playedGame("Valid") };
+      const future = { archivedAt: "2026-10-02T00:00:00.000Z", state: newerVersionGame("Future") };
+      const garbage = { archivedAt: 42 };
+      localStorage.setItem(GAME_ARCHIVE_KEY, JSON.stringify([future, valid, garbage]));
+
+      expect((await loadArchivedGames()).map((game) => game.state.settings.gameName)).toEqual(["Valid"]);
+      expect(listQuarantined()[0]).toMatchObject({ scope: "entries", entryCount: 2 });
+      expect(JSON.parse(listQuarantined()[0].raw)).toEqual([future, garbage]);
+
+      expect(await archiveGame(playedGame("Tonight"))).toBe(true);
+      const stored = JSON.parse(localStorage.getItem(GAME_ARCHIVE_KEY) ?? "[]") as unknown[];
+      expect(stored).toHaveLength(4);
+      expect(stored).toContainEqual(future);
+      expect(stored).toContainEqual(garbage);
+      expect(listQuarantined()).toHaveLength(1);
+    });
+
+    it("refuses to replace an unreadable archive when no copy can be kept", async () => {
+      failQuarantineWrites();
+      localStorage.setItem(GAME_ARCHIVE_KEY, "[{truncated");
+      expect(await archiveGame(playedGame("Tonight"))).toBe(false);
+      expect(localStorage.getItem(GAME_ARCHIVE_KEY)).toBe("[{truncated");
+    });
   });
 });
 

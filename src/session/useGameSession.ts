@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import type { GameState, Transaction } from "../domain/pokerTypes";
-import { archiveGame } from "../domain/sessionHistory";
+import { archiveGame } from "../state/gameArchive";
 import { validatePersistedState } from "../domain/validation";
 import { gameReducer, type GameAction } from "../state/gameReducer";
 import {
@@ -193,6 +193,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const lastAcceptedHostStateRef = useRef(localState);
   const localEntryRef = useRef(localEntry);
   const mutationPending = useRef(false);
+  const startingNewGameRef = useRef(false);
   const historyCredentialSavedRef = useRef(new Set<string>());
   sessionRef.current = session;
   localStateRef.current = localState;
@@ -1226,11 +1227,26 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     setLocalEntryDestination("play");
   }, []);
 
-  const startNewLocalGame = useCallback(() => {
-    if (sessionRef.current.mode !== "local" || !localEntryRef.current) return;
+  const startNewLocalGame = useCallback(async () => {
+    if (sessionRef.current.mode !== "local" || !localEntryRef.current || startingNewGameRef.current) return;
 
     const currentState = localStateRef.current;
-    if (currentState.transactions.length > 0 && !archiveGame(currentState)) {
+    startingNewGameRef.current = true;
+    let archived: boolean;
+    try {
+      archived = currentState.transactions.length === 0 || (await archiveGame(currentState));
+    } finally {
+      startingNewGameRef.current = false;
+    }
+    // The user may have left Home or changed the game while Player History was saving.
+    if (
+      sessionRef.current.mode !== "local" ||
+      !localEntryRef.current ||
+      localStateRef.current !== currentState
+    ) {
+      return;
+    }
+    if (!archived) {
       setLocalEntry((current) =>
         current
           ? {

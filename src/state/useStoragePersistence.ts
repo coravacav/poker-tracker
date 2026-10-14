@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { hasArchivedGames } from "../domain/sessionHistory";
+import { hasArchivedGames } from "./gameArchive";
 import {
   checkStoragePersistence,
   getStorageManager,
@@ -17,10 +17,10 @@ import {
 export function useStoragePersistenceRequest(hasLocalData: boolean): void {
   useEffect(() => {
     if (!getStorageManager() || !shouldRequestPersistence()) return;
-    if (!hasLocalData && !hasArchivedGames()) return;
 
     const options = { capture: true } as const;
     let done = false;
+    let cancelled = false;
     const remove = () => {
       window.removeEventListener("click", handle, options);
       window.removeEventListener("keydown", handle, options);
@@ -31,9 +31,17 @@ export function useStoragePersistenceRequest(hasLocalData: boolean): void {
       remove();
       void requestStoragePersistence();
     }
-    window.addEventListener("click", handle, options);
-    window.addEventListener("keydown", handle, options);
-    return remove;
+    const arm = () => {
+      if (cancelled) return;
+      window.addEventListener("click", handle, options);
+      window.addEventListener("keydown", handle, options);
+    };
+    if (hasLocalData) arm();
+    else void hasArchivedGames().then((hasHistory) => { if (hasHistory) arm(); });
+    return () => {
+      cancelled = true;
+      remove();
+    };
   }, [hasLocalData]);
 }
 

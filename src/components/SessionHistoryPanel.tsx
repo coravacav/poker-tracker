@@ -1,26 +1,14 @@
 import { BarChart3 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { formatCurrency } from "../domain/money";
-import {
-  buildPlayerHistoryStats,
-  GAME_ARCHIVE_CHANGED_EVENT,
-  loadArchivedGames
-} from "../domain/sessionHistory";
+import { buildPlayerHistoryStats } from "../domain/sessionHistory";
+import { useArchivedGames } from "../state/useArchivedGames";
 import type { RoomHistoryProjection } from "../session/types";
 import { buildPlayerSummaries } from "../domain/ledger";
 
 export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHistoryProjection[] }) {
-  const [games, setGames] = useState(loadArchivedGames);
-  useEffect(() => {
-    const refresh = () => setGames(loadArchivedGames());
-    window.addEventListener(GAME_ARCHIVE_CHANGED_EVENT, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(GAME_ARCHIVE_CHANGED_EVENT, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-  const stats = useMemo(() => buildPlayerHistoryStats(games), [games]);
+  const games = useArchivedGames();
+  const stats = useMemo(() => buildPlayerHistoryStats(games ?? []), [games]);
 
   return (
     <section className="panel session-history-panel" aria-label="Session history">
@@ -28,7 +16,9 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
         <div><p className="eyebrow">Across poker nights</p><h2>Player History</h2></div>
         <BarChart3 size={20} />
       </div>
-      {games.length === 0 ? (
+      {games === null ? (
+        <p className="muted" role="status">Loading Player History…</p>
+      ) : games.length === 0 ? (
         <p className="muted">Completed games appear here after you archive and start a new game.</p>
       ) : (
         <>

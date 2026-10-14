@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BackupReminder } from "../components/BackupReminder";
-import { archiveGame, loadArchivedGames, GAME_ARCHIVE_KEY } from "../domain/sessionHistory";
+import { archiveGame, loadArchivedGames } from "../state/gameArchive";
 import { buildBackup, parseBackup } from "../state/backup";
 import {
   BACKUP_REMINDER_DISMISSED_UNTIL_KEY,
@@ -105,18 +105,18 @@ describe("BackupReminder", () => {
   });
 
   it("exports a backup and records the time", async () => {
-    archiveGame(playedGame("Friday"));
+    await archiveGame(playedGame("Friday"));
     render(<BackupReminder currentGame={null} />);
     const button = await screen.findByRole("button", { name: "Back up now" });
     expect(screen.getByText(/Your 1 archived game is saved only in this browser/)).toBeInTheDocument();
     fireEvent.click(button);
-    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled();
+    await waitFor(() => expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled());
     expect(Number(localStorage.getItem(LAST_BACKUP_EXPORT_KEY))).toBeGreaterThan(0);
     expect(screen.queryByRole("region", { name: "Backup reminder" })).not.toBeInTheDocument();
   });
 
   it("can be snoozed for two weeks", async () => {
-    archiveGame(playedGame("Friday"));
+    await archiveGame(playedGame("Friday"));
     render(<BackupReminder currentGame={null} />);
     fireEvent.click(await screen.findByRole("button", { name: "Remind me later" }));
     await waitFor(() =>
@@ -127,7 +127,7 @@ describe("BackupReminder", () => {
   });
 
   it("stays hidden when the browser has granted persistent storage", async () => {
-    archiveGame(playedGame("Friday"));
+    await archiveGame(playedGame("Friday"));
     Object.defineProperty(navigator, "storage", {
       configurable: true,
       value: { persisted: async () => true, persist: async () => true }
@@ -137,8 +137,7 @@ describe("BackupReminder", () => {
         render(<BackupReminder currentGame={null} />);
       });
       expect(screen.queryByRole("region", { name: "Backup reminder" })).not.toBeInTheDocument();
-      expect(loadArchivedGames()).toHaveLength(1);
-      expect(localStorage.getItem(GAME_ARCHIVE_KEY)).not.toBeNull();
+      expect(await loadArchivedGames()).toHaveLength(1);
     } finally {
       Reflect.deleteProperty(navigator, "storage");
     }

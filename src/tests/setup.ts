@@ -1,4 +1,8 @@
 import "@testing-library/jest-dom/vitest";
+import "fake-indexeddb/auto";
+import { IDBFactory } from "fake-indexeddb";
+import { beforeEach } from "vitest";
+import { resetGameArchiveForTests } from "../state/gameArchive";
 
 function createMemoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -30,3 +34,9 @@ Object.defineProperty(globalThis, "sessionStorage", {
 });
 Object.defineProperty(window, "localStorage", { configurable: true, value: testLocalStorage });
 Object.defineProperty(window, "sessionStorage", { configurable: true, value: testSessionStorage });
+
+// Each test gets an empty IndexedDB and a fresh Player History module state.
+beforeEach(() => {
+  resetGameArchiveForTests();
+  Object.defineProperty(globalThis, "indexedDB", { configurable: true, writable: true, value: new IDBFactory() });
+});

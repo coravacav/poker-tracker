@@ -1,9 +1,9 @@
 import { FileWarning } from "lucide-react";
 import { useEffect, useState } from "react";
-import { GAME_ARCHIVE_KEY } from "../domain/sessionHistory";
 import { FOLLOWED_FRIENDS_KEY, FRIEND_PROFILE_KEY } from "../session/friendProfiles";
 import { HOST_RECOVERY_KEY, ROOM_HISTORY_KEY } from "../session/sessionPersistence";
 import { BACKUP_FORMAT, downloadText } from "../state/backup";
+import { GAME_ARCHIVE_KEY } from "../state/gameArchive";
 import { STORAGE_KEY } from "../state/persistence";
 import {
   QUARANTINE_CHANGED_EVENT,
