@@ -37,8 +37,11 @@ import {
   getTableLayoutMetrics,
   type TableSeatSlot
 } from "../domain/tableLayout";
+import { resolvePersonForName } from "../domain/people";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
+import { usePersonSuggestions } from "../state/usePeople";
+import { PersonNameAssist } from "./PersonNameAssist";
 import { PlayerSeat } from "./PlayerSeat";
 import { LedgerImpactPreview, TransferPreview } from "./TransferPreview";
 import { TransferQuickAmountButtons } from "./TransferQuickAmountButtons";
@@ -75,6 +78,8 @@ type PartialCashOutDraft = {
 type RenameDraft = {
   playerId: PlayerId;
   nameInput: string;
+  /** Person picked from suggestions (or the player's link when the dialog opened). */
+  personId?: string;
 };
 
 type PlayerArrangement = "rotate_left" | "rotate_right" | "reverse";
@@ -233,6 +238,7 @@ export function PokerTable({
   const [partialCashOutError, setPartialCashOutError] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
+  const { directory: peopleDirectory, suggestions: personSuggestions } = usePersonSuggestions();
   const [activeDragType, setActiveDragType] = useState<
     "seat" | "bucket" | "table-seat" | null
   >(null);
@@ -567,7 +573,8 @@ export function PokerTable({
   function editPlayerName(player: Player) {
     setRenameDraft({
       playerId: player.id,
-      nameInput: player.name
+      nameInput: player.name,
+      ...(player.personId ? { personId: player.personId } : {})
     });
     setRenameError(null);
   }
@@ -628,7 +635,11 @@ export function PokerTable({
       return;
     }
 
-    dispatch({ type: "rename_player", playerId: renameDraft.playerId, name });
+    const player = activePlayers.find((candidate) => candidate.id === renameDraft.playerId);
+    const personId = resolvePersonForName(peopleDirectory, name, renameDraft.personId);
+    if (name !== player?.name || personId !== (player?.personId ?? null)) {
+      dispatch({ type: "rename_player", playerId: renameDraft.playerId, name, personId });
+    }
     setRenameDraft(null);
     setRenameError(null);
   }
@@ -1134,12 +1145,29 @@ export function PokerTable({
                 value={renameDraft.nameInput}
                 onChange={(event) =>
                   setRenameDraft({
-                    ...renameDraft,
-                    nameInput: event.currentTarget.value
+                    playerId: renameDraft.playerId,
+                    nameInput: event.currentTarget.value,
+                    // Typing keeps the link only while the name still belongs to that person.
+                    ...(renameDraft.personId ? { personId: renameDraft.personId } : {})
                   })
                 }
               />
             </label>
+            <PersonNameAssist
+              name={renameDraft.nameInput}
+              personId={renameDraft.personId}
+              directory={peopleDirectory}
+              suggestions={personSuggestions}
+              otherPlayers={activePlayers.filter((player) => player.id !== renameDraft.playerId)}
+              showSuggestions
+              onPick={(suggestion) =>
+                setRenameDraft({
+                  playerId: renameDraft.playerId,
+                  nameInput: suggestion.name,
+                  ...(suggestion.personId ? { personId: suggestion.personId } : {})
+                })
+              }
+            />
             {renameError ? <div className="notice notice-warning">{renameError}</div> : null}
             <div className="modal-actions">
               <button type="button" onClick={() => setRenameDraft(null)}>

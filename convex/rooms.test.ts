@@ -60,6 +60,28 @@ describe("shared room authority", () => {
     expect(guestView.state).not.toHaveProperty("accidentalSecret");
   });
 
+  it("keeps host person links in the room but not in the guest projection", async () => {
+    const { test, snapshot } = await createRoom((snapshot) => {
+      snapshot.players[0] = { ...snapshot.players[0], name: "Mike", personId: "person_mike" };
+    });
+    const renamed = await test.mutation(api.rooms.applyAction, {
+      publicId,
+      hostSecret,
+      controllerId,
+      expectedVersion: 0,
+      clientActionId: "action_link_person_1234",
+      action: { type: "rename_player", playerId: snapshot.players[1].id, name: "Blair", personId: "person_blair" }
+    });
+    expect(renamed.state.players.slice(0, 2).map((player: { personId?: string }) => player.personId))
+      .toEqual(["person_mike", "person_blair"]);
+    const host = await test.query(api.rooms.hostView, { publicId, hostSecret, controllerId });
+    expect(host.state.players[0].personId).toBe("person_mike");
+
+    await test.mutation(api.rooms.join, { publicId, inviteSecret, guestSecret, displayName: "Observer" });
+    const guest = await test.query(api.rooms.guestView, { publicId, guestSecret });
+    expect(guest.state.players.some((player: object) => "personId" in player)).toBe(false);
+  });
+
   it("enforces host capability, controller ownership, and room versions", async () => {
     const { test } = await createRoom();
     await expect(

@@ -2,8 +2,12 @@ import { Archive, ListPlus, MapPin, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import { hasPlayerTransactions } from "../domain/ledger";
+import { resolvePersonForName } from "../domain/people";
 import type { Player, Transaction } from "../domain/pokerTypes";
+import type { PersonSuggestion } from "../domain/sessionHistory";
 import type { GameAction } from "../state/gameReducer";
+import { usePersonSuggestions } from "../state/usePeople";
+import { PersonNameAssist } from "./PersonNameAssist";
 
 type PlayerDrawerProps = {
   dispatch: Dispatch<GameAction>;
@@ -24,10 +28,20 @@ export function PlayerDrawer({
   const [fastEntryOpen, setFastEntryOpen] = useState(false);
   const [fastEntryDraft, setFastEntryDraft] = useState("");
   const [fastEntryError, setFastEntryError] = useState<string | null>(null);
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const { directory, suggestions } = usePersonSuggestions();
+  // A person picked from suggestions, kept until the name is typed over (a shared room may not have echoed it yet).
+  const pickedPeople = useRef(new Map<string, { name: string; personId: string | null }>());
   const nameInputRefs = useRef(new Map<string, HTMLInputElement>());
   const focusAddedPlayerRef = useRef(false);
 
   useEffect(() => {
+    for (const player of players) {
+      const picked = pickedPeople.current.get(player.id);
+      if (picked && picked.name === player.name && picked.personId === (player.personId ?? null)) {
+        pickedPeople.current.delete(player.id);
+      }
+    }
     setDraftNames((current) => {
       const next: Record<string, string> = {};
 
@@ -75,12 +89,27 @@ export function PlayerDrawer({
       return;
     }
 
-    if (draftName !== player.name) {
+    // Exact name/alias matches link to a known person; other names are unlinked for now.
+    const picked = pickedPeople.current.get(player.id);
+    const current = picked ?? { name: player.name, personId: player.personId ?? null };
+    const personId = resolvePersonForName(directory, draftName, current.personId ?? undefined);
+    if (draftName !== current.name || personId !== current.personId) {
       dispatch({
         type: "rename_player",
         playerId: player.id,
-        name: draftName
+        name: draftName,
+        personId
       });
+    }
+  }
+
+  function pickPerson(player: Player, suggestion: PersonSuggestion) {
+    setDraftNames((current) => ({ ...current, [player.id]: suggestion.name }));
+    const current = pickedPeople.current.get(player.id) ?? { name: player.name, personId: player.personId ?? null };
+    const personId = suggestion.personId ?? resolvePersonForName(directory, suggestion.name);
+    pickedPeople.current.set(player.id, { name: suggestion.name, personId });
+    if (suggestion.name !== current.name || personId !== current.personId) {
+      dispatch({ type: "rename_player", playerId: player.id, name: suggestion.name, personId });
     }
   }
 
@@ -133,7 +162,11 @@ export function PlayerDrawer({
       return;
     }
 
-    dispatch({ type: "replace_active_players", names });
+    dispatch({
+      type: "replace_active_players",
+      names,
+      personIds: names.map((name, index) => resolvePersonForName(directory, name, players[index]?.personId))
+    });
     setDraftNames({});
     setFastEntryOpen(false);
     setFastEntryDraft("");
@@ -218,9 +251,14 @@ export function PlayerDrawer({
                     type="text"
                     value={draftNames[player.id] ?? player.name}
                     disabled={readOnly}
-                    onBlur={() => commitName(player)}
+                    onFocus={() => setEditingPlayerId(player.id)}
+                    onBlur={() => {
+                      setEditingPlayerId((current) => (current === player.id ? null : current));
+                      commitName(player);
+                    }}
                     onChange={(event) => {
                       const nextName = event.currentTarget.value;
+                      pickedPeople.current.delete(player.id);
 
                       setDraftNames((current) => ({
                         ...current,
@@ -251,6 +289,17 @@ export function PlayerDrawer({
                   <Archive size={15} />
                 </button>
                 {duplicate ? <span className="inline-error">Duplicate</span> : null}
+                {editingPlayerId === player.id && !readOnly ? (
+                  <PersonNameAssist
+                    name={draftNames[player.id] ?? player.name}
+                    personId={player.personId}
+                    directory={directory}
+                    suggestions={suggestions}
+                    otherPlayers={players.filter((candidate) => candidate.id !== player.id)}
+                    showSuggestions
+                    onPick={(suggestion) => pickPerson(player, suggestion)}
+                  />
+                ) : null}
               </div>
             );
           })}

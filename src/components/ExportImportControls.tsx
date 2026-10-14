@@ -6,6 +6,7 @@ import type { GameState } from "../domain/pokerTypes";
 import { validatePersistedState } from "../domain/validation";
 import { downloadJson, exportFullBackup, parseBackup } from "../state/backup";
 import { archiveGame, mergeArchivedGames } from "../state/gameArchive";
+import { mergeStoredPeople } from "../state/peopleStore";
 
 type ExportImportControlsProps = {
   dispatch: Dispatch<GameAction>;
@@ -38,6 +39,7 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
           setError("Could not restore Player History on this device.");
           return;
         }
+        const peopleRestored = mergeStoredPeople(backup.people);
         if (backup.currentGame) {
           // Keep an in-progress game that the backup would otherwise replace.
           if (
@@ -50,7 +52,11 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
           }
           dispatch({ type: "replace_state_from_import", state: backup.currentGame });
         }
-        setError(null);
+        setError(
+          peopleRestored
+            ? null
+            : "Player History was restored, but its people list could not be saved on this device."
+        );
         return;
       }
 

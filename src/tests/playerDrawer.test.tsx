@@ -42,7 +42,8 @@ describe("PlayerDrawer", () => {
     expect(dispatch).toHaveBeenCalledWith({
       type: "rename_player",
       playerId: "p1",
-      name: "Alex"
+      name: "Alex",
+      personId: null
     });
   });
 
@@ -96,7 +97,8 @@ describe("PlayerDrawer", () => {
     expect(dispatch).toHaveBeenCalledWith({
       type: "rename_player",
       playerId: "p1",
-      name: "Alex"
+      name: "Alex",
+      personId: null
     });
     expect(secondPlayer).toHaveFocus();
   });
@@ -155,7 +157,8 @@ describe("PlayerDrawer", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({
       type: "replace_active_players",
-      names: ["Alex", "Blair", "Casey", "Dana"]
+      names: ["Alex", "Blair", "Casey", "Dana"],
+      personIds: [null, null, null, null]
     });
     expect(screen.queryByLabelText("Player names (one per line)")).toBeNull();
     expect(screen.getAllByRole("textbox", { name: "Player name" })).toHaveLength(3);

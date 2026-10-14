@@ -272,6 +272,155 @@ td {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.history-heading-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.history-stat-select {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.history-stat-select input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 0;
+}
+
+.history-stat-row.is-managing {
+  border: 1px solid var(--line);
+}
+
+.history-stat-manage {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 6px;
+  align-items: center;
+}
+
+.history-alias-chip {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 2px 0 10px;
+  background: var(--surface-alt);
+  font-size: 0.84rem;
+}
+
+.history-alias-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+}
+
+.history-alias-chip button:hover {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.history-rename-button {
+  min-height: 36px;
+  margin-left: auto;
+}
+
+.history-rename-form {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-rename-form input {
+  flex: 1 1 160px;
+  width: auto;
+}
+
+.history-merge-bar {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.history-merge-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.history-merge-form label {
+  display: grid;
+  gap: 4px;
+}
+
+.person-name-assist {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+}
+
+.person-link-status {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.person-link-status.is-linked {
+  color: var(--green);
+}
+
+.person-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.person-suggestion {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  color: var(--ink);
+  background: var(--surface-alt);
+}
+
+.person-suggestion:hover {
+  border-color: var(--line-strong);
+}
+
+.person-suggestion small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.table-action-modal .person-name-assist {
+  margin-top: 8px;
+}
+
 .shared-room-history {
   display: grid;
   gap: 8px;
@@ -2808,6 +2957,15 @@ dd {
 }
 
 @media (max-width: 560px) {
+  .history-stat-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+  }
+
+  .history-merge-form {
+    grid-template-columns: 1fr;
+  }
+
   .app-header {
     align-items: stretch;
     flex-direction: column;

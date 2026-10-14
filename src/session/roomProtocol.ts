@@ -1,4 +1,5 @@
 import type { GameState, Transaction } from "../domain/pokerTypes";
+import { isValidPersonId } from "../domain/people";
 import { normalizeLegacyPlayerTransaction } from "../domain/playerTransactions";
 import { validatePersistedState } from "../domain/validation";
 import { gameReducer, type GameAction } from "../state/gameReducer";
@@ -61,11 +62,13 @@ export function normalizeGameState(state: GameState): GameState {
       ),
       createdAt: state.settings.createdAt
     },
-    players: state.players.map(({ id, name, seatIndex, isActive }) => ({
+    players: state.players.map(({ id, name, seatIndex, isActive, personId }) => ({
       id,
       name,
       seatIndex,
-      isActive
+      isActive,
+      // Host-device people links ride along so the host's copy keeps them.
+      ...(isValidPersonId(personId) ? { personId } : {})
     })),
     transactions: state.transactions.map(
       ({
@@ -241,6 +244,8 @@ export function sanitizeGuestState(state: GameState): GameState {
   const normalized = normalizeGameState(state);
   return {
     ...normalized,
+    // People links point into the host's device-local directory; guests have no use for them.
+    players: normalized.players.map(({ personId: _personId, ...player }) => player),
     cashOutDrafts: []
   };
 }

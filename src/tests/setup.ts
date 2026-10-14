@@ -3,6 +3,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { beforeEach } from "vitest";
 import { resetGameArchiveForTests } from "../state/gameArchive";
+import { resetPeopleStoreForTests } from "../state/peopleStore";
 
 function createMemoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -38,5 +39,6 @@ Object.defineProperty(window, "sessionStorage", { configurable: true, value: tes
 // Each test gets an empty IndexedDB and a fresh Player History module state.
 beforeEach(() => {
   resetGameArchiveForTests();
+  resetPeopleStoreForTests();
   Object.defineProperty(globalThis, "indexedDB", { configurable: true, writable: true, value: new IDBFactory() });
 });

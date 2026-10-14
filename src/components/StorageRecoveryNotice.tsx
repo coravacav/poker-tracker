@@ -4,6 +4,7 @@ import { FOLLOWED_FRIENDS_KEY, FRIEND_PROFILE_KEY } from "../session/friendProfi
 import { HOST_RECOVERY_KEY, ROOM_HISTORY_KEY } from "../session/sessionPersistence";
 import { BACKUP_FORMAT, downloadText } from "../state/backup";
 import { GAME_ARCHIVE_KEY } from "../state/gameArchive";
+import { PEOPLE_KEY } from "../state/peopleStore";
 import { STORAGE_KEY } from "../state/persistence";
 import {
   QUARANTINE_CHANGED_EVENT,
@@ -18,9 +19,37 @@ const SUBJECTS: Record<string, { value: string; entry: [string, string] }> = {
   [FRIEND_PROFILE_KEY]: { value: "Your friend profile", entry: ["friend profile", "friend profiles"] },
   [FOLLOWED_FRIENDS_KEY]: { value: "Your followed friends", entry: ["followed friend", "followed friends"] },
   [HOST_RECOVERY_KEY]: { value: "Your hosted room details", entry: ["hosted room", "hosted rooms"] },
-  [ROOM_HISTORY_KEY]: { value: "Your room history", entry: ["room history entry", "room history entries"] }
+  [ROOM_HISTORY_KEY]: { value: "Your room history", entry: ["room history entry", "room history entries"] },
+  [PEOPLE_KEY]: { value: "Your people list", entry: ["person in your people list", "people in your people list"] }
 };
-const IMPORTABLE = new Set([STORAGE_KEY, GAME_ARCHIVE_KEY]);
+const IMPORTABLE = new Set([STORAGE_KEY, GAME_ARCHIVE_KEY, PEOPLE_KEY]);
+
+/** Wraps kept Player History entries or people as a backup file so a newer build can import them. */
+function asBackup(record: QuarantineRecord): string | null {
+  try {
+    const value = JSON.parse(record.raw) as unknown;
+    let archivedGames: unknown = [];
+    let people: unknown;
+    if (record.sourceKey === GAME_ARCHIVE_KEY && record.scope === "entries") {
+      archivedGames = value;
+    } else if (record.sourceKey === PEOPLE_KEY) {
+      people = record.scope === "entries" ? { schemaVersion: 1, people: value } : value;
+    } else {
+      return null;
+    }
+    const backup = {
+      format: BACKUP_FORMAT,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      currentGame: null,
+      archivedGames,
+      ...(people === undefined ? {} : { people })
+    };
+    return JSON.stringify(backup, null, 2);
+  } catch {
+    return null;
+  }
+}
 
 function describe(record: QuarantineRecord): { title: string; body: string } {
   const subject = SUBJECTS[record.sourceKey] ?? { value: "Some saved data", entry: ["item", "items"] };
@@ -51,24 +80,7 @@ function describe(record: QuarantineRecord): { title: string; body: string } {
 function downloadRecord(record: QuarantineRecord): void {
   const name = record.sourceKey.replace(/^poker-tracker:v\d+:/, "").replace(/[^a-z0-9-]+/gi, "-");
   const filename = `poker-tracker-unreadable-${name}-${record.detectedAt.slice(0, 10)}.json`;
-  if (record.sourceKey === GAME_ARCHIVE_KEY && record.scope === "entries") {
-    try {
-      // Wrap skipped history entries as a backup file so a newer build can import them.
-      const archivedGames = JSON.parse(record.raw) as unknown;
-      const backup = {
-        format: BACKUP_FORMAT,
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        currentGame: null,
-        archivedGames
-      };
-      downloadText(filename, JSON.stringify(backup, null, 2));
-      return;
-    } catch {
-      // Fall back to the raw text below.
-    }
-  }
-  downloadText(filename, record.raw);
+  downloadText(filename, asBackup(record) ?? record.raw);
 }
 
 export function StorageRecoveryNotice() {

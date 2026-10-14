@@ -11,6 +11,7 @@ import {
   normalizeSeatPlacements
 } from "../domain/tableLayout";
 import { normalizeLegacyPlayerTransactions } from "../domain/playerTransactions";
+import { isValidPersonId } from "../domain/people";
 import { validatePersistedState } from "../domain/validation";
 import { createDefaultGameState, createId } from "./seedGame";
 import {
@@ -129,7 +130,30 @@ function finishMigration(
   };
 }
 
+/**
+ * Player.personId is optional and additive, so saves keep schema 7 and older
+ * builds still open them. Validation tolerates any value there (a newer build
+ * might format ids differently); ids this build cannot use are dropped here.
+ */
+function withUsablePersonIds(state: GameState): GameState {
+  if (state.players.every((player) => player.personId === undefined || isValidPersonId(player.personId))) {
+    return state;
+  }
+  return {
+    ...state,
+    players: state.players.map((player) => {
+      if (player.personId === undefined || isValidPersonId(player.personId)) return player;
+      const { personId: _personId, ...rest } = player;
+      return rest;
+    })
+  };
+}
+
 export function migratePersistedState(state: AnyPersistedGameState): GameState {
+  return withUsablePersonIds(migrateSchema(state));
+}
+
+function migrateSchema(state: AnyPersistedGameState): GameState {
   if (state.schemaVersion === 7) {
     return {
       ...state,

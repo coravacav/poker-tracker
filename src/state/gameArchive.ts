@@ -25,6 +25,7 @@ import {
   readLocalArchive,
   releaseReadableEntryCopies
 } from "./gameArchiveLocal";
+import { linkGameToPeople } from "./peopleStore";
 import { QUARANTINE_CHANGED_EVENT } from "./storageQuarantine";
 
 export { GAME_ARCHIVE_KEY, MAX_LOCAL_ARCHIVED_GAMES } from "./gameArchiveLocal";
@@ -255,11 +256,15 @@ async function write(
   return ok;
 }
 
-/** Saves a played game to Player History, replacing an earlier copy of the same game. */
+/**
+ * Saves a played game to Player History, replacing an earlier copy of the same
+ * game. Its players are linked to people first (new names become new people).
+ */
 export async function archiveGame(state: GameState): Promise<boolean> {
   if (state.transactions.length === 0) return false;
   const archivedAt = new Date().toISOString();
-  return write([{ archivedAt, state }], "replace", () => archiveLocalGame(state, archivedAt));
+  const linked = linkGameToPeople(state);
+  return write([{ archivedAt, state: linked }], "replace", () => archiveLocalGame(linked, archivedAt));
 }
 
 /** Merges restored games into the archive, keeping the newest copy of each game. */

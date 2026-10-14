@@ -31,6 +31,11 @@ export type Player = {
   name: string;
   seatIndex: number;
   isActive: boolean;
+  /**
+   * Optional link to a person in this device's people directory (see domain/people.ts).
+   * Additive and optional, so it needs no schema bump: older builds ignore it.
+   */
+  personId?: string;
 };
 
 export type TableSeatLayout = "top_bottom" | "left_right" | "rectangle" | "round";

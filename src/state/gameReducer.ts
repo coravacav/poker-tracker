@@ -25,6 +25,7 @@ import {
   isRecentTransactionAction
 } from "../domain/recentTransactionAction";
 import type { RecentTransactionAction } from "../domain/recentTransactionAction";
+import { isValidPersonId, nameKey } from "../domain/people";
 import { migratePersistedState } from "./persistence";
 import { createDefaultGameState, createId } from "./seedGame";
 
@@ -36,9 +37,23 @@ export type GameAction =
   | { type: "move_table_seat"; seatIndex: number; rail: SeatRail; order: number }
   | { type: "move_player_to_seat"; playerId: PlayerId; seatIndex: number }
   | { type: "set_player_count"; count: number }
-  | { type: "add_player"; name?: string }
-  | { type: "replace_active_players"; names: string[] }
-  | { type: "rename_player"; playerId: PlayerId; name: string }
+  | { type: "add_player"; name?: string; personId?: string }
+  | {
+      type: "replace_active_players";
+      names: string[];
+      /** Parallel to `names`; see rename_player for how a missing entry is treated. */
+      personIds?: Array<string | null | undefined>;
+    }
+  | {
+      type: "rename_player";
+      playerId: PlayerId;
+      name: string;
+      /**
+       * Person link for the new name. A string links, null unlinks. When omitted
+       * (older clients), the link is kept only if the name is unchanged apart from case.
+       */
+      personId?: string | null;
+    }
   | { type: "archive_player"; playerId: PlayerId }
   | { type: "reorder_players"; orderedPlayerIds: PlayerId[] }
   | { type: "add_transaction"; transaction: Transaction }
@@ -115,6 +130,17 @@ function reconcileSeatIndexes(state: GameState): GameState {
     },
     players
   };
+}
+
+/** Applies a person link from an action to a renamed player (see rename_player). */
+function withPersonLink(next: Player, previous: Player, personId: string | null | undefined): Player {
+  const { personId: _previousPersonId, ...unlinked } = next;
+  if (personId === undefined) {
+    return nameKey(next.name) === nameKey(previous.name) && previous.personId
+      ? { ...unlinked, personId: previous.personId }
+      : unlinked;
+  }
+  return isValidPersonId(personId) ? { ...unlinked, personId } : unlinked;
 }
 
 function nextPlayerName(playersLength: number): string {
@@ -301,7 +327,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             id: createId("player"),
             name: action.name?.trim() || nextPlayerName(state.players.length),
             seatIndex: Number.MAX_SAFE_INTEGER,
-            isActive: true
+            isActive: true,
+            ...(action.name?.trim() && isValidPersonId(action.personId) ? { personId: action.personId } : {})
           }
         ]
       });
@@ -311,7 +338,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return state;
       }
 
-      const names = action.names.map((name) => name.trim()).filter(Boolean);
+      const entries = action.names
+        .map((name, index) => ({ name: name.trim(), personId: action.personIds?.[index] }))
+        .filter((entry) => entry.name);
+      const names = entries.map((entry) => entry.name);
       if (names.length === 0) {
         return state;
       }
@@ -332,17 +362,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           return { ...player, isActive: false };
         }
 
-        return {
-          ...player,
-          name: names[index],
-          seatIndex: index
-        };
+        return withPersonLink(
+          { ...player, name: names[index], seatIndex: index },
+          player,
+          entries[index].personId
+        );
       });
-      const newPlayers = names.slice(activePlayers.length).map((name, offset) => ({
+      const newPlayers = entries.slice(activePlayers.length).map(({ name, personId }, offset): Player => ({
         id: createId("player"),
         name,
         seatIndex: activePlayers.length + offset,
-        isActive: true
+        isActive: true,
+        ...(isValidPersonId(personId) ? { personId } : {})
       }));
 
       return reconcileSeatIndexes({
@@ -352,11 +383,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case "rename_player":
+      if (!action.name.trim()) return state;
       return {
         ...state,
         players: state.players.map((player) =>
           player.id === action.playerId
-            ? { ...player, name: action.name.trim() || player.name }
+            ? withPersonLink({ ...player, name: action.name.trim() }, player, action.personId)
             : player
         )
       };
