@@ -27,6 +27,8 @@ bun run test
 bun run build
 ```
 
+CI (`.github/workflows/ci.yml`) runs these same checks on every pull request and push to `main`; it needs no Convex secrets.
+
 If a deployment is already configured, regenerate types with `bun run convex:codegen`. The production backend command is `bunx convex deploy`; run it only as an intentional release step.
 
 ## Environment variables
