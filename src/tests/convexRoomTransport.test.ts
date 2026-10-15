@@ -102,6 +102,9 @@ describe("convexRoomTransport with a lazily loaded client", () => {
     clients[0].connectionListeners.forEach((notify) => notify({ isWebSocketConnected: true }));
     expect(listener).toHaveBeenLastCalledWith(true);
     expect(convexRoomTransport.connectionState()).toBe(true);
+    // Other state changes (requests in flight) are not reported as reconnects.
+    clients[0].connectionListeners.forEach((notify) => notify({ isWebSocketConnected: true }));
+    expect(listener).toHaveBeenCalledTimes(2);
     unsubscribe();
     expect(clients[0].connectionListeners.size).toBe(0);
   });

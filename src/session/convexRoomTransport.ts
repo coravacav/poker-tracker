@@ -89,8 +89,17 @@ export const convexRoomTransport: RoomTransport = {
   subscribeToConnection(listener) {
     if (!deploymentUrl()) return () => undefined;
     return subscribeWhenLoaded(({ client: current }) => {
-      listener(current.connectionState().isWebSocketConnected);
-      return current.subscribeToConnectionState((state) => listener(state.isWebSocketConnected));
+      let connected = current.connectionState().isWebSocketConnected;
+      listener(connected);
+      // The client reports every connection-state change, including each
+      // request starting or finishing. Only connecting and disconnecting are
+      // passed on: a guest's reconnect heartbeat is itself a request, so
+      // forwarding the rest looped heartbeats forever and froze the page.
+      return current.subscribeToConnectionState((state) => {
+        if (state.isWebSocketConnected === connected) return;
+        connected = state.isWebSocketConnected;
+        listener(connected);
+      });
     });
   },
   async createRoom(args) {
