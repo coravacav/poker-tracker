@@ -12,7 +12,7 @@ const profile = {
 };
 
 describe("friend discovery on Home", () => {
-  it("shows a followed friend's live room and joins it", () => {
+  it("shows a followed friend's live room and joins it", async () => {
     const onJoin = vi.fn();
     const live = {
       friendCode: "9876ZYXWVUTSRQPNMLKJ",
@@ -33,7 +33,8 @@ describe("friend discovery on Home", () => {
     );
 
     expect(screen.getByText("Friday Poker is live")).toBeInTheDocument();
-    expect(screen.getByLabelText("Personal friend code QR")).toBeInTheDocument();
+    // The QR encoder is a lazily loaded chunk.
+    expect(await screen.findByLabelText("Personal friend code QR")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Join" }));
     expect(onJoin).toHaveBeenCalledWith(live, live.room);
   });

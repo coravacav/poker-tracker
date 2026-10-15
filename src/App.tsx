@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { GameApp } from "./components/GameApp";
+import { GameApp, preloadGameApp } from "./components/GameApp";
 import { GuestJoinScreen } from "./components/GuestJoinScreen";
+import { whenIdle } from "./components/lazyComponent";
+import { preloadQrCode } from "./components/QrCode";
 import { StartPage } from "./components/StartPage";
 import {
   GuestSessionControls,
@@ -9,6 +11,7 @@ import {
   LocalShareButton
 } from "./components/SharingControls";
 import { loadArchivedGames } from "./state/gameArchive";
+import { preloadConvexClient } from "./session/convexRoomTransport";
 import { useGameSession } from "./session/useGameSession";
 import { useStoragePersistenceRequest } from "./state/useStoragePersistence";
 import type { RoomTransport, SharedActivity } from "./session/types";
@@ -20,6 +23,17 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
   useEffect(() => {
     void loadArchivedGames();
   }, []);
+  // Load the split-off chunks once the first screen is up, so later screens open without waiting.
+  useEffect(
+    () =>
+      whenIdle(() => {
+        const ignore = () => undefined;
+        void preloadGameApp().catch(ignore);
+        void preloadQrCode().catch(ignore);
+        if (!roomTransport) void preloadConvexClient().catch(ignore);
+      }),
+    [roomTransport]
+  );
   useStoragePersistenceRequest(
     (!gameSession.isGuest && gameSession.state.transactions.length > 0) ||
       gameSession.friendProfile !== null ||

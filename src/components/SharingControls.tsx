@@ -1,7 +1,7 @@
 import { Copy, Radio, RefreshCw, Share2, StopCircle, UserRound, WifiOff, X } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { QRCodeSVG } from "qrcode.react";
+import { QrCode } from "./QrCode";
 import { useFormatCurrency } from "./CurrencyContext";
 import type { HostRecovery, HostRoomProjection } from "../session/types";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -141,7 +141,7 @@ export function HostSharingControls({
                   ) : (
                     <>
                       <div className="share-qr" aria-label="Guest invitation QR code">
-                        <QRCodeSVG value={recovery.inviteUrl} size={210} level="M" marginSize={2} />
+                        <QrCode value={recovery.inviteUrl} size={210} level="M" marginSize={2} />
                       </div>
                       <p className="muted">Guests scan this code with their normal camera for a read-only live view.</p>
                       <label className="invite-link-field">

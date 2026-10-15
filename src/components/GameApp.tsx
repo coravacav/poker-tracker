@@ -1,23 +1,33 @@
 import { useCallback, useState } from "react";
 import type { Dispatch, ReactNode } from "react";
 import { AppShell, type AppMode } from "./AppShell";
-import { CashOutMode } from "./CashOutMode";
-import { ChipDenominationPanel } from "./ChipDenominationPanel";
 import { CurrencyProvider } from "./CurrencyContext";
-import { PlayerDrawer } from "./PlayerDrawer";
-import { SessionHistoryPanel } from "./SessionHistoryPanel";
+import { LazyBoundary, lazyWithPreload } from "./lazyComponent";
 import { SharedNotifications } from "./SharedNotifications";
-import { TableSetupPanel } from "./TableSetupPanel";
 import type { GameState, Transaction } from "../domain/pokerTypes";
 import { validateTransaction } from "../domain/validation";
 import type { RoomHistoryProjection, SharedActivity } from "../session/types";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
-import { AuditDrawer } from "./gameApp/AuditDrawer";
 import { PlayMode } from "./gameApp/PlayMode";
-import { SettleMode } from "./gameApp/SettleMode";
 import { TransactionDrawer } from "./gameApp/TransactionDrawer";
 import { useLedgerOverview } from "./gameApp/useLedgerOverview";
+
+// Play is the first screen after Home and stays in the main bundle; the other
+// modes and the audit drawer load as separate chunks (preloaded once idle).
+const SetupMode = lazyWithPreload(() => import("./gameApp/SetupMode").then((module) => module.SetupMode));
+const CashOutMode = lazyWithPreload(() => import("./CashOutMode").then((module) => module.CashOutMode));
+const SettleMode = lazyWithPreload(() => import("./gameApp/SettleMode").then((module) => module.SettleMode));
+const AuditDrawer = lazyWithPreload(() => import("./gameApp/AuditDrawer").then((module) => module.AuditDrawer));
+
+/** Loads every lazily split game surface so switching to it never waits. */
+export function preloadGameApp(): Promise<unknown> {
+  return Promise.all([SetupMode, CashOutMode, SettleMode, AuditDrawer].map((surface) => surface.preload()));
+}
+
+function modeFallback(label: string) {
+  return <p className="muted" role="status">Loading {label}…</p>;
+}
 
 type GameAppProps = {
   state: GameState;
@@ -152,16 +162,18 @@ export function GameApp({
     <CurrencyProvider currencyCode={state.settings.currencyCode}>
       <AppShell
         cashOut={
-          <CashOutMode
-            bankSummary={bankSummary}
-            denominations={state.settings.chipDenominations}
-            dispatch={dispatch}
-            drafts={state.cashOutDrafts}
-            players={activePlayers}
-            readOnly={readOnly}
-            summaries={playerSummaries}
-            transactions={state.transactions}
-          />
+          <LazyBoundary key="cash_out" fallback={modeFallback("Cash Out")}>
+            <CashOutMode
+              bankSummary={bankSummary}
+              denominations={state.settings.chipDenominations}
+              dispatch={dispatch}
+              drafts={state.cashOutDrafts}
+              players={activePlayers}
+              readOnly={readOnly}
+              summaries={playerSummaries}
+              transactions={state.transactions}
+            />
+          </LazyBoundary>
         }
         guest={guest}
         ledgerLabel={ledgerLabel}
@@ -192,29 +204,16 @@ export function GameApp({
         recentTransactionAction={recentTransactionAction}
         sessionControls={sessionControls}
         setup={
-          <div className="setup-mode">
-            <TableSetupPanel
+          <LazyBoundary key="setup" fallback={modeFallback("Setup")}>
+            <SetupMode
+              state={state}
               dispatch={dispatch}
               readOnly={readOnly}
               setReadOnly={setManualReadOnly}
-              state={state}
+              activePlayers={activePlayers}
+              roomHistory={roomHistory}
             />
-            <PlayerDrawer
-              dispatch={dispatch}
-              fastEntryDisabled={
-                state.transactions.length > 0 || state.cashOutDrafts.length > 0
-              }
-              players={activePlayers}
-              readOnly={readOnly}
-              transactions={state.transactions}
-            />
-            <ChipDenominationPanel
-              denominations={state.settings.chipDenominations}
-              dispatch={dispatch}
-              readOnly={readOnly}
-            />
-            <SessionHistoryPanel sharedRooms={roomHistory} />
-          </div>
+          </LazyBoundary>
         }
         play={
           <PlayMode
@@ -239,20 +238,22 @@ export function GameApp({
           />
         }
         settle={
-          <SettleMode
-            state={state}
-            dispatch={dispatch}
-            guest={guest}
-            readOnly={readOnly}
-            bankSummary={bankSummary}
-            imbalanceCents={imbalanceCents}
-            cashOutOverview={cashOutOverview}
-            settlementReady={settlementReady}
-            settlementSummaries={settlementSummaries}
-            addTransaction={addTransaction}
-            setNotice={setNotice}
-            setAuditDrawerOpen={setAuditDrawerOpen}
-          />
+          <LazyBoundary key="settle" fallback={modeFallback("Settle")}>
+            <SettleMode
+              state={state}
+              dispatch={dispatch}
+              guest={guest}
+              readOnly={readOnly}
+              bankSummary={bankSummary}
+              imbalanceCents={imbalanceCents}
+              cashOutOverview={cashOutOverview}
+              settlementReady={settlementReady}
+              settlementSummaries={settlementSummaries}
+              addTransaction={addTransaction}
+              setNotice={setNotice}
+              setAuditDrawerOpen={setAuditDrawerOpen}
+            />
+          </LazyBoundary>
         }
       />
 
@@ -271,14 +272,16 @@ export function GameApp({
       ) : null}
 
       {auditDrawerOpen ? (
-        <AuditDrawer
-          state={state}
-          dispatch={dispatch}
-          guest={guest}
-          readOnly={readOnly}
-          sharedActivity={sharedActivity}
-          setAuditDrawerOpen={setAuditDrawerOpen}
-        />
+        <LazyBoundary fallback={null}>
+          <AuditDrawer
+            state={state}
+            dispatch={dispatch}
+            guest={guest}
+            readOnly={readOnly}
+            sharedActivity={sharedActivity}
+            setAuditDrawerOpen={setAuditDrawerOpen}
+          />
+        </LazyBoundary>
       ) : null}
     </CurrencyProvider>
   );

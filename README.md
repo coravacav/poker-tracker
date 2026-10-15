@@ -67,6 +67,7 @@ The production build registers a service worker (`/sw.js`, source in `src/pwa/se
 - Build files are served from that cache. Page loads try the network first and fall back to the cached index.html, so the app boots with no connection. Other requests, including everything to Convex and other origins, are never cached or intercepted.
 - A new build means a new worker; it takes over as soon as its cache is complete, deletes older caches, and the open page picks up the new version on its next load. `public/_headers` tells Cloudflare not to cache `/sw.js` so updates are seen promptly.
 - Sharing, joining rooms, and friend discovery still need the internet; local games and Player History do not.
+- The main bundle carries Home and the Play table. Setup (with Player History), Cash Out, Settle, the transaction audit, the QR code encoder, and the Convex client are separate chunks (the charts load on demand within Player History). Once the first screen is up, the app loads them in the background (the Convex client only when a deployment is configured), so switching modes normally does not wait; if a mode is opened before its chunk arrives, a short "Loading…" line stands in for it. If a chunk cannot load, that area shows a reload notice instead of the app failing.
 
 ## Snapshot boundary and retention
 

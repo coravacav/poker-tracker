@@ -1,10 +1,13 @@
-import { ConvexClient } from "convex/browser";
-import { api } from "../../convex/_generated/api";
+import type { ConvexClient } from "convex/browser";
+import type { api as generatedApi } from "../../convex/_generated/api";
 import { CREATION_LIMITED_CODE, ROOM_CREATION_LIMITED_MESSAGE } from "./creationLimits";
 import type { RoomTransport } from "./types";
 
-const roomApi = api.rooms;
+type Api = typeof generatedApi;
+type Loaded = { client: ConvexClient; api: Api };
+
 let client: ConvexClient | null = null;
+let loading: Promise<Loaded> | null = null;
 
 export const SHARING_UNAVAILABLE_MESSAGE =
   "Game sharing is unavailable right now. Please try again later.";
@@ -21,11 +24,57 @@ export function configuredDeploymentUrl(): string | null {
   return deploymentUrl();
 }
 
-function getClient(): ConvexClient {
+/** Loads the Convex client chunk without connecting; a no-op when sharing is not configured. */
+export function preloadConvexClient(): Promise<unknown> {
+  if (!deploymentUrl()) return Promise.resolve();
+  return import("./convexClient");
+}
+
+/**
+ * The Convex client (and the generated API) is a separate chunk, loaded the
+ * first time a shared-room or friend feature needs it. One client is created
+ * and reused, as before.
+ */
+function loadClient(): Promise<Loaded> {
   const url = deploymentUrl();
-  if (!url) throw new Error(SHARING_UNAVAILABLE_MESSAGE);
-  client ??= new ConvexClient(url, { unsavedChangesWarning: false });
-  return client;
+  if (!url) return Promise.reject(new Error(SHARING_UNAVAILABLE_MESSAGE));
+  loading ??= import("./convexClient").then(
+    (module) => {
+      client ??= new module.ConvexClient(url, { unsavedChangesWarning: false });
+      return { client, api: module.api };
+    },
+    (error: unknown) => {
+      loading = null;
+      throw error;
+    }
+  );
+  return loading;
+}
+
+/**
+ * Starts a subscription once the client is loaded, keeping the synchronous
+ * subscribe/unsubscribe contract. Unsubscribing before the client loads
+ * cancels the subscription; a client that cannot load is reported through
+ * onError when one is given.
+ */
+function subscribeWhenLoaded(
+  start: (loaded: Loaded) => () => void,
+  onError?: (error: Error) => void
+): () => void {
+  let unsubscribe: (() => void) | null = null;
+  let cancelled = false;
+  void loadClient().then(
+    (loaded) => {
+      if (!cancelled) unsubscribe = start(loaded);
+    },
+    (error: unknown) => {
+      if (!cancelled) onError?.(error instanceof Error ? error : new Error(String(error)));
+    }
+  );
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 }
 
 function clean<T>(value: T): T {
@@ -39,68 +88,101 @@ export const convexRoomTransport: RoomTransport = {
   connectionState: () => (client ? client.connectionState().isWebSocketConnected : false),
   subscribeToConnection(listener) {
     if (!deploymentUrl()) return () => undefined;
-    const current = getClient();
-    listener(current.connectionState().isWebSocketConnected);
-    return current.subscribeToConnectionState((state) => listener(state.isWebSocketConnected));
+    return subscribeWhenLoaded(({ client: current }) => {
+      listener(current.connectionState().isWebSocketConnected);
+      return current.subscribeToConnectionState((state) => listener(state.isWebSocketConnected));
+    });
   },
   async createRoom(args) {
-    return await getClient().mutation(roomApi.create, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.create, request);
   },
   async getInvitePreview(publicId, inviteSecret) {
-    return await getClient().query(roomApi.invitePreview, { publicId, inviteSecret });
+    const { client: convex, api } = await loadClient();
+    return await convex.query(api.rooms.invitePreview, { publicId, inviteSecret });
   },
   async joinRoom(args) {
-    return await getClient().mutation(roomApi.join, args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.join, args);
   },
   async joinFriendRoom(args) {
-    return await getClient().mutation(roomApi.joinFriend, args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.joinFriend, args);
   },
   async createFriendProfile(args) {
-    return await getClient().mutation(api.friendProfiles.create, args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.friendProfiles.create, args);
   },
   async lookupFriendProfile(friendCode) {
-    return await getClient().query(api.friendProfiles.lookup, { friendCode });
+    const { client: convex, api } = await loadClient();
+    return await convex.query(api.friendProfiles.lookup, { friendCode });
   },
   async updateFriendProfileName(args) {
-    return await getClient().mutation(api.friendProfiles.updateName, args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.friendProfiles.updateName, args);
   },
   async rotateFriendCode(args) {
-    return await getClient().mutation(api.friendProfiles.rotateCode, args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.friendProfiles.rotateCode, args);
   },
   subscribeFriendActivity(friendCodes, onUpdate, onError) {
-    return getClient().onUpdate(api.friendProfiles.listActivity, { friendCodes }, onUpdate, onError);
+    return subscribeWhenLoaded(
+      ({ client: current, api }) =>
+        current.onUpdate(api.friendProfiles.listActivity, { friendCodes }, onUpdate, onError),
+      onError
+    );
   },
   subscribeHost(args, onUpdate, onError) {
-    return getClient().onUpdate(roomApi.hostView, args, onUpdate, onError);
+    return subscribeWhenLoaded(
+      ({ client: current, api }) => current.onUpdate(api.rooms.hostView, args, onUpdate, onError),
+      onError
+    );
   },
   subscribeGuest(args, onUpdate, onError) {
-    return getClient().onUpdate(roomApi.guestView, args, onUpdate, onError);
+    return subscribeWhenLoaded(
+      ({ client: current, api }) => current.onUpdate(api.rooms.guestView, args, onUpdate, onError),
+      onError
+    );
   },
   async heartbeat(publicId, guestSecret, sessionId) {
-    await getClient().mutation(roomApi.heartbeat, { publicId, guestSecret, sessionId });
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.heartbeat, { publicId, guestSecret, sessionId });
   },
   async submitGuestTransaction(args) {
-    return await getClient().mutation(roomApi.submitGuestTransaction, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.submitGuestTransaction, request);
   },
   async decideGuestTransaction(args) {
-    await getClient().mutation(roomApi.decideGuestTransaction, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.decideGuestTransaction, request);
   },
   async setJoiningOpen(args) {
-    await getClient().mutation(roomApi.setJoiningOpen, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.setJoiningOpen, request);
   },
   async setFriendVisibility(args) {
-    await getClient().mutation(roomApi.setFriendVisibility, args);
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.setFriendVisibility, args);
   },
   async rotateInvite(args) {
-    await getClient().mutation(roomApi.rotateInvite, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.rotateInvite, request);
   },
   async revokeGuest(args) {
-    await getClient().mutation(roomApi.revokeGuest, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.revokeGuest, request);
   },
   async getRoomHistory(credentials) {
+    const { client: convex, api } = await loadClient();
     const settled = await Promise.allSettled(
       credentials.map((credential) =>
-        getClient().query(roomApi.historyView, {
+        convex.query(api.rooms.historyView, {
           publicId: credential.publicId,
           role: credential.role,
           secret: credential.secret
@@ -110,19 +192,27 @@ export const convexRoomTransport: RoomTransport = {
     return settled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
   },
   async applyAction(args) {
-    return await getClient().mutation(roomApi.applyAction, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.applyAction, request);
   },
   async acknowledgeHostNotifications(args) {
-    await getClient().mutation(roomApi.acknowledgeHostNotifications, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.acknowledgeHostNotifications, request);
   },
   async acknowledgeGuestNotifications(args) {
-    await getClient().mutation(roomApi.acknowledgeGuestNotifications, clean(args));
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.acknowledgeGuestNotifications, request);
   },
   async claimHost(publicId, hostSecret, controllerId) {
-    await getClient().mutation(roomApi.claimHost, { publicId, hostSecret, controllerId });
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.claimHost, { publicId, hostSecret, controllerId });
   },
   async endRoom(args) {
-    return await getClient().mutation(roomApi.end, args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.end, args);
   }
 };
 

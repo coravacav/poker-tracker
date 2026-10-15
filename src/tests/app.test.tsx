@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
+import { preloadGameApp } from "../components/GameApp";
 import { createDefaultGameState } from "../state/seedGame";
 import { STORAGE_KEY } from "../state/persistence";
 import { LAST_VISIT_KEY } from "../session/localEntry";
@@ -15,6 +16,11 @@ function renderGameApp() {
 }
 
 describe("App", () => {
+  // Setup, Cash Out, Settle, and the audit drawer are lazy chunks; load them up front so mode switches render at once.
+  beforeAll(async () => {
+    await preloadGameApp();
+  });
+
   beforeEach(() => {
     localStorage.clear();
     localStorage.setItem(LAST_VISIT_KEY, String(Date.now()));

@@ -1,6 +1,6 @@
 import { Copy, Home, Play, Plus, Radio, RefreshCw, Spade, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import { QrCode } from "./QrCode";
 import type { GameState } from "../domain/pokerTypes";
 import type { FriendProfile, FollowedFriend } from "../session/friendProfiles";
 import {
@@ -160,7 +160,7 @@ export function StartPage({
             ) : (
               <>
                 <div className="friend-profile-card">
-                  <QRCodeSVG aria-label="Personal friend code QR" value={friendCodeUrl(friendProfile.friendCode)}
+                  <QrCode aria-label="Personal friend code QR" value={friendCodeUrl(friendProfile.friendCode)}
                     size={126} level="M" marginSize={1} />
                   <div>
                     <p className="eyebrow">Your friend code</p>

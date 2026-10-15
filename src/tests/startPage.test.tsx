@@ -17,7 +17,7 @@ describe("local start page", () => {
     vi.useRealTimers();
   });
 
-  it("welcomes a first-time visitor without persisting a default game before the choice", () => {
+  it("welcomes a first-time visitor without persisting a default game before the choice", async () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: "Ready for poker night?" })).toBeInTheDocument();
@@ -28,7 +28,8 @@ describe("local start page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start new game" }));
 
     expect(screen.getByRole("heading", { name: "Poker Tracker" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Game Setup" })).toBeInTheDocument();
+    // Setup is a lazily loaded chunk.
+    expect(await screen.findByRole("heading", { name: "Game Setup" })).toBeInTheDocument();
     expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
   });
 
