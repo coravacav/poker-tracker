@@ -3,7 +3,7 @@
  * tables. This module and the charting library it uses are loaded lazily by
  * SessionHistoryPanel so they stay out of the main bundle.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import {
   buildPersonTimelines,
   cumulativeSeries,
@@ -39,15 +39,6 @@ function signed(cents: number, currencyCode: CurrencyCode): string {
 
 function tone(cents: number): string {
   return cents > 0 ? "positive" : cents < 0 ? "negative" : "neutral";
-}
-
-/** The chart is drawn for sighted users; the label and the data table carry the same values. */
-function ChartFrame({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="history-chart" role="img" aria-label={label}>
-      {children}
-    </div>
-  );
 }
 
 export default function HistoryTrends({
@@ -179,9 +170,9 @@ export default function HistoryTrends({
           <p className="history-chart-message muted">Choose players above to draw their running totals.</p>
         ) : (
           <>
-            <ChartFrame label={chartLabel}>
-              <CumulativeNetChart series={series} currencyCode={currencyCode} />
-            </ChartFrame>
+            <div className="history-chart">
+              <CumulativeNetChart series={series} currencyCode={currencyCode} label={chartLabel} />
+            </div>
             <details className="history-chart-data">
               <summary>Chart data as a table</summary>
               <div className="history-table-scroll">
@@ -226,11 +217,13 @@ export default function HistoryTrends({
           <div><dt>Best</dt><dd className={tone(summary.biggestWinCents)}>{signed(summary.biggestWinCents, currencyCode)}</dd></div>
           <div><dt>Worst</dt><dd className={tone(summary.biggestLossCents)}>{signed(summary.biggestLossCents, currencyCode)}</dd></div>
         </dl>
-        <ChartFrame
-          label={`${focus.name}'s result in each of ${bars.length === focus.results.length ? "their" : `their latest ${bars.length} of`} ${focus.results.length} ${focus.results.length === 1 ? "game" : "games"}: ${summary.wins} won, ${summary.games - summary.wins} not won.`}
-        >
-          <PersonResultsChart results={bars} currencyCode={currencyCode} />
-        </ChartFrame>
+        <div className="history-chart">
+          <PersonResultsChart
+            results={bars}
+            currencyCode={currencyCode}
+            label={`${focus.name}'s result in each of ${bars.length === focus.results.length ? "their" : `their latest ${bars.length} of`} ${focus.results.length} ${focus.results.length === 1 ? "game" : "games"}: ${summary.wins} won, ${summary.games - summary.wins} not won.`}
+          />
+        </div>
         {bars.length < focus.results.length ? (
           <p className="muted history-trend-note">Showing the latest {bars.length} of {focus.results.length} games.</p>
         ) : null}

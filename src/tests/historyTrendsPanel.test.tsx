@@ -6,19 +6,29 @@ import type { ArchivedGame } from "../domain/sessionHistory";
 import { mergeArchivedGames } from "../state/gameArchive";
 import { createDefaultGameState } from "../state/seedGame";
 
-// jsdom cannot lay out the real charts; stand-ins show what each chart was given.
+// Stand-ins show what each chart was given; like the library, each names its surface with the label.
 vi.mock("../components/HistoryCharts", () => ({
-  CumulativeNetChart: ({ series }: { series: Array<{ name: string; color: string; points: Array<{ cumulativeCents: number }> }> }) => (
-    <ul data-testid="cumulative-chart">
-      {series.map((entry) => (
-        <li key={entry.name} data-color={entry.color}>
-          {entry.name} {entry.points.map((point) => point.cumulativeCents).join(",")}
-        </li>
-      ))}
-    </ul>
+  CumulativeNetChart: ({
+    series,
+    label
+  }: {
+    series: Array<{ name: string; color: string; points: Array<{ cumulativeCents: number }> }>;
+    label: string;
+  }) => (
+    <div role="img" aria-label={label}>
+      <ul data-testid="cumulative-chart">
+        {series.map((entry) => (
+          <li key={entry.name} data-color={entry.color}>
+            {entry.name} {entry.points.map((point) => point.cumulativeCents).join(",")}
+          </li>
+        ))}
+      </ul>
+    </div>
   ),
-  PersonResultsChart: ({ results }: { results: Array<{ netCents: number }> }) => (
-    <p data-testid="results-chart">{results.map((result) => result.netCents).join(",")}</p>
+  PersonResultsChart: ({ results, label }: { results: Array<{ netCents: number }>; label: string }) => (
+    <p role="img" aria-label={label} data-testid="results-chart">
+      {results.map((result) => result.netCents).join(",")}
+    </p>
   )
 }));
 

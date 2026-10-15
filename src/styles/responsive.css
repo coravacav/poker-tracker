@@ -333,9 +333,4 @@
   .seat-slot {
     transition: none;
   }
-
-  /* react-charts sets transitions inline. */
-  .history-chart * {
-    transition: none !important;
-  }
 }
