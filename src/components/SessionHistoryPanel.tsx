@@ -1,4 +1,4 @@
-import { BarChart3, Pencil, X } from "lucide-react";
+import { BarChart3, ChevronDown, ListTree, Pencil, X } from "lucide-react";
 import { Component, Fragment, lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { formatCurrency } from "../domain/money";
 import {
@@ -12,15 +12,22 @@ import {
   type PeopleDirectory,
   type PeopleResult
 } from "../domain/people";
-import { buildPlayerHistoryStats, type PlayerHistoryStat } from "../domain/sessionHistory";
+import {
+  buildPlayerHistoryStats,
+  groupPlayerHistory,
+  historyRowLabel,
+  type PlayerHistoryStat
+} from "../domain/sessionHistory";
 import { filterGamesByRange, HISTORY_RANGES, historyCurrencies, type HistoryRange } from "../domain/historyTrends";
 
+import { relinkArchivedPlayers } from "../state/archivedPlayerLinks";
 import { useArchivedGames } from "../state/useArchivedGames";
 import { canSavePeopleDirectory, updatePeopleDirectory } from "../state/peopleStore";
 import { createId } from "../state/seedGame";
 import { usePeopleDirectory } from "../state/usePeople";
 import type { RoomHistoryProjection } from "../session/types";
 import { buildPlayerSummaries } from "../domain/ledger";
+import { HistoryGameList } from "./HistoryGameList";
 
 // Charts (and the charting library) load on demand so they stay out of the main bundle.
 const HistoryTrends = lazy(() => import("./HistoryTrends"));
@@ -79,12 +86,20 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
     () => (effectiveRange === "all" ? allStats : buildPlayerHistoryStats(rangeGames, directory)),
     [allStats, directory, effectiveRange, rangeGames]
   );
+  // The games behind each row, for its game list.
+  const groupByKey = useMemo(
+    () => new Map(groupPlayerHistory(rangeGames, directory).map((group) => [group.key, group])),
+    [directory, rangeGames]
+  );
   const rangeCurrencies = useMemo(() => historyCurrencies(rangeGames), [rangeGames]);
   const rangeLabel = effectiveRange === "all" ? "" : `in the last ${HISTORY_RANGES.find((option) => option.value === effectiveRange)!.label.toLowerCase()}`;
   const [selected, setSelected] = useState<string[]>([]);
   const [mergeName, setMergeName] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ key: string; value: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
 
   const statByKey = new Map(stats.map((stat) => [stat.key, stat]));
   const selectedStats = selected.flatMap((key) => statByKey.get(key) ?? []);
@@ -108,6 +123,10 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
     return saved !== null;
   }
 
+  function toggleGames(key: string) {
+    setExpanded((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+  }
+
   function toggle(key: string) {
     setSelected((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
     setMergeName(null);
@@ -121,11 +140,32 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
     }
   }
 
-  function saveRename(stat: PlayerHistoryStat, value: string) {
+  async function saveRename(stat: PlayerHistoryStat, value: string) {
     const namesake = allStats.find((other) => other.key !== stat.key && nameKey(other.name) === nameKey(value));
     if (namesake) {
       // Renaming onto another row's name would quietly combine them; make that an explicit merge.
       setError(`${namesake.name} is already in Player History. If they are the same person, select both and merge them instead.`);
+      return;
+    }
+    if (stat.keptApart) {
+      // Its name belongs to someone else, so naming it links its games to a new person instead of claiming the name.
+      const entries = groupByKey.get(stat.key)?.entries ?? [];
+      setBusy(true);
+      try {
+        const result = await relinkArchivedPlayers(
+          entries.map((entry) => ({ gameId: entry.game.state.localGameId, playerId: entry.playerId })),
+          { kind: "new", name: value }
+        );
+        if ("error" in result) {
+          setError(result.error);
+          return;
+        }
+        setError(null);
+        setRenaming(null);
+        setStatus(`${historyRowLabel(stat)} is now ${value.trim()}.`);
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     const ok = apply((current, now) =>
@@ -142,6 +182,7 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
     setMergeName(null);
     setRenaming(null);
     setError(null);
+    setStatus(null);
   }
 
   return (
@@ -192,10 +233,14 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
           </p>
           {!managing && rangeGames.length === 0 ? <p className="muted">No games {rangeLabel}.</p> : null}
           {error ? <div className="notice notice-warning" role="alert">{error}</div> : null}
+          <p className="history-status" role="status">{status}</p>
           <div className="history-stat-list">
-            {stats.map((stat) => {
+            {stats.map((stat, rowIndex) => {
               const parts = managing && stat.personId ? mergedParts(directory, stat.personId) : [];
               const isRenaming = renaming?.key === stat.key;
+              const label = historyRowLabel(stat);
+              const isOpen = expanded.includes(stat.key);
+              const gamesId = `history-games-${rowIndex}`;
               return (
                 <div className={`history-stat-row ${managing ? "is-managing" : ""}`} key={stat.key}>
                   {managing ? (
@@ -203,13 +248,24 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                       <input
                         type="checkbox"
                         checked={selected.includes(stat.key)}
+                        // Merging by name would hand the name, and every game matched by it, to the merge.
+                        disabled={stat.keptApart}
                         onChange={() => toggle(stat.key)}
-                        aria-label={`Select ${stat.name}`}
+                        aria-label={`Select ${label}`}
                       />
-                      <strong>{stat.name}</strong>
+                      <strong>{label}</strong>
                     </label>
                   ) : (
-                    <strong>{stat.name}</strong>
+                    <button
+                      className="history-stat-name"
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-controls={isOpen ? gamesId : undefined}
+                      onClick={() => toggleGames(stat.key)}
+                    >
+                      <ChevronDown size={16} aria-hidden="true" />
+                      <strong>{label}</strong>
+                    </button>
                   )}
                   {stat.results.map((result, index) => (
                     // One line per currency; amounts in different currencies are never added up.
@@ -229,17 +285,17 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                           className="history-rename-form"
                           onSubmit={(event) => {
                             event.preventDefault();
-                            saveRename(stat, renaming.value);
+                            void saveRename(stat, renaming.value);
                           }}
                         >
                           <input
-                            aria-label={`New name for ${stat.name}`}
+                            aria-label={`New name for ${label}`}
                             autoFocus
                             maxLength={80}
                             value={renaming.value}
                             onChange={(event) => setRenaming({ key: stat.key, value: event.currentTarget.value })}
                           />
-                          <button className="primary-button" type="submit" disabled={!renaming.value.trim()}>
+                          <button className="primary-button" type="submit" disabled={busy || !renaming.value.trim()}>
                             Save
                           </button>
                           <button className="text-button" type="button" onClick={() => setRenaming(null)}>
@@ -248,6 +304,7 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                         </form>
                       ) : (
                         <>
+                          {stat.keptApart ? <span className="muted">Kept apart from {stat.name}; rename to make a new person.</span> : null}
                           {parts.length > 0 ? <span className="muted">Includes</span> : null}
                           {parts.map((part) => (
                             <span className="history-alias-chip" key={`${part.kind}:${part.personId}:${part.label}`}>
@@ -268,18 +325,41 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                               </button>
                             </span>
                           ))}
-                          <button
-                            className="text-button history-rename-button"
-                            type="button"
-                            aria-label={`Rename ${stat.name}`}
-                            onClick={() => setRenaming({ key: stat.key, value: stat.name })}
-                          >
-                            <Pencil size={14} aria-hidden="true" />
-                            Rename
-                          </button>
+                          <span className="history-manage-actions">
+                            <button
+                              className="text-button"
+                              type="button"
+                              aria-label={`Games for ${label}`}
+                              aria-expanded={isOpen}
+                              aria-controls={isOpen ? gamesId : undefined}
+                              onClick={() => toggleGames(stat.key)}
+                            >
+                              <ListTree size={14} aria-hidden="true" />
+                              Games
+                            </button>
+                            <button
+                              className="text-button"
+                              type="button"
+                              aria-label={`Rename ${label}`}
+                              onClick={() => setRenaming({ key: stat.key, value: stat.keptApart ? "" : stat.name })}
+                            >
+                              <Pencil size={14} aria-hidden="true" />
+                              Rename
+                            </button>
+                          </span>
                         </>
                       )}
                     </div>
+                  ) : null}
+                  {isOpen ? (
+                    <HistoryGameList
+                      id={gamesId}
+                      row={stat}
+                      entries={groupByKey.get(stat.key)?.entries ?? []}
+                      directory={directory}
+                      onSaved={setStatus}
+                      onError={setError}
+                    />
                   ) : null}
                 </div>
               );

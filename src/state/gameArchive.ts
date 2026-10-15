@@ -5,12 +5,13 @@
  * invalidated on local writes and on changes from other tabs.
  */
 import type { GameState } from "../domain/pokerTypes";
-import { parseArchivedEntry, type ArchivedGame } from "../domain/sessionHistory";
+import { archiveEntry, parseArchivedEntry, type ArchivedGame } from "../domain/sessionHistory";
 import {
   countArchiveRecords,
   migrateLegacyArchive,
   openArchiveDb,
   readArchiveRecords,
+  updateArchiveRecords,
   writeArchiveRecords,
   type ArchiveRecord,
   type IncomingEntry,
@@ -23,7 +24,8 @@ import {
   mergeLocalArchivedGames,
   quarantineUnreadableEntries,
   readLocalArchive,
-  releaseReadableEntryCopies
+  releaseReadableEntryCopies,
+  updateLocalArchivedGames
 } from "./gameArchiveLocal";
 import { linkGameToPeople } from "./peopleStore";
 import { QUARANTINE_CHANGED_EVENT } from "./storageQuarantine";
@@ -222,13 +224,15 @@ export async function hasArchivedGames(): Promise<boolean> {
 
 /** JSON round-trip: stores the same shape the old localStorage archive held. */
 function toEntry(game: ArchivedGame): IncomingEntry {
-  const entry = JSON.parse(JSON.stringify({ archivedAt: game.archivedAt, state: game.state })) as unknown;
-  return { entry, game };
+  return { entry: archiveEntry(game), game };
 }
 
-async function write(
-  games: ArchivedGame[],
-  policy: WritePolicy,
+/**
+ * Runs a write against the current backend; when it reports a change, this
+ * tab's cache is dropped and other tabs are told.
+ */
+async function commit(
+  writeIdb: (db: IDBDatabase) => Promise<boolean>,
   writeLocal: () => boolean
 ): Promise<boolean> {
   let backend: Backend;
@@ -243,8 +247,7 @@ async function write(
   } else {
     try {
       await migration;
-      await writeArchiveRecords(backend.db, games.map(toEntry), policy, MAX_ARCHIVED_GAMES, readRecord);
-      ok = true;
+      ok = await writeIdb(backend.db);
     } catch {
       ok = false;
     }
@@ -254,6 +257,13 @@ async function write(
     announceToOtherTabs(backend.kind);
   }
   return ok;
+}
+
+function write(games: ArchivedGame[], policy: WritePolicy, writeLocal: () => boolean): Promise<boolean> {
+  return commit(async (db) => {
+    await writeArchiveRecords(db, games.map(toEntry), policy, MAX_ARCHIVED_GAMES, readRecord);
+    return true;
+  }, writeLocal);
 }
 
 /**
@@ -270,6 +280,36 @@ export async function archiveGame(state: GameState): Promise<boolean> {
 /** Merges restored games into the archive, keeping the newest copy of each game. */
 export async function mergeArchivedGames(imported: ArchivedGame[]): Promise<boolean> {
   return write(imported, "newest", () => mergeLocalArchivedGames(imported));
+}
+
+/**
+ * Changes games already in Player History (for example relinking a player to
+ * another person). Only the listed games are rewritten, each with `editedAt`
+ * set so restoring an older backup does not undo the change. Resolves with
+ * the number of games changed, or null when the change could not be saved.
+ */
+export async function updateArchivedGames(
+  gameIds: string[],
+  update: (game: ArchivedGame) => ArchivedGame | null,
+  now = new Date()
+): Promise<number | null> {
+  const ids = new Set(gameIds);
+  const stamped = (game: ArchivedGame): ArchivedGame | null => {
+    const next = update(game);
+    return next ? { ...next, editedAt: now.toISOString() } : null;
+  };
+  let changed: number | null = null;
+  const announced = await commit(
+    async (db) => {
+      changed = await updateArchiveRecords(db, ids, stamped, readRecord);
+      return changed > 0;
+    },
+    () => {
+      changed = updateLocalArchivedGames(ids, stamped);
+      return (changed ?? 0) > 0;
+    }
+  );
+  return announced ? changed : changed === 0 ? 0 : null;
 }
 
 /** Test helper: forgets the open database, caches, and listeners. */

@@ -39,6 +39,13 @@ export type Player = {
    */
   personId?: string;
   /**
+   * People this player was explicitly marked as not being (set when a link is
+   * corrected in Player History). Without a usable personId, the exact
+   * name/alias match never links the player to these people (or anyone merged
+   * with them). Optional and additive like personId; unusable ids are dropped on load.
+   */
+  notPersonIds?: string[];
+  /**
    * Venmo username (without @) that settlement pay links send money to.
    * Optional and additive like personId; values this build cannot use are dropped on load.
    */

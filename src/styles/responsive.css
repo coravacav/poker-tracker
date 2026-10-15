@@ -171,6 +171,23 @@
     grid-template-columns: 1fr;
   }
 
+  .history-game {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .history-game-change {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .history-relink-actions {
+    flex: 1 1 100%;
+  }
+
+  .history-relink-actions .primary-button {
+    flex: 1;
+  }
+
   .app-header {
     align-items: stretch;
     flex-direction: column;

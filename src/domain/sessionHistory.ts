@@ -4,6 +4,7 @@ import {
   EMPTY_PEOPLE_DIRECTORY,
   identifyPlayer,
   indexPeople,
+  isNameClaimed,
   isPlaceholderName,
   nameKey,
   playerParticipated,
@@ -16,6 +17,12 @@ import { validatePersistedState } from "./validation";
 /** Storage and change notifications live in state/gameArchive.ts; this module stays pure. */
 export type ArchivedGame = {
   archivedAt: string;
+  /**
+   * When the game was last changed after it was archived (a player relinked in
+   * Player History). Restores keep whichever copy changed last
+   * (archiveRevisionMs). Optional and additive: older builds ignore it.
+   */
+  editedAt?: string;
   state: GameState;
 };
 
@@ -44,6 +51,8 @@ export type PlayerHistoryStat = {
   results: PlayerCurrencyResult[];
   /** Newest archive time among this row's games. */
   lastPlayedAt: string;
+  /** Set on name rows whose name belongs to a person its players were marked as not being. */
+  keptApart?: true;
 };
 
 /** Validates and migrates one stored archive entry; null when this build cannot read it. */
@@ -51,11 +60,28 @@ export function parseArchivedEntry(entry: unknown): ArchivedGame | null {
   if (!entry || typeof entry !== "object") return null;
   const candidate = entry as { archivedAt?: unknown; state?: unknown };
   if (typeof candidate.archivedAt !== "string" || !validatePersistedState(candidate.state)) return null;
+  const editedAt = (entry as { editedAt?: unknown }).editedAt;
   try {
-    return { archivedAt: candidate.archivedAt, state: migratePersistedState(candidate.state) };
+    return {
+      archivedAt: candidate.archivedAt,
+      // Optional: an unusable time is dropped rather than skipping the game.
+      ...(typeof editedAt === "string" && Number.isFinite(Date.parse(editedAt)) ? { editedAt } : {}),
+      state: migratePersistedState(candidate.state)
+    };
   } catch {
     return null;
   }
+}
+
+/** The plain JSON an archived game is stored and backed up as. */
+export function archiveEntry(game: ArchivedGame): unknown {
+  return JSON.parse(
+    JSON.stringify({
+      archivedAt: game.archivedAt,
+      ...(game.editedAt ? { editedAt: game.editedAt } : {}),
+      state: game.state
+    })
+  ) as unknown;
 }
 
 export function parseArchivedGames(value: unknown): ArchivedGame[] {
@@ -66,6 +92,16 @@ export function parseArchivedGames(value: unknown): ArchivedGame[] {
 /** Epoch milliseconds of an archive timestamp; 0 when it is missing or unparseable. */
 export function archivedAtMs(archivedAt: unknown): number {
   return typeof archivedAt === "string" ? Date.parse(archivedAt) || 0 : 0;
+}
+
+/**
+ * When a stored entry (or game) last changed: archived, or edited afterwards.
+ * Restores and merges keep the copy with the later revision.
+ */
+export function archiveRevisionMs(entry: unknown): number {
+  if (!entry || typeof entry !== "object") return 0;
+  const { archivedAt, editedAt } = entry as { archivedAt?: unknown; editedAt?: unknown };
+  return Math.max(archivedAtMs(archivedAt), archivedAtMs(editedAt));
 }
 
 /**
@@ -107,6 +143,9 @@ export function currencyResult(currencyCode: CurrencyCode, results: number[]): P
 /** One player's net result in one archived game, as grouped into a history row. */
 export type PlayerGameEntry = {
   game: ArchivedGame;
+  playerId: string;
+  /** The name the player had in that game. */
+  playerName: string;
   currencyCode: CurrencyCode;
   netCents: number;
 };
@@ -119,6 +158,7 @@ export type PlayerHistoryGroup = {
   /** In the order the games were given. */
   entries: PlayerGameEntry[];
   lastPlayedAt: string;
+  keptApart?: true;
 };
 
 /**
@@ -154,6 +194,8 @@ export function groupPlayerHistory(
       };
       current.entries.push({
         game,
+        playerId: player.id,
+        playerName: player.name.trim(),
         currencyCode: game.state.settings.currencyCode,
         netCents: summaryById.get(player.id)?.netCents ?? 0
       });
@@ -166,7 +208,14 @@ export function groupPlayerHistory(
       values.set(key, current);
     }
   }
-  return [...values.values()].map(({ lastPlayedMs: _lastPlayedMs, ...group }) => group);
+  return [...values.values()].map(({ lastPlayedMs: _lastPlayedMs, ...group }) =>
+    !group.personId && isNameClaimed(index, group.name) ? { ...group, keptApart: true as const } : group
+  );
+}
+
+/** How a history row is shown: rows kept apart from the person with their name say so. */
+export function historyRowLabel(row: { name: string; keptApart?: true }): string {
+  return row.keptApart ? `${row.name} (unlinked)` : row.name;
 }
 
 /**
@@ -182,7 +231,7 @@ export function buildPlayerHistoryStats(
   const mainTotal = (stat: PlayerHistoryStat): number | null =>
     stat.results[0]?.currencyCode === mainCurrency ? stat.results[0].totalNetCents : null;
 
-  return groupPlayerHistory(games, directory).map(({ key, personId, name, entries, lastPlayedAt }): PlayerHistoryStat => {
+  return groupPlayerHistory(games, directory).map(({ key, personId, name, entries, lastPlayedAt, keptApart }): PlayerHistoryStat => {
     const results = new Map<CurrencyCode, number[]>();
     for (const entry of entries) {
       const values = results.get(entry.currencyCode) ?? [];
@@ -203,7 +252,8 @@ export function buildPlayerHistoryStats(
       name,
       games: byCurrency.reduce((total, result) => total + result.games, 0),
       results: byCurrency,
-      lastPlayedAt
+      lastPlayedAt,
+      ...(keptApart ? { keptApart } : {})
     };
   }).sort((left, right) => {
     const leftTotal = mainTotal(left);
@@ -242,7 +292,8 @@ export function buildPersonSuggestions(
     )
   ];
   const ranked = [...stats]
-    .filter((stat) => stat.personId || !isPlaceholderName(stat.name))
+    // Rows kept apart from the person with their name would only link that person again.
+    .filter((stat) => stat.personId || (!isPlaceholderName(stat.name) && !stat.keptApart))
     .sort(
       (left, right) =>
         archivedAtMs(right.lastPlayedAt) - archivedAtMs(left.lastPlayedAt) ||

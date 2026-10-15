@@ -4,7 +4,7 @@
  * old localStorage array stored it ({ archivedAt, state }), so entries this
  * build cannot read are stored and moved around untouched.
  */
-import { archivedAtMs, type ArchivedGame } from "../domain/sessionHistory";
+import { archiveEntry, archiveRevisionMs, archivedAtMs, type ArchivedGame } from "../domain/sessionHistory";
 import { GAME_ARCHIVE_KEY } from "./gameArchiveLocal";
 import { fingerprintRaw, quarantineRaw, reasonForInvalid } from "./storageQuarantine";
 import { CURRENT_SCHEMA_VERSION } from "./persistence";
@@ -30,8 +30,9 @@ export type IncomingEntry = { entry: unknown; game: ArchivedGame | null };
 
 /**
  * "replace": a readable incoming game always replaces the stored copy (re-archiving).
- * "newest": the stored copy is kept unless the incoming one is strictly newer
- * (restoring backups and migrating, which may run more than once).
+ * "newest": the stored copy is kept unless the incoming one is strictly newer,
+ * comparing when each was archived or last edited (restoring backups and
+ * migrating, which may run more than once).
  */
 export type WritePolicy = "replace" | "newest";
 
@@ -154,6 +155,46 @@ export async function writeArchiveRecords(
   await done;
 }
 
+/**
+ * Changes stored games in one readwrite transaction, so a write from another
+ * tab cannot land between reading and writing. `update` gets the copy of each
+ * listed game that readers show (the newest readable record) and returns its
+ * replacement, or null to leave it alone. No other record is touched.
+ * Resolves with the number of games changed once the transaction commits.
+ */
+export async function updateArchiveRecords(
+  db: IDBDatabase,
+  gameIds: ReadonlySet<string>,
+  update: (game: ArchivedGame) => ArchivedGame | null,
+  readRecord: ReadRecord
+): Promise<number> {
+  const transaction = db.transaction(ARCHIVE_STORE, "readwrite");
+  const done = transactionDone(transaction);
+  const store = transaction.objectStore(ARCHIVE_STORE);
+  const request = store.index(ARCHIVED_AT_INDEX).getAll() as IDBRequest<ArchiveRecord[]>;
+  let changed = 0;
+  request.onsuccess = () => {
+    try {
+      const seen = new Set<string>();
+      // Newest first, as readArchiveRecords returns them.
+      for (const record of request.result.reverse()) {
+        const game = readRecord(record);
+        const gameId = game?.state.localGameId;
+        if (!game || !gameId || !gameIds.has(gameId) || seen.has(gameId)) continue;
+        seen.add(gameId);
+        const next = update(game);
+        if (!next || next.state.localGameId !== gameId) continue;
+        store.put({ id: record.id, archivedAt: archivedAtMs(next.archivedAt), rev: newRev(), entry: archiveEntry(next) });
+        changed += 1;
+      }
+    } catch {
+      transaction.abort();
+    }
+  };
+  await done;
+  return changed;
+}
+
 // --- Planning ----------------------------------------------------------------
 
 let revCounter = 0;
@@ -222,7 +263,7 @@ export function planArchiveWrite(
       set(record, true);
       continue;
     }
-    if (policy === "replace" || record.archivedAt > current.archivedAt) set(record, true);
+    if (policy === "replace" || archiveRevisionMs(item.entry) > archiveRevisionMs(current.entry)) set(record, true);
   }
 
   const isReadable = (record: ArchiveRecord) =>

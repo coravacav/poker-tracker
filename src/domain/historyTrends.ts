@@ -10,6 +10,7 @@ import {
   currencyResult,
   groupPlayerHistory,
   historyMainCurrency,
+  historyRowLabel,
   type ArchivedGame,
   type PlayerCurrencyResult
 } from "./sessionHistory";
@@ -102,9 +103,9 @@ export function buildPersonTimelines(
   currencyCode: CurrencyCode
 ): PersonTimeline[] {
   return groupPlayerHistory(games, directory)
-    .map(({ key, name, entries }): PersonTimeline => ({
+    .map(({ key, name, keptApart, entries }): PersonTimeline => ({
       key,
-      name,
+      name: historyRowLabel({ name, keptApart }),
       results: entries
         .filter((entry) => entry.currencyCode === currencyCode)
         .map((entry) => ({

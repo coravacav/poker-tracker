@@ -89,8 +89,9 @@ describe("Player History over time", () => {
     const chart = await renderHistory([game(3, { Alex: -100, Blair: 100, Casey: 0 }), game(2, { Alex: -100, Blair: 100 })]);
     const colorOf = (name: string) => within(chart).getByText(new RegExp(`^${name} `)).getAttribute("data-color");
     const casey = colorOf("Casey");
-    fireEvent.click(screen.getByRole("button", { name: /^Blair/ }));
-    expect(screen.getByRole("button", { name: /^Blair/ })).toHaveAttribute("aria-pressed", "false");
+    const toggles = screen.getByRole("group", { name: "Players on the chart" });
+    fireEvent.click(within(toggles).getByRole("button", { name: /^Blair/ }));
+    expect(within(toggles).getByRole("button", { name: /^Blair/ })).toHaveAttribute("aria-pressed", "false");
     expect(within(chart).queryByText(/^Blair /)).not.toBeInTheDocument();
     expect(colorOf("Casey")).toBe(casey);
   });

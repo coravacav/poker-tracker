@@ -84,9 +84,123 @@
   background: var(--red-soft);
 }
 
-.history-rename-button {
-  min-height: 36px;
+.history-manage-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-left: auto;
+}
+
+.history-manage-actions .text-button {
+  min-height: 36px;
+}
+
+.history-stat-name {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-self: start;
+  min-width: 0;
+  min-height: 36px;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 4px 2px 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.history-stat-name svg {
+  flex: none;
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.history-stat-name[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.history-stat-name:hover strong {
+  text-decoration: underline;
+}
+
+.history-status:empty {
+  display: none;
+}
+
+.history-status {
+  margin: 0 0 8px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.history-games {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+}
+
+.history-game-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-game {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 4px 12px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 4px 0;
+}
+
+.history-game-summary {
+  display: grid;
+  min-width: 0;
+}
+
+.history-game-name {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-game-change {
+  min-height: 36px;
+}
+
+.history-relink-form {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 8px;
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-alt);
+}
+
+.history-relink-form label {
+  display: grid;
+  flex: 1 1 200px;
+  gap: 4px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.history-relink-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.history-relink-note {
+  flex: 1 1 100%;
+  margin: 0;
 }
 
 .history-rename-form {

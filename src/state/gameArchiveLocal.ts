@@ -4,7 +4,7 @@
  * usable IndexedDB, and the source of the one-time migration into IndexedDB.
  */
 import type { GameState } from "../domain/pokerTypes";
-import { archivedAtMs, parseArchivedEntry, type ArchivedGame } from "../domain/sessionHistory";
+import { archiveEntry, archiveRevisionMs, archivedAtMs, parseArchivedEntry, type ArchivedGame } from "../domain/sessionHistory";
 import { CURRENT_SCHEMA_VERSION } from "./persistence";
 import {
   QUARANTINE_PREFIX,
@@ -145,7 +145,7 @@ export function mergeLocalArchivedGames(imported: ArchivedGame[]): boolean {
   const archive = readLocalArchive();
   for (const game of [...archive.games, ...imported]) {
     const current = byGameId.get(game.state.localGameId);
-    if (!current || Date.parse(game.archivedAt) > Date.parse(current.archivedAt)) {
+    if (!current || archiveRevisionMs(game) > archiveRevisionMs(current)) {
       byGameId.set(game.state.localGameId, game);
     }
   }
@@ -159,4 +159,48 @@ export function archiveLocalGame(state: GameState, archivedAt: string): boolean 
   const archive = readLocalArchive();
   const existing = archive.games.filter((game) => game.state.localGameId !== state.localGameId);
   return writeLocalArchive(archive, [{ archivedAt, state }, ...existing]);
+}
+
+/**
+ * Changes the listed games in place (see updateArchiveRecords); every other
+ * stored entry, readable or not, is written back exactly as it was. Null when
+ * the archive could not be read or saved.
+ */
+export function updateLocalArchivedGames(
+  gameIds: ReadonlySet<string>,
+  update: (game: ArchivedGame) => ArchivedGame | null
+): number | null {
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(GAME_ARCHIVE_KEY);
+  } catch {
+    return null;
+  }
+  if (raw === null) return 0;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(value)) return null;
+  const seen = new Set<string>();
+  let changed = 0;
+  const entries = value.map((entry: unknown) => {
+    const game = parseArchivedEntry(entry);
+    const gameId = game?.state.localGameId;
+    if (!game || !gameId || !gameIds.has(gameId) || seen.has(gameId)) return entry;
+    seen.add(gameId);
+    const next = update(game);
+    if (!next || next.state.localGameId !== gameId) return entry;
+    changed += 1;
+    return archiveEntry(next);
+  });
+  if (changed === 0) return 0;
+  try {
+    localStorage.setItem(GAME_ARCHIVE_KEY, JSON.stringify(entries));
+  } catch {
+    return null;
+  }
+  return changed;
 }

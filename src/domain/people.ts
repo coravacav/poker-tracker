@@ -8,7 +8,10 @@
  *
  * Merges are reversible: a merged person keeps its record and points at the
  * person it was merged into (`mergedIntoId`), and merged-in legacy names are
- * kept as aliases that can be separated again. This module is pure.
+ * kept as aliases that can be separated again. A wrong link in one archived
+ * game is corrected on that game's player (relinkPlayer): the player is linked
+ * elsewhere, or unlinked and marked `notPersonIds` so the name rule cannot
+ * link it back. This module is pure.
  */
 import { hasPlayerTransactions } from "./ledger";
 import type { GameState, Player, Transaction } from "./pokerTypes";
@@ -269,6 +272,28 @@ export function resolvePersonForName(
 
 export type PlayerIdentity = { personId: string } | { nameKey: string };
 
+/**
+ * Whether the player was marked as not being this person, or anyone merged
+ * with them (the marks follow later merges and separations).
+ */
+export function isExcludedPerson(
+  index: PeopleIndex,
+  player: Pick<Player, "notPersonIds">,
+  personId: string
+): boolean {
+  if (!player.notPersonIds?.length) return false;
+  const root = index.rootId(personId) ?? personId;
+  return player.notPersonIds.some((id) => id === personId || (index.rootId(id) ?? id) === root);
+}
+
+/** The person an exact name/alias match links this player to, unless it is marked as not them. */
+function nameMatchFor(index: PeopleIndex, player: Player): string | null {
+  if (isPlaceholderName(player.name)) return null;
+  const match = index.lookupName(player.name);
+  if (match.kind !== "match") return null;
+  return isExcludedPerson(index, player, match.personId) ? null : match.personId;
+}
+
 /** The history row a player of an archived game belongs to; null for blank names. */
 export function identifyPlayer(index: PeopleIndex, player: Player): PlayerIdentity | null {
   if (player.personId) {
@@ -277,11 +302,77 @@ export function identifyPlayer(index: PeopleIndex, player: Player): PlayerIdenti
   }
   const key = nameKey(player.name);
   if (!key) return null;
-  if (!isPlaceholderName(player.name)) {
-    const match = index.lookupName(player.name);
-    if (match.kind === "match") return { personId: index.rootId(match.personId) ?? match.personId };
-  }
+  const match = nameMatchFor(index, player);
+  if (match) return { personId: index.rootId(match) ?? match };
   return { nameKey: key };
+}
+
+/**
+ * Whether a name row's name belongs to a person, so the row only exists
+ * because its players were marked as not that person. Merging such a row by
+ * name would hand the name (and every other game matched by it) to the merge.
+ */
+export function isNameClaimed(index: PeopleIndex, name: string): boolean {
+  return !isPlaceholderName(name) && index.lookupName(name).kind === "match";
+}
+
+/** Most "not this person" marks kept per player; the oldest are dropped first. */
+export const MAX_NOT_PERSON_IDS = 20;
+
+/** Usable, deduped "not this person" marks; undefined when there are none. */
+export function cleanNotPersonIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ids = [...new Set(value.filter(isValidPersonId))].slice(-MAX_NOT_PERSON_IDS);
+  return ids.length > 0 ? ids : undefined;
+}
+
+/**
+ * Corrects which person an archived game's player counts for.
+ * "unlink": the player is not `personId` (a history row's person); the link is
+ * dropped and the person is marked so the name cannot match them again.
+ * "link": the player is `personId`; marks against that person are cleared and,
+ * when moved away from another row's person (`fromPersonId`), that person is marked.
+ */
+export type PlayerLinkChange =
+  | { kind: "unlink"; personId: string }
+  | { kind: "link"; personId: string; fromPersonId?: string };
+
+export function relinkPlayer(player: Player, change: PlayerLinkChange, directory: PeopleDirectory): Player {
+  const index = indexPeople(directory);
+  const rootOf = (id: string) => index.rootId(id) ?? id;
+  const { personId: currentId, notPersonIds: currentMarks, ...rest } = player;
+  let marks = [...(currentMarks ?? [])];
+  const mark = (id: string) => {
+    if (isValidPersonId(id) && !marks.includes(id)) marks.push(id);
+  };
+  let personId: string | undefined;
+  if (change.kind === "unlink") {
+    mark(change.personId);
+    // A link to someone merged into that person is marked too, so separating them later changes nothing.
+    if (currentId && index.rootId(currentId) === rootOf(change.personId)) mark(currentId);
+  } else {
+    const target = rootOf(change.personId);
+    marks = marks.filter((id) => id !== change.personId && rootOf(id) !== target);
+    if (change.fromPersonId && rootOf(change.fromPersonId) !== target) mark(change.fromPersonId);
+    personId = change.personId;
+  }
+  const notPersonIds = cleanNotPersonIds(marks);
+  return { ...rest, ...(personId ? { personId } : {}), ...(notPersonIds ? { notPersonIds } : {}) };
+}
+
+/** The game with one player's link corrected; null when the player is missing or nothing changes. */
+export function relinkGamePlayer(
+  state: GameState,
+  playerId: string,
+  change: PlayerLinkChange,
+  directory: PeopleDirectory
+): GameState | null {
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player) return null;
+  const next = relinkPlayer(player, change, directory);
+  const sameMarks = (next.notPersonIds ?? []).join(" ") === (player.notPersonIds ?? []).join(" ");
+  if (next.personId === player.personId && sameMarks) return null;
+  return { ...state, players: state.players.map((candidate) => (candidate.id === playerId ? next : candidate)) };
 }
 
 function nameConflict(index: PeopleIndex, name: string, allowedRoots: Set<string>): string | null {
@@ -541,6 +632,8 @@ export function linkGamePlayers(
     const match = index.lookupName(name);
     if (match.kind === "ambiguous") return player;
     if (match.kind === "match") {
+      // Marked as not that person: the name is taken, so no new person either.
+      if (isExcludedPerson(index, player, match.personId)) return player;
       changed = true;
       return { ...player, personId: match.personId };
     }

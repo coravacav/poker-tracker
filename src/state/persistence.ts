@@ -11,7 +11,7 @@ import {
   normalizeSeatPlacements
 } from "../domain/tableLayout";
 import { normalizeLegacyPlayerTransactions } from "../domain/playerTransactions";
-import { isValidPersonId } from "../domain/people";
+import { cleanNotPersonIds, isValidPersonId } from "../domain/people";
 import { sanitizeSettlementPins } from "../domain/settlement";
 import { normalizeVenmoHandle } from "../domain/venmo";
 import {
@@ -159,6 +159,28 @@ function withUsablePersonIds(state: GameState): GameState {
 }
 
 /**
+ * Player.notPersonIds is optional and additive like personId: validation
+ * ignores it, and anything but a list of usable person ids is dropped here.
+ */
+function withUsableNotPersonIds(state: GameState): GameState {
+  const usable = (player: Player) => {
+    if (player.notPersonIds === undefined) return true;
+    const cleaned = cleanNotPersonIds(player.notPersonIds);
+    return cleaned !== undefined && cleaned.join(" ") === player.notPersonIds.join(" ");
+  };
+  if (state.players.every(usable)) return state;
+  return {
+    ...state,
+    players: state.players.map((player) => {
+      if (usable(player)) return player;
+      const { notPersonIds: raw, ...rest } = player;
+      const notPersonIds = cleanNotPersonIds(raw);
+      return notPersonIds ? { ...rest, notPersonIds } : rest;
+    })
+  };
+}
+
+/**
  * Player.venmoHandle is optional and additive like personId: validation
  * ignores it, and values this build cannot use as a Venmo username are dropped.
  */
@@ -189,7 +211,9 @@ function withUsableSettlementPins(state: GameState): GameState {
 }
 
 export function migratePersistedState(state: AnyPersistedGameState): GameState {
-  return withUsableSettlementPins(withUsableVenmoHandles(withUsablePersonIds(migrateSchema(state))));
+  return withUsableSettlementPins(
+    withUsableVenmoHandles(withUsableNotPersonIds(withUsablePersonIds(migrateSchema(state))))
+  );
 }
 
 function migrateSchema(state: AnyPersistedGameState): GameState {
