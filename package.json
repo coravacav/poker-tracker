@@ -23,7 +23,6 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@tanstack/charts": "^1.1.0",
-    "@tanstack/react-charts": "^1.1.0",
     "convex": "^1.44.0",
     "d3-scale": "^4.0.2",
     "lucide-react": "^0.468.0",

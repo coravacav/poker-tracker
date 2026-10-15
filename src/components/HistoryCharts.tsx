@@ -14,7 +14,7 @@ import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { scaleOrdinal } from "@tanstack/charts/scales/ordinal";
 import { defineChart } from "@tanstack/charts/scene";
 import { tooltip } from "@tanstack/charts/tooltip";
-import { Chart } from "@tanstack/react-charts";
+import { Chart } from "@tanstack/charts/react";
 import { scaleTime } from "d3-scale";
 import type { CumulativePoint, PersonGameResult } from "../domain/historyTrends";
 import { formatCurrency, type CurrencyCode } from "../domain/money";
