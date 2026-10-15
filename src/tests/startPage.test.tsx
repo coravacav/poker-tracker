@@ -73,9 +73,12 @@ describe("local start page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start new game" }));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "Game Setup" })).toBeInTheDocument());
+    // The fresh game is saved by an effect that can run just after the heading renders.
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null").localGameId).not.toBe(state.localGameId)
+    );
     const nextState = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     const archive = await loadArchivedGames();
-    expect(nextState.localGameId).not.toBe(state.localGameId);
     expect(nextState.transactions).toHaveLength(0);
     expect(localStorage.getItem(GAME_ARCHIVE_KEY)).toBeNull();
     expect(archive).toHaveLength(1);
