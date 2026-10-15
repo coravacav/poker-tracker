@@ -16,6 +16,7 @@ import { createDefaultGameState } from "../src/state/seedGame";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { MAX_ACTIVE_ROOMS } from "./lib/creationLimits";
+import { MAX_ROOMS_PER_BATCH } from "./lib/roomLifecycle";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/!(*.*.*)*.*s");
@@ -432,14 +433,18 @@ describe("old guest record cleanup", () => {
       requests: 70
     });
 
-    const first = await test.mutation(internal.rooms.pruneOldGuestRecords, {});
-    // One run touches at most five rooms per status and 25 records per kind per room.
-    expect(first.deletedGuests).toBeLessThanOrEqual(10 * 25);
-    expect(first.deletedRequests).toBeLessThanOrEqual(10 * 25);
-    const heavyAfterFirst = await guestRecords(test, heavy.roomId);
-    expect(heavyAfterFirst.prunedAt).toBeUndefined();
-    expect(heavyAfterFirst.revokedGuests).toBe(35);
-    expect(heavyAfterFirst.requests).toBe(45);
+    const first = await test.mutation(internal.rooms.runRoomLifecycle, {});
+    // One batch visits a bounded number of rooms, oldest first, then hands off
+    // to a continuation.
+    expect(first.roomsVisited).toBeLessThanOrEqual(MAX_ROOMS_PER_BATCH);
+    expect(first.continues).toBe(true);
+    expect(await guestRecords(test, heavy.roomId)).toEqual({
+      goodGuests: 1,
+      revokedGuests: 0,
+      requests: 0,
+      prunedAt: expect.any(Number)
+    });
+    expect((await guestRecords(test, rooms[rooms.length - 1]!.roomId)).prunedAt).toBeUndefined();
 
     await test.finishAllScheduledFunctions(vi.runAllTimers);
     for (const room of [...rooms, heavy]) {
@@ -452,7 +457,16 @@ describe("old guest record cleanup", () => {
     }
 
     // Fully cleaned rooms are skipped, so a later run finds nothing to do.
-    const idle = await test.mutation(internal.rooms.pruneOldGuestRecords, {});
-    expect(idle).toEqual({ deletedGuests: 0, deletedRequests: 0 });
+    const idle = await test.mutation(internal.rooms.runRoomLifecycle, {});
+    expect(idle).toMatchObject({
+      outcome: "ran",
+      continues: false,
+      roomsVisited: 0,
+      deletedGuests: 0,
+      deletedRequests: 0
+    });
+    // The deprecated entry point still resolves and runs the same job.
+    const legacy = await test.mutation(internal.rooms.pruneOldGuestRecords, {});
+    expect(legacy).toMatchObject({ outcome: "ran", continues: false, deletedGuests: 0 });
   });
 });

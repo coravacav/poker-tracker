@@ -13,6 +13,7 @@ import type * as friendProfiles from "../friendProfiles.js";
 import type * as lib_capabilities from "../lib/capabilities.js";
 import type * as lib_creationLimits from "../lib/creationLimits.js";
 import type * as lib_friendDiscovery from "../lib/friendDiscovery.js";
+import type * as lib_roomLifecycle from "../lib/roomLifecycle.js";
 import type * as rooms from "../rooms.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   "lib/capabilities": typeof lib_capabilities;
   "lib/creationLimits": typeof lib_creationLimits;
   "lib/friendDiscovery": typeof lib_friendDiscovery;
+  "lib/roomLifecycle": typeof lib_roomLifecycle;
   rooms: typeof rooms;
 }>;
 

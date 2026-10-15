@@ -32,6 +32,7 @@ import {
   syncFriendRoomListing,
   verifyProfileOwner
 } from "./lib/friendDiscovery";
+import { lifecycleBatchResultValidator, runLifecycleBatch } from "./lib/roomLifecycle";
 import { parseFriendCode } from "../src/session/friendCode";
 
 const presence = new Presence(components.presence);
@@ -1379,159 +1380,41 @@ export const end = mutation({
   }
 });
 
-const ACTIVE_ROOM_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
-const ENDED_DETAIL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-const CLEANUP_BATCH_SIZE = 10;
-const CLEANUP_DOCUMENTS_PER_ROOM = 25;
-// Room documents can be large (bounded game snapshots), so guest cleanup reads
-// few rooms per transaction and runs in its own transaction chain.
-const GUEST_CLEANUP_ROOMS_PER_STATUS = 5;
+async function runLifecycleBatchAndContinue(ctx: MutationCtx, chainId: string | undefined) {
+  const result = await runLifecycleBatch(ctx, chainId);
+  if (result.continues && result.chainId !== null) {
+    await ctx.scheduler.runAfter(0, internal.rooms.runRoomLifecycle, {
+      continuation: true,
+      chainId: result.chainId
+    });
+  }
+  return result;
+}
 
+/**
+ * Daily room maintenance (expiry, detail pruning, guest-record pruning) as a
+ * chain of budgeted batches; see convex/lib/roomLifecycle.ts for the limits
+ * math and the lease that keeps a single chain running. `continuation` is
+ * accepted for continuations scheduled before chains carried a `chainId`;
+ * without a `chainId` a call starts a chain unless one is already live.
+ */
 export const runRoomLifecycle = internalMutation({
-  args: { continuation: v.optional(v.boolean()) },
-  returns: v.object({ expiredRooms: v.number(), prunedDocuments: v.number() }),
+  args: { continuation: v.optional(v.boolean()), chainId: v.optional(v.string()) },
+  returns: lifecycleBatchResultValidator,
   handler: async (ctx, args) => {
-    const now = Date.now();
-    const staleActiveRooms = await ctx.db
-      .query("rooms")
-      .withIndex("by_status_and_last_activity_at", (index) =>
-        index.eq("status", "active").lt("lastActivityAt", now - ACTIVE_ROOM_IDLE_MS)
-      )
-      .take(CLEANUP_BATCH_SIZE);
-    for (const room of staleActiveRooms) {
-      await ctx.db.patch(room._id, { status: "expired", endedAt: now, lastActivityAt: now });
-      await releaseActiveRoomSlot(ctx, room);
-      if (room.hostProfileId) {
-        await syncFriendRoomListing(ctx, { ...room, status: "expired" });
-        await clearLegacyActiveRoom(ctx, room, now);
-      }
-    }
-
-    // Only rooms whose details have not been fully pruned are selected, so
-    // each run makes progress instead of revisiting the oldest rooms forever.
-    const roomsToPrune: Doc<"rooms">[] = [];
-    let morePruningPending = false;
-    for (const status of ["ended", "expired"] as const) {
-      const batch = await ctx.db
-        .query("rooms")
-        .withIndex("by_status_and_details_pruned_at_and_last_activity_at", (index) =>
-          index
-            .eq("status", status)
-            .eq("detailsPrunedAt", undefined)
-            .lt("lastActivityAt", now - ENDED_DETAIL_RETENTION_MS)
-        )
-        .take(CLEANUP_BATCH_SIZE);
-      if (batch.length === CLEANUP_BATCH_SIZE) morePruningPending = true;
-      roomsToPrune.push(...batch);
-    }
-
-    let prunedDocuments = 0;
-    for (const room of roomsToPrune) {
-      const processed = await ctx.db
-        .query("processedActions")
-        .withIndex("by_room_id_and_client_action_id", (index) => index.eq("roomId", room._id))
-        .take(CLEANUP_DOCUMENTS_PER_ROOM);
-      const events = await ctx.db
-        .query("roomAuditEvents")
-        .withIndex("by_room_id_and_created_at", (index) => index.eq("roomId", room._id))
-        .take(CLEANUP_DOCUMENTS_PER_ROOM);
-      const cursors = await ctx.db
-        .query("roomNotificationCursors")
-        .withIndex("by_room_id_and_recipient_key", (index) => index.eq("roomId", room._id))
-        .take(CLEANUP_DOCUMENTS_PER_ROOM);
-      for (const document of [...processed, ...events, ...cursors]) {
-        await ctx.db.delete(document._id);
-        prunedDocuments += 1;
-      }
-      const roomFullyPruned = [processed, events, cursors].every(
-        (batch) => batch.length < CLEANUP_DOCUMENTS_PER_ROOM
-      );
-      if (roomFullyPruned) {
-        await ctx.db.patch(room._id, { detailsPrunedAt: now });
-      } else {
-        morePruningPending = true;
-      }
-    }
-
-    // Keep going until the backlog is cleared so stale rooms do not remain
-    // active (and discoverable by followers) beyond the idle window.
-    if (staleActiveRooms.length === CLEANUP_BATCH_SIZE || morePruningPending) {
-      await ctx.scheduler.runAfter(0, internal.rooms.runRoomLifecycle, { continuation: true });
-    }
-    // The daily run (not its continuations) starts one guest-record cleanup
-    // chain, which reschedules itself until its own backlog is drained.
-    if (args.continuation !== true) {
-      await ctx.scheduler.runAfter(0, internal.rooms.pruneOldGuestRecords, {});
-    }
-    return { expiredRooms: staleActiveRooms.length, prunedDocuments };
+    return await runLifecycleBatchAndContinue(ctx, args.chainId);
   }
 });
 
 /**
- * For rooms ended or expired more than 30 days ago, deletes revoked guest
- * sessions and every guest request (approved, rejected, or still pending and
- * therefore expired with the room). Good-standing guest sessions are kept so
- * guests can still review the ended room from their device. Each room is
- * marked with `guestRecordsPrunedAt` once drained, so every run makes
- * progress; the job reschedules itself while a backlog remains.
+ * Deprecated: guest-record pruning is now part of `runRoomLifecycle`. Kept so
+ * runs scheduled before that change still resolve; it starts (or defers to)
+ * the lifecycle chain.
  */
 export const pruneOldGuestRecords = internalMutation({
   args: {},
-  returns: v.object({ deletedGuests: v.number(), deletedRequests: v.number() }),
+  returns: lifecycleBatchResultValidator,
   handler: async (ctx) => {
-    const now = Date.now();
-    const roomsToClean: Doc<"rooms">[] = [];
-    let morePending = false;
-    for (const status of ["ended", "expired"] as const) {
-      const batch = await ctx.db
-        .query("rooms")
-        .withIndex("by_status_and_guest_records_pruned_at_and_last_activity_at", (index) =>
-          index
-            .eq("status", status)
-            .eq("guestRecordsPrunedAt", undefined)
-            .lt("lastActivityAt", now - ENDED_DETAIL_RETENTION_MS)
-        )
-        .take(GUEST_CLEANUP_ROOMS_PER_STATUS);
-      if (batch.length === GUEST_CLEANUP_ROOMS_PER_STATUS) morePending = true;
-      roomsToClean.push(...batch);
-    }
-
-    let deletedGuests = 0;
-    let deletedRequests = 0;
-    for (const room of roomsToClean) {
-      const requests = await ctx.db
-        .query("roomGuestRequests")
-        .withIndex("by_room_id_and_status", (index) => index.eq("roomId", room._id))
-        .take(CLEANUP_DOCUMENTS_PER_ROOM);
-      // Index range excludes good-standing guests (revokedAt undefined sorts
-      // before every number), so they are never read or touched.
-      const revokedGuests = await ctx.db
-        .query("roomGuests")
-        .withIndex("by_room_id_and_revoked_at", (index) =>
-          index.eq("roomId", room._id).gte("revokedAt", 0)
-        )
-        .take(CLEANUP_DOCUMENTS_PER_ROOM);
-      for (const request of requests) {
-        await ctx.db.delete(request._id);
-        deletedRequests += 1;
-      }
-      for (const guest of revokedGuests) {
-        await ctx.db.delete(guest._id);
-        deletedGuests += 1;
-      }
-      if (
-        requests.length < CLEANUP_DOCUMENTS_PER_ROOM &&
-        revokedGuests.length < CLEANUP_DOCUMENTS_PER_ROOM
-      ) {
-        await ctx.db.patch(room._id, { guestRecordsPrunedAt: now });
-      } else {
-        morePending = true;
-      }
-    }
-
-    if (morePending) {
-      await ctx.scheduler.runAfter(0, internal.rooms.pruneOldGuestRecords, {});
-    }
-    return { deletedGuests, deletedRequests };
+    return await runLifecycleBatchAndContinue(ctx, undefined);
   }
 });

@@ -48,6 +48,15 @@ export default defineSchema({
     value: v.number()
   }).index("by_name", ["name"]),
 
+  // At most one row per maintenance job (e.g. "roomLifecycle"): the token of
+  // the batch chain currently allowed to run, so overlapping cron runs and
+  // continuations never process the backlog twice in parallel.
+  maintenanceLeases: defineTable({
+    name: v.string(),
+    token: v.string(),
+    renewedAt: v.number()
+  }).index("by_name", ["name"]),
+
   friendProfiles: defineTable({
     friendCode: v.string(),
     displayName: v.string(),

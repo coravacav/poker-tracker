@@ -66,6 +66,15 @@ export async function releaseActiveRoomSlot(
 ) {
   if (room.countedActive !== true) return;
   await ctx.db.patch(room._id, { countedActive: false });
+  await decrementActiveRoomCounter(ctx);
+}
+
+/**
+ * Decrements the active-room counter only. Callers must clear the room's
+ * `countedActive` flag in the same mutation (e.g. folded into their own
+ * patch, so a large room document is written once).
+ */
+export async function decrementActiveRoomCounter(ctx: MutationCtx) {
   const counter = await activeRoomsCounter(ctx);
   if (counter && counter.value > 0) {
     await ctx.db.patch(counter._id, { value: counter.value - 1 });
