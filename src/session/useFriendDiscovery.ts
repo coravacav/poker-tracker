@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { createCapability, guestRoomHash } from "./capabilities";
 import { friendProfileErrorMessage } from "./convexRoomTransport";
@@ -41,6 +41,8 @@ export function useFriendDiscovery({
   const [friendPending, setFriendPending] = useState(false);
   const [friendError, setFriendError] = useState<string | null>(null);
   const [initialFriendCode, setInitialFriendCode] = useState<string | null>(friendCodeFromHash);
+  const followedFriendsRef = useRef(followedFriends);
+  followedFriendsRef.current = followedFriends;
 
   useEffect(() => {
     if (!transport.configured || !transport.subscribeFriendActivity || followedFriends.length === 0) {
@@ -154,8 +156,14 @@ export function useFriendDiscovery({
         setFriendError("No friend profile was found for that code.");
         return;
       }
+      // Read the latest list: names may have refreshed while the lookup ran.
+      const latest = followedFriendsRef.current;
+      if (latest.some((friend) => friend.friendCode === found.friendCode)) {
+        setFriendError("You already follow that friend.");
+        return;
+      }
       const next = [
-        ...followedFriends,
+        ...latest,
         { schemaVersion: 1 as const, friendCode: found.friendCode, displayName: found.displayName }
       ].slice(0, 50);
       if (!saveFollowedFriends(next)) throw new Error("That friend could not be saved on this device.");

@@ -62,17 +62,26 @@ export function normalizeRoomState(value: unknown): GameState | null {
   return migratePersistedState(value);
 }
 
-export function updateHostRecovery(
+/** Recovery record with the room's latest name and version; does not persist it. */
+export function withRoomMetadata(
   recovery: HostRecovery,
-  room: HostRoomProjection,
+  room: Pick<HostRoomProjection, "name" | "version">,
   deploymentUrl: string | null
 ): HostRecovery {
-  const next: HostRecovery = {
+  return {
     ...recovery,
     roomName: room.name,
     lastKnownVersion: room.version,
     ...(deploymentUrl ? { deploymentUrl } : {})
   };
+}
+
+export function updateHostRecovery(
+  recovery: HostRecovery,
+  room: Pick<HostRoomProjection, "name" | "version">,
+  deploymentUrl: string | null
+): HostRecovery {
+  const next = withRoomMetadata(recovery, room, deploymentUrl);
   saveHostRecovery(next);
   return next;
 }

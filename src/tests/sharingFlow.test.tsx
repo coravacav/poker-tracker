@@ -404,4 +404,100 @@ describe("realtime sharing UI", () => {
     expect(await screen.findByRole("button", { name: "Retry final sync" })).toBeInTheDocument();
     expect(localStorage.getItem("poker-tracker:v1:hosted-room")).not.toBeNull();
   });
+
+  describe("room actions resolving after newer room updates", () => {
+    const hostRecovery = (localGameId: string) => ({
+      schemaVersion: 1 as const,
+      publicId: "room_public_123456",
+      localGameId,
+      hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteSecret: "invite_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteUrl: "https://example.test/#/join/room_public_123456/invite_abcdefghijklmnopqrstuvwxyz0123456789",
+      roomName: "Poker Night",
+      lastKnownVersion: 0
+    });
+    const hostProjection = (
+      state: GameState,
+      controllerStatus: HostRoomProjection["controllerStatus"],
+      version = 0
+    ): HostRoomProjection => ({
+      ...projection(state),
+      version,
+      guestCount: 0,
+      guestRequests: [],
+      joiningOpen: true,
+      guests: [],
+      controllerStatus
+    });
+
+    it("hands control to this tab as soon as a takeover succeeds", async () => {
+      // Tab B reopens a room that tab A currently controls.
+      const local = createDefaultGameState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+      saveHostRecovery(hostRecovery(local.localGameId));
+      const fake = fakeTransport(local);
+      // Like Convex, the subscription sees the new controller before the
+      // mutation promise resolves.
+      fake.transport.claimHost = vi.fn(async () => {
+        fake.emitHost(hostProjection(local, "active", 1));
+      });
+      renderGameApp(fake.transport);
+      act(() => fake.emitHost(hostProjection(local, "duplicate")));
+
+      fireEvent.click(await screen.findByRole("button", { name: "Take control here" }));
+
+      await waitFor(() =>
+        expect(screen.queryByText("Another tab currently controls this room.")).not.toBeInTheDocument()
+      );
+      expect(fake.transport.claimHost).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("button", { name: "Take control here" })).not.toBeInTheDocument();
+    });
+
+    it("keeps a rotated invite when the room updates afterwards", async () => {
+      const local = createDefaultGameState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+      saveHostRecovery(hostRecovery(local.localGameId));
+      const fake = fakeTransport(local);
+      renderGameApp(fake.transport);
+      act(() => fake.emitHost(hostProjection(local, "active")));
+
+      fireEvent.click(await screen.findByRole("button", { name: /Rotate invite/ }));
+      await waitFor(() => expect(fake.transport.rotateInvite).toHaveBeenCalledTimes(1));
+      const { inviteSecret } = vi.mocked(fake.transport.rotateInvite).mock.calls[0]![0];
+      const invite = () => (screen.getByRole("textbox", { name: "Invite link" }) as HTMLInputElement).value;
+      await waitFor(() => expect(invite()).toContain(inviteSecret));
+
+      act(() => fake.emitHost(hostProjection(local, "active", 1)));
+
+      expect(invite()).toContain(inviteSecret);
+      expect(
+        JSON.parse(localStorage.getItem("poker-tracker:v1:hosted-room") ?? "null")
+      ).toMatchObject({ inviteSecret, lastKnownVersion: 1 });
+    });
+
+    it("reuses the ending action id after a room update during a failed end", async () => {
+      const local = createDefaultGameState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+      saveHostRecovery(hostRecovery(local.localGameId));
+      const fake = fakeTransport(local);
+      fake.endRoom.mockImplementationOnce(async () => {
+        fake.emitHost(hostProjection(local, "active", 1));
+        throw new Error("network unavailable");
+      });
+      renderGameApp(fake.transport);
+      act(() => fake.emitHost(hostProjection(local, "active")));
+
+      fireEvent.click(await screen.findByRole("button", { name: "Stop sharing" }));
+      const retry = await screen.findByRole("button", { name: "Retry final sync" });
+      // The id must survive a reload too, so the stored record keeps it.
+      expect(
+        JSON.parse(localStorage.getItem("poker-tracker:v1:hosted-room") ?? "null").endingActionId
+      ).toBe(fake.endRoom.mock.calls[0]![0].clientActionId);
+      fireEvent.click(retry);
+
+      await waitFor(() => expect(fake.endRoom).toHaveBeenCalledTimes(2));
+      const [first, second] = fake.endRoom.mock.calls.map(([args]) => args.clientActionId);
+      expect(second).toBe(first);
+    });
+  });
 });

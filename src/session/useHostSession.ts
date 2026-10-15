@@ -9,11 +9,32 @@ import type { FriendProfile } from "./friendProfiles";
 import {
   clearHostRecovery,
   getHostControllerId,
+  loadHostRecovery,
   saveHostRecovery,
   saveRoomHistoryCredential
 } from "./sessionPersistence";
-import { normalizeRoomState, updateHostRecovery, type SessionState } from "./sessionState";
+import {
+  normalizeRoomState,
+  updateHostRecovery,
+  withRoomMetadata,
+  type HostState,
+  type SessionState
+} from "./sessionState";
 import type { HostRecovery, HostRoomProjection, RoomTransport } from "./types";
+
+const HOST_MODES: ReadonlySet<SessionState["mode"]> = new Set([
+  "hosting",
+  "ending",
+  "recovery_required"
+]);
+
+/** True when `session` is an active, ending, or recovering host session for `publicId`. */
+function isHostSessionFor(session: SessionState, publicId: string): session is HostState & {
+  mode: "hosting" | "ending" | "recovery_required";
+  recovery: HostRecovery;
+} {
+  return HOST_MODES.has(session.mode) && (session as HostState).recovery?.publicId === publicId;
+}
 
 type HostSessionOptions = {
   session: SessionState;
@@ -97,7 +118,15 @@ export function useHostSession({
           finishHostSession(normalizedRoom, recovery);
           return;
         }
-        const nextRecovery = updateHostRecovery(recovery, normalizedRoom, deploymentUrl);
+        // Build on the latest stored recovery record: a rotated invite or a
+        // pending ending action id may have been saved since this subscription
+        // began, possibly before React has rendered that session update.
+        const stored = loadHostRecovery();
+        updateHostRecovery(
+          stored?.publicId === recovery.publicId ? stored : recovery,
+          normalizedRoom,
+          deploymentUrl
+        );
         lastAcceptedHostStateRef.current = normalizedState;
         localDispatch({ type: "replace_state_from_import", state: normalizedState });
         const persisted = trySaveGameState(normalizedState);
@@ -106,7 +135,7 @@ export function useHostSession({
             ? {
                 ...current,
                 mode: "hosting",
-                recovery: nextRecovery,
+                recovery: withRoomMetadata(current.recovery ?? recovery, normalizedRoom, deploymentUrl),
                 room: normalizedRoom,
                 roomReady: true,
                 error: persisted ? null : "Accepted room state could not be cached locally."
@@ -256,24 +285,25 @@ export function useHostSession({
         return;
       }
       if (current.mode !== "hosting" || !current.recovery || !current.room) return;
+      const { publicId, hostSecret } = current.recovery;
       if (!current.connected || current.room.controllerStatus !== "active" || mutationPending.current) {
-        setSession({
-          ...current,
-          error: !current.connected
-            ? "Reconnect before changing the shared game. Actions are not queued offline."
-            : current.room.controllerStatus !== "active"
-              ? "Another tab controls this hosted room."
-              : "Wait for the current room change to be accepted."
-        });
+        const error = !current.connected
+          ? "Reconnect before changing the shared game. Actions are not queued offline."
+          : current.room.controllerStatus !== "active"
+            ? "Another tab controls this hosted room."
+            : "Wait for the current room change to be accepted.";
+        setSession((next) => (isHostSessionFor(next, publicId) ? { ...next, error } : next));
         return;
       }
       mutationPending.current = true;
-      setSession({ ...current, pending: true, error: null });
+      setSession((next) =>
+        isHostSessionFor(next, publicId) ? { ...next, pending: true, error: null } : next
+      );
       const controllerId = getHostControllerId(() => createCapability(18));
       void transport
         .applyAction({
-          publicId: current.recovery.publicId,
-          hostSecret: current.recovery.hostSecret,
+          publicId,
+          hostSecret,
           controllerId,
           expectedVersion: current.room.version,
           clientActionId: createCapability(18),
@@ -281,24 +311,39 @@ export function useHostSession({
         })
         .then((room) => {
           mutationPending.current = false;
-          const nextRoom: HostRoomProjection = {
-            ...current.room!,
-            ...room,
-            guestCount: current.room!.guestCount,
-            controllerStatus: "active"
-          };
-          const recovery = updateHostRecovery(current.recovery!, nextRoom, deploymentUrl);
-          lastAcceptedHostStateRef.current = nextRoom.state;
-          localDispatch({ type: "replace_state_from_import", state: nextRoom.state });
-          const persisted = trySaveGameState(nextRoom.state);
-          setSession({
-            mode: "hosting",
-            recovery,
-            room: nextRoom,
-            connected: transport.connectionState(),
-            roomReady: true,
-            pending: false,
-            error: persisted ? null : "Accepted room state could not be cached locally."
+          if (!isHostSessionFor(sessionRef.current, publicId)) return;
+          // The subscription may already have delivered this version or a newer
+          // one (guest approvals, takeover); never roll the room back.
+          const stored = loadHostRecovery();
+          const base = stored?.publicId === publicId ? stored : current.recovery!;
+          const alreadyCurrent = base.lastKnownVersion >= room.version;
+          let persisted = true;
+          if (!alreadyCurrent) {
+            updateHostRecovery(base, room, deploymentUrl);
+            lastAcceptedHostStateRef.current = room.state;
+            localDispatch({ type: "replace_state_from_import", state: room.state });
+            persisted = trySaveGameState(room.state);
+          }
+          setSession((next) => {
+            if (next.mode !== "hosting" || next.recovery?.publicId !== publicId) return next;
+            const error = persisted ? null : "Accepted room state could not be cached locally.";
+            if (!next.room || next.room.version >= room.version) {
+              return { ...next, pending: false, error };
+            }
+            const nextRoom: HostRoomProjection = {
+              ...next.room,
+              ...room,
+              controllerStatus: "active"
+            };
+            return {
+              ...next,
+              recovery: withRoomMetadata(next.recovery, nextRoom, deploymentUrl),
+              room: nextRoom,
+              connected: transport.connectionState(),
+              roomReady: true,
+              pending: false,
+              error
+            };
           });
         })
         .catch((error) => {
@@ -320,14 +365,27 @@ export function useHostSession({
       !current.recovery ||
       !current.room
     ) return;
+    const { publicId } = current.recovery;
     if (!current.connected) {
-      setSession({ ...current, error: "Reconnect before ending sharing." });
+      setSession((next) =>
+        isHostSessionFor(next, publicId) ? { ...next, error: "Reconnect before ending sharing." } : next
+      );
       return;
     }
     const endingActionId = current.recovery.endingActionId ?? createCapability(18);
     const recovery = { ...current.recovery, endingActionId };
     saveHostRecovery(recovery);
-    setSession({ ...current, mode: "ending", recovery, pending: true, error: null });
+    setSession((next) =>
+      isHostSessionFor(next, publicId)
+        ? {
+            ...next,
+            mode: "ending",
+            recovery: { ...next.recovery, endingActionId },
+            pending: true,
+            error: null
+          }
+        : next
+    );
     try {
       const room = await transport.endRoom({
         publicId: recovery.publicId,
@@ -336,15 +394,25 @@ export function useHostSession({
         expectedVersion: current.room.version,
         clientActionId: endingActionId
       });
-      finishHostSession({ ...current.room, ...room }, recovery);
+      const latest = sessionRef.current;
+      const latestRoom = isHostSessionFor(latest, publicId) && latest.room ? latest.room : current.room;
+      const stored = loadHostRecovery();
+      finishHostSession({ ...latestRoom, ...room }, stored?.publicId === publicId ? stored : recovery);
     } catch (error) {
-      setSession({
-        ...current,
-        mode: "recovery_required",
-        recovery,
-        pending: false,
-        error: `Final synchronization was not confirmed: ${roomErrorMessage(error)}`
-      });
+      // A room update can land while ending (and finishHostSession may have
+      // already left the host session), so only mark recovery on the latest
+      // host state for this room.
+      setSession((next) =>
+        isHostSessionFor(next, publicId)
+          ? {
+              ...next,
+              mode: "recovery_required",
+              recovery: { ...next.recovery, endingActionId },
+              pending: false,
+              error: `Final synchronization was not confirmed: ${roomErrorMessage(error)}`
+            }
+          : next
+      );
     }
   }, [finishHostSession, transport]);
 
