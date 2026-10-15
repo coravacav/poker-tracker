@@ -1,8 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { StartPage } from "../components/StartPage";
 import { GuestSessionControls } from "../components/SharingControls";
 import { createDefaultGameState } from "../state/seedGame";
+import type { RoomTransport } from "../session/types";
+import { useFriendDiscovery } from "../session/useFriendDiscovery";
 
 const profile = {
   schemaVersion: 1 as const,
@@ -99,5 +101,39 @@ describe("friend discovery on Home", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Follow Blair" }));
     expect(onFollowHost).toHaveBeenCalledOnce();
+  });
+
+  it("creates a friend profile with only the fields the backend accepts", async () => {
+    localStorage.clear();
+    const createFriendProfile = vi.fn(async (args: { friendCode: string; displayName: string }) => ({
+      friendCode: args.friendCode,
+      displayName: args.displayName
+    }));
+    const transport = {
+      configured: true,
+      createFriendProfile,
+      lookupFriendProfile: vi.fn(async () => null),
+      subscribeFriendActivity: vi.fn(() => () => undefined)
+    } as unknown as RoomTransport;
+    const { result } = renderHook(() =>
+      useFriendDiscovery({
+        transport,
+        sessionRef: { current: { mode: "local", notice: null } },
+        setSession: vi.fn(),
+        setLocalEntry: vi.fn(),
+        refreshRoomHistory: async () => undefined
+      })
+    );
+
+    await act(() => result.current.createFriendProfile("Alex"));
+
+    // Convex validators reject unknown fields, so the local schemaVersion must not be sent.
+    expect(Object.keys(createFriendProfile.mock.calls[0]![0]).sort()).toEqual([
+      "displayName",
+      "friendCode",
+      "ownerSecret"
+    ]);
+    expect(result.current.friendError).toBeNull();
+    expect(result.current.friendProfile).toMatchObject({ schemaVersion: 1, displayName: "Alex" });
   });
 });

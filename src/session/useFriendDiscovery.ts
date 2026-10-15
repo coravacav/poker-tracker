@@ -80,7 +80,13 @@ export function useFriendDiscovery({
         displayName: name,
         ownerSecret: createCapability()
       };
-      const created = await transport.createFriendProfile(profile);
+      // Only the fields the backend accepts: its validator rejects extra ones
+      // such as the local schemaVersion.
+      const created = await transport.createFriendProfile({
+        friendCode: profile.friendCode,
+        displayName: profile.displayName,
+        ownerSecret: profile.ownerSecret
+      });
       const saved = { ...profile, ...created };
       if (!saveFriendProfile(saved)) throw new Error("Your friend profile could not be saved on this device.");
       setFriendProfile(saved);
