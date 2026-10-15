@@ -33,8 +33,11 @@ Object.defineProperty(globalThis, "sessionStorage", {
   configurable: true,
   value: testSessionStorage
 });
-Object.defineProperty(window, "localStorage", { configurable: true, value: testLocalStorage });
-Object.defineProperty(window, "sessionStorage", { configurable: true, value: testSessionStorage });
+// Node-environment tests (the build plugin's) have no window.
+if (typeof window !== "undefined") {
+  Object.defineProperty(window, "localStorage", { configurable: true, value: testLocalStorage });
+  Object.defineProperty(window, "sessionStorage", { configurable: true, value: testSessionStorage });
+}
 
 // Each test gets an empty IndexedDB and a fresh Player History module state.
 beforeEach(() => {

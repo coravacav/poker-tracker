@@ -16,8 +16,9 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "types": []
   },
   "include": ["src", "convex/lib"],
-  "exclude": ["src/tests/bun-setup.ts"]
+  "exclude": ["src/tests/bun-setup.ts", "src/pwa/serviceWorker.ts"]
 }

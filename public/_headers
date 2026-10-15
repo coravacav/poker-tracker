@@ -1,0 +1,4 @@
+# Cloudflare static asset headers. The service worker script must always be revalidated
+# so a new build's worker (and its precache list) is picked up on the next visit.
+/sw.js
+  Cache-Control: no-cache
