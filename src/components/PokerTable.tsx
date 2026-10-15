@@ -1,54 +1,28 @@
-import {
-  DndContext,
-  PointerSensor,
-  pointerWithin,
-  rectIntersection,
-  type CollisionDetection,
-  type DragEndEvent,
-  type DragStartEvent,
-  useDroppable,
-  useSensor,
-  useSensors
-} from "@dnd-kit/core";
-import {
-  ArrowDown,
-  ArrowUp,
-  FlipHorizontal2,
-  FlipVertical2,
-  RotateCcw,
-  RotateCw,
-  X
-} from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, Dispatch } from "react";
-import { centsToInputValue, parseMoneyToCents } from "../domain/money";
-import { useFormatCurrency } from "./CurrencyContext";
+import { DndContext } from "@dnd-kit/core";
+import { useMemo, useState } from "react";
+import type { Dispatch } from "react";
+import { centsToInputValue } from "../domain/money";
 import type {
   Player,
   PlayerId,
   PlayerLedgerSummary,
-  SeatRail,
   TableSeatPlacement,
   TableShape,
   Transaction
 } from "../domain/pokerTypes";
-import {
-  getLayoutInsertionSlots,
-  getSeatSlots,
-  getTableLayoutMetrics,
-  type TableSeatSlot
-} from "../domain/tableLayout";
-import { resolvePersonForName, venmoHandleForLink } from "../domain/people";
-import { normalizeVenmoHandle, venmoHandleError } from "../domain/venmo";
+import { getSeatSlots, getTableLayoutMetrics } from "../domain/tableLayout";
 import type { GameAction } from "../state/gameReducer";
-import { savePersonVenmoHandle } from "../state/peopleStore";
 import { createId } from "../state/seedGame";
 import { usePersonSuggestions } from "../state/usePeople";
-import { PersonNameAssist } from "./PersonNameAssist";
-import { PlayerSeat } from "./PlayerSeat";
-import { LedgerImpactPreview, TransferPreview } from "./TransferPreview";
-import { TransferQuickAmountButtons } from "./TransferQuickAmountButtons";
-import { VenmoHandleInput } from "./VenmoHandleInput";
+import { buildInsertionTargets, LayoutInsertionTarget } from "./pokerTable/LayoutInsertionTarget";
+import { PartialCashOutDialog, type PartialCashOutDraft } from "./pokerTable/PartialCashOutDialog";
+import { RenamePlayerDialog, type RenameDraft } from "./pokerTable/RenamePlayerDialog";
+import { SeatSlot } from "./pokerTable/SeatSlot";
+import { TableToolbar, type PlayerArrangement } from "./pokerTable/TableToolbar";
+import { TransferDialog, type TransferDraft } from "./pokerTable/TransferDialog";
+import { useCompactView } from "./pokerTable/useCompactView";
+import { usePlayerSeatAnimation } from "./pokerTable/usePlayerSeatAnimation";
+import { pokerTableCollisionDetection, usePokerTableDrag } from "./pokerTable/usePokerTableDrag";
 
 type PokerTableProps = {
   activePlayers: Player[];
@@ -65,159 +39,6 @@ type PokerTableProps = {
   summaryByPlayerId: Map<PlayerId, PlayerLedgerSummary>;
 };
 
-type TransferDraft = {
-  mode: "player_gave" | "player_owes" | "cover_buy_in";
-  fromPlayerId: PlayerId;
-  toPlayerId: PlayerId;
-  amountInput: string;
-  note: string;
-};
-
-type PartialCashOutDraft = {
-  playerId: PlayerId;
-  amountInput: string;
-  note: string;
-};
-
-type RenameDraft = {
-  playerId: PlayerId;
-  nameInput: string;
-  /** Person picked from suggestions (or the player's link when the dialog opened). */
-  personId?: string;
-  /** Typed Venmo username; until then the field follows the linked person's. */
-  venmoInput?: string;
-};
-
-type PlayerArrangement = "rotate_left" | "rotate_right" | "reverse";
-
-const SHAPES: Array<{ shape: TableShape; label: string }> = [
-  { shape: "rectangle", label: "Rectangle" },
-  { shape: "oval", label: "Oval" },
-  { shape: "round", label: "Round" }
-];
-const CARD_REARRANGE_ANIMATION_MS = 240;
-const pokerTableCollisionDetection: CollisionDetection = (args) =>
-  String(args.active.id).startsWith("table-seat:")
-    ? pointerWithin(args)
-    : rectIntersection(args);
-
-function positionFor(slot: TableSeatSlot): CSSProperties {
-  return {
-    left: `${slot.leftPercent}%`,
-    top: `${slot.topPercent}%`
-  };
-}
-
-type SeatSlotProps = {
-  compactView: boolean;
-  layoutEditing: boolean;
-  isSeatDragging: boolean;
-  player?: Player;
-  hideActions: boolean;
-  readOnly: boolean;
-  slot: TableSeatSlot;
-  summary?: PlayerLedgerSummary;
-  onBuyIn: (player: Player) => void;
-  onCashOut: (player: Player) => void;
-  onEdit: (player: Player) => void;
-  onSeatElementChange: (playerId: PlayerId, element: HTMLElement | null) => void;
-  onStartTransfer: (fromPlayer: Player) => void;
-};
-
-function SeatSlot({
-  compactView,
-  layoutEditing,
-  isSeatDragging,
-  player,
-  hideActions,
-  readOnly,
-  slot,
-  summary,
-  onBuyIn,
-  onCashOut,
-  onEdit,
-  onSeatElementChange,
-  onStartTransfer
-}: SeatSlotProps) {
-  const drop = useDroppable({
-    id: `seat-slot:${slot.seatIndex}`,
-    disabled: readOnly || layoutEditing || compactView
-  });
-
-  return (
-    <div
-      ref={drop.setNodeRef}
-      className={`seat-slot ${player ? "" : "is-empty"} ${drop.isOver ? "is-over" : ""}`}
-      style={compactView ? { order: slot.seatIndex } : positionFor(slot)}
-    >
-      {player ? (
-        <PlayerSeat
-          compactView={compactView}
-          layoutEditing={layoutEditing}
-          player={player}
-          hideActions={hideActions}
-          readOnly={readOnly}
-          summary={summary}
-          onBuyIn={onBuyIn}
-          onCashOut={onCashOut}
-          onEdit={onEdit}
-          onSeatElementChange={onSeatElementChange}
-          onStartTransfer={onStartTransfer}
-        />
-      ) : (
-        <div
-          className="empty-seat-target"
-          aria-hidden={!isSeatDragging}
-          title={`Seat ${slot.seatIndex + 1}`}
-        >
-          Seat {slot.seatIndex + 1}
-        </div>
-      )}
-    </div>
-  );
-}
-
-type InsertionTarget = {
-  id: string;
-  rail: SeatRail;
-  order: number;
-  leftPercent: number;
-  topPercent: number;
-};
-
-type LayoutInsertionTargetProps = {
-  target: InsertionTarget;
-};
-
-function LayoutInsertionTarget({ target }: LayoutInsertionTargetProps) {
-  const drop = useDroppable({ id: target.id });
-
-  return (
-    <button
-      ref={drop.setNodeRef}
-      className={`layout-drop-target layout-drop-${target.rail} ${
-        drop.isOver ? "is-over" : ""
-      }`}
-      style={{
-        left: `${target.leftPercent}%`,
-        top: `${target.topPercent}%`
-      }}
-      type="button"
-      aria-label={`Move seat to ${target.rail} position ${target.order + 1}`}
-    />
-  );
-}
-
-function buildInsertionTargets(
-  tableShape: TableShape,
-  placements: TableSeatPlacement[]
-): InsertionTarget[] {
-  return getLayoutInsertionSlots(tableShape, placements).map((slot) => ({
-    id: `layout-target:${slot.rail}:${slot.order}`,
-    ...slot
-  }));
-}
-
 export function PokerTable({
   activePlayers,
   bankBalanceCents,
@@ -232,12 +53,6 @@ export function PokerTable({
   tableShape,
   summaryByPlayerId
 }: PokerTableProps) {
-  const formatCurrency = useFormatCurrency();
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 }
-    })
-  );
   const [transferDraft, setTransferDraft] = useState<TransferDraft | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [partialCashOutDraft, setPartialCashOutDraft] =
@@ -246,22 +61,6 @@ export function PokerTable({
   const [renameDraft, setRenameDraft] = useState<RenameDraft | null>(null);
   const [renameError, setRenameError] = useState<string | null>(null);
   const { directory: peopleDirectory, suggestions: personSuggestions } = usePersonSuggestions();
-  const [activeDragType, setActiveDragType] = useState<
-    "seat" | "bucket" | "table-seat" | null
-  >(null);
-  const [compactView, setCompactView] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return (
-      window.innerWidth <= 600 ||
-      (window.innerWidth <= 960 &&
-        window.innerHeight <= 600 &&
-        window.innerWidth > window.innerHeight)
-    );
-  });
-  const panelRef = useRef<HTMLElement | null>(null);
-  const playerSeatElementsRef = useRef(new Map<PlayerId, HTMLElement>());
-  const previousPlayerRectsRef = useRef(new Map<PlayerId, DOMRect>());
-  const cardAnimationsRef = useRef(new Map<PlayerId, Animation>());
 
   const seatSlots = useMemo(
     () => getSeatSlots(tableShape, tableSeatPlacements),
@@ -271,42 +70,8 @@ export function PokerTable({
     () => getTableLayoutMetrics(tableSeatPlacements),
     [tableSeatPlacements]
   );
+  const { compactView, panelRef } = useCompactView(layoutMetrics.minWidthPx, onCompactViewChange);
   const effectiveLayoutEditing = layoutEditing && !compactView;
-
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-
-    const updateCompactView = () => {
-      const phoneSized =
-        window.innerWidth <= 600 ||
-        (window.innerWidth <= 960 &&
-          window.innerHeight <= 600 &&
-          window.innerWidth > window.innerHeight);
-      const tableWouldOverflow =
-        panel.clientWidth > 0 && panel.clientWidth < layoutMetrics.minWidthPx + 44;
-
-      setCompactView(phoneSized || tableWouldOverflow);
-    };
-
-    updateCompactView();
-    window.addEventListener("resize", updateCompactView);
-
-    const resizeObserver =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(updateCompactView);
-    resizeObserver?.observe(panel);
-
-    return () => {
-      window.removeEventListener("resize", updateCompactView);
-      resizeObserver?.disconnect();
-    };
-  }, [layoutMetrics.minWidthPx]);
-
-  useEffect(() => {
-    onCompactViewChange?.(compactView);
-  }, [compactView, onCompactViewChange]);
   const insertionTargets = useMemo(
     () => buildInsertionTargets(tableShape, tableSeatPlacements),
     [tableSeatPlacements, tableShape]
@@ -316,27 +81,7 @@ export function PokerTable({
       new Map(activePlayers.map((player) => [player.seatIndex, player] as const)),
     [activePlayers]
   );
-
-  const setPlayerSeatElement = useCallback(
-    (playerId: PlayerId, element: HTMLElement | null) => {
-      if (element) {
-        playerSeatElementsRef.current.set(playerId, element);
-        return;
-      }
-
-      playerSeatElementsRef.current.delete(playerId);
-    },
-    []
-  );
-
-  function snapshotPlayerSeatRects() {
-    previousPlayerRectsRef.current = new Map(
-      Array.from(playerSeatElementsRef.current.entries()).map(([playerId, element]) => [
-        playerId,
-        element.getBoundingClientRect()
-      ])
-    );
-  }
+  const { setPlayerSeatElement, snapshotPlayerSeatRects } = usePlayerSeatAnimation(activePlayers);
 
   function arrangePlayers(arrangement: PlayerArrangement) {
     const playersInTableOrder = seatSlots.map((slot) =>
@@ -375,69 +120,6 @@ export function PokerTable({
     dispatch({ type: "reorder_players", orderedPlayerIds });
   }
 
-  useLayoutEffect(() => {
-    const previousRects = previousPlayerRectsRef.current;
-
-    if (previousRects.size === 0) {
-      return;
-    }
-
-    previousPlayerRectsRef.current = new Map();
-
-    const reduceMotion =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    if (reduceMotion) {
-      return;
-    }
-
-    for (const player of activePlayers) {
-      const element = playerSeatElementsRef.current.get(player.id);
-      const previousRect = previousRects.get(player.id);
-
-      if (!element || !previousRect || typeof element.animate !== "function") {
-        continue;
-      }
-
-      const currentRect = element.getBoundingClientRect();
-      const deltaX = previousRect.left - currentRect.left;
-      const deltaY = previousRect.top - currentRect.top;
-
-      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) {
-        continue;
-      }
-
-      cardAnimationsRef.current.get(player.id)?.cancel();
-      element.classList.add("is-rearranging");
-
-      const animation = element.animate(
-        [
-          { transform: `translate(${deltaX}px, ${deltaY}px)` },
-          { transform: "translate(0, 0)" }
-        ],
-        {
-          duration: CARD_REARRANGE_ANIMATION_MS,
-          easing: "cubic-bezier(0.2, 0.8, 0.2, 1)"
-        }
-      );
-
-      cardAnimationsRef.current.set(player.id, animation);
-
-      const clearAnimation = () => {
-        if (cardAnimationsRef.current.get(player.id) !== animation) {
-          return;
-        }
-
-        cardAnimationsRef.current.delete(player.id);
-        element.classList.remove("is-rearranging");
-      };
-
-      animation.addEventListener("finish", clearAnimation);
-      animation.addEventListener("cancel", clearAnimation);
-    }
-  }, [activePlayers]);
-
   function playerName(playerId: PlayerId): string {
     return activePlayers.find((player) => player.id === playerId)?.name ?? "Unknown player";
   }
@@ -458,80 +140,17 @@ export function PokerTable({
     setTransferError(null);
   }
 
-  function handleDragStart(event: DragStartEvent) {
-    if (compactView) return;
-    const activeId = String(event.active.id);
-    const [, dragType] = activeId.match(/^(seat|bucket|table-seat):(.+)$/) ?? [];
-    setActiveDragType(
-      dragType === "seat" || dragType === "bucket" || dragType === "table-seat"
-        ? dragType
-        : null
-    );
-  }
-
-  function handleDragEnd(event: DragEndEvent) {
-    setActiveDragType(null);
-
-    if (compactView || readOnly || !event.over) {
-      return;
-    }
-
-    const activeId = String(event.active.id);
-    const overId = String(event.over.id);
-    const [, dragType, draggedId] = activeId.match(/^(seat|bucket|table-seat):(.+)$/) ?? [];
-
-    if (dragType === "table-seat") {
-      if (!layoutEditing || !overId.startsWith("layout-target:")) {
-        return;
-      }
-
-      const [, rail, order] = overId.match(/^layout-target:(top|right|bottom|left):(\d+)$/) ?? [];
-      const seatIndex = Number.parseInt(draggedId, 10);
-      const targetOrder = Number.parseInt(order, 10);
-
-      if (!rail || Number.isNaN(seatIndex) || Number.isNaN(targetOrder)) {
-        return;
-      }
-
-      dispatch({
-        type: "move_table_seat",
-        seatIndex,
-        rail: rail as SeatRail,
-        order: targetOrder
-      });
-      return;
-    }
-
-    if (!overId.startsWith("seat-slot:")) {
-      return;
-    }
-
-    const targetSeatIndex = Number.parseInt(overId.replace("seat-slot:", ""), 10);
-    const targetPlayer = playerBySeatIndex.get(targetSeatIndex);
-
-    if (!dragType || !draggedId || Number.isNaN(targetSeatIndex)) {
-      return;
-    }
-
-    if (dragType === "seat") {
-      const movingPlayer = activePlayers.find((player) => player.id === draggedId);
-
-      if (!movingPlayer || movingPlayer.seatIndex === targetSeatIndex) {
-        return;
-      }
-
-      snapshotPlayerSeatRects();
-      dispatch({
-        type: "move_player_to_seat",
-        playerId: draggedId,
-        seatIndex: targetSeatIndex
-      });
-    }
-
-    if (dragType === "bucket" && targetPlayer && draggedId !== targetPlayer.id) {
-      openTransfer(draggedId, targetPlayer.id);
-    }
-  }
+  const { sensors, activeDragType, setActiveDragType, handleDragStart, handleDragEnd } =
+    usePokerTableDrag({
+      activePlayers,
+      compactView,
+      dispatch,
+      layoutEditing,
+      playerBySeatIndex,
+      readOnly,
+      openTransfer,
+      snapshotPlayerSeatRects
+    });
 
   function quickBuyIn(player: Player) {
     onAddTransaction({
@@ -553,30 +172,6 @@ export function PokerTable({
     setPartialCashOutError(null);
   }
 
-  function confirmPartialCashOut() {
-    if (!partialCashOutDraft) return;
-    const amountCents = parseMoneyToCents(partialCashOutDraft.amountInput);
-    if (!amountCents || amountCents <= 0) {
-      setPartialCashOutError("Enter a positive cash-out amount.");
-      return;
-    }
-
-    const added = onAddTransaction({
-      id: createId("transaction"),
-      type: "bank_cash_out",
-      cashOutKind: "partial",
-      createdAt: new Date().toISOString(),
-      amountCents,
-      fromPlayerId: partialCashOutDraft.playerId,
-      note: partialCashOutDraft.note.trim() || undefined
-    });
-
-    if (added) {
-      setPartialCashOutDraft(null);
-      setPartialCashOutError(null);
-    }
-  }
-
   function editPlayerName(player: Player) {
     setRenameDraft({
       playerId: player.id,
@@ -586,115 +181,6 @@ export function PokerTable({
     setRenameError(null);
   }
 
-  function confirmTransfer() {
-    if (!transferDraft) {
-      return;
-    }
-
-    const amountCents = parseMoneyToCents(transferDraft.amountInput);
-    if (transferDraft.fromPlayerId === transferDraft.toPlayerId) {
-      setTransferError("Choose two different players.");
-      return;
-    }
-
-    if (!amountCents || amountCents <= 0) {
-      setTransferError("Enter a positive transfer amount.");
-      return;
-    }
-
-    const added = onAddTransaction(
-      transferDraft.mode === "cover_buy_in"
-        ? {
-            id: createId("transaction"),
-            type: "bank_buy_in",
-            createdAt: new Date().toISOString(),
-            amountCents,
-            toPlayerId: transferDraft.toPlayerId,
-            coveredByPlayerId: transferDraft.fromPlayerId,
-            note: transferDraft.note.trim() || undefined
-          }
-        : {
-            id: createId("transaction"),
-            type: transferDraft.mode,
-            createdAt: new Date().toISOString(),
-            amountCents,
-            fromPlayerId: transferDraft.fromPlayerId,
-            toPlayerId: transferDraft.toPlayerId,
-            category: transferDraft.mode === "player_owes" ? "food" : "poker",
-            note: transferDraft.note.trim() || undefined
-          }
-    );
-
-    if (added) {
-      setTransferDraft(null);
-      setTransferError(null);
-    }
-  }
-
-  /** The Venmo username the rename dialog shows: typed, or else the one the new link implies. */
-  function renameVenmoHandle(draft: RenameDraft): string {
-    if (draft.venmoInput !== undefined) return draft.venmoInput;
-    const player = activePlayers.find((candidate) => candidate.id === draft.playerId);
-    const personId = resolvePersonForName(peopleDirectory, draft.nameInput, draft.personId);
-    const linked = venmoHandleForLink(peopleDirectory, player, personId);
-    return linked === undefined ? player?.venmoHandle ?? "" : linked ?? "";
-  }
-
-  function confirmRename() {
-    if (!renameDraft) {
-      return;
-    }
-
-    const name = renameDraft.nameInput.trim();
-    if (!name) {
-      setRenameError("Enter a player name.");
-      return;
-    }
-    const venmoError = venmoHandleError(renameVenmoHandle(renameDraft));
-    if (venmoError) {
-      setRenameError(venmoError);
-      return;
-    }
-
-    const player = activePlayers.find((candidate) => candidate.id === renameDraft.playerId);
-    const personId = resolvePersonForName(peopleDirectory, name, renameDraft.personId);
-    const venmoHandle = normalizeVenmoHandle(renameVenmoHandle(renameDraft));
-    const venmoChanged = venmoHandle !== (player?.venmoHandle ?? null);
-    if (name !== player?.name || personId !== (player?.personId ?? null) || venmoChanged) {
-      dispatch({
-        type: "rename_player",
-        playerId: renameDraft.playerId,
-        name,
-        personId,
-        ...(venmoChanged ? { venmoHandle } : {})
-      });
-    }
-    // A username typed here is remembered for this person's later games.
-    if (renameDraft.venmoInput !== undefined && personId) savePersonVenmoHandle(personId, venmoHandle);
-    setRenameDraft(null);
-    setRenameError(null);
-  }
-
-  const transferPreviewAmountCents = transferDraft
-    ? parseMoneyToCents(transferDraft.amountInput)
-    : null;
-  const showTransferPreview =
-    !!transferDraft &&
-    !!transferPreviewAmountCents &&
-    transferPreviewAmountCents > 0 &&
-    transferDraft.fromPlayerId !== transferDraft.toPlayerId;
-  const transferFromCurrentNet = transferDraft
-    ? summaryByPlayerId.get(transferDraft.fromPlayerId)?.netCents ?? 0
-    : 0;
-  const transferToCurrentNet = transferDraft
-    ? summaryByPlayerId.get(transferDraft.toPlayerId)?.netCents ?? 0
-    : 0;
-  const partialCashOutAmountCents = partialCashOutDraft
-    ? parseMoneyToCents(partialCashOutDraft.amountInput)
-    : null;
-  const partialCashOutPlayerNet = partialCashOutDraft
-    ? summaryByPlayerId.get(partialCashOutDraft.playerId)?.netCents ?? 0
-    : 0;
   const tableShapeClass =
     tableShape === "rectangle"
       ? "layout-rectangle"
@@ -716,81 +202,16 @@ export function PokerTable({
       ref={panelRef}
       className={`poker-table-panel ${compactView ? "is-player-list-view" : ""}`}
     >
-      <div className="table-toolbar">
-        <div>
-          <p className="eyebrow">
-            <span className="table-view-only" aria-hidden={compactView}>
-              Drag seats to rearrange
-            </span>
-            <span className="player-list-only" aria-hidden={!compactView}>
-              Player actions
-            </span>
-          </p>
-          <h2>
-            <span className="table-view-only" aria-hidden={compactView}>
-              Table Layout
-            </span>
-            <span className="player-list-only" aria-hidden={!compactView}>
-              Players
-            </span>
-          </h2>
-        </div>
-        <div className="table-toolbar-controls">
-          {effectiveLayoutEditing || (compactView && !readOnly) ? (
-            <div
-              className="player-arrangement-controls"
-              role="group"
-              aria-label={compactView ? "Arrange player list" : "Arrange players"}
-            >
-              <button
-                type="button"
-                aria-label={compactView ? "Shift player order up" : "Rotate players left"}
-                title={compactView ? "Shift player order up" : "Rotate players left"}
-                disabled={readOnly || activePlayers.length < 2}
-                onClick={() => arrangePlayers("rotate_left")}
-              >
-                {compactView ? <ArrowUp size={18} /> : <RotateCcw size={17} />}
-              </button>
-              <button
-                type="button"
-                aria-label="Reverse player order"
-                title="Reverse player order"
-                disabled={readOnly || activePlayers.length < 2}
-                onClick={() => arrangePlayers("reverse")}
-              >
-                {compactView ? <FlipVertical2 size={18} /> : <FlipHorizontal2 size={17} />}
-              </button>
-              <button
-                type="button"
-                aria-label={compactView ? "Shift player order down" : "Rotate players right"}
-                title={compactView ? "Shift player order down" : "Rotate players right"}
-                disabled={readOnly || activePlayers.length < 2}
-                onClick={() => arrangePlayers("rotate_right")}
-              >
-                {compactView ? <ArrowDown size={18} /> : <RotateCw size={17} />}
-              </button>
-            </div>
-          ) : null}
-          {effectiveLayoutEditing ? (
-            <div className="shape-segments" aria-label="Table shape">
-              {SHAPES.map(({ shape, label }) => (
-                <button
-                  key={shape}
-                  type="button"
-                  aria-pressed={tableShape === shape}
-                  disabled={readOnly}
-                  onClick={() => dispatch({ type: "set_table_shape", shape })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <span className="default-buy-in">
-            Default buy-in {formatCurrency(defaultBuyInCents)}
-          </span>
-        </div>
-      </div>
+      <TableToolbar
+        compactView={compactView}
+        layoutEditing={effectiveLayoutEditing}
+        readOnly={readOnly}
+        playerCount={activePlayers.length}
+        tableShape={tableShape}
+        defaultBuyInCents={defaultBuyInCents}
+        dispatch={dispatch}
+        onArrange={arrangePlayers}
+      />
 
       <DndContext
         sensors={sensors}
@@ -846,374 +267,46 @@ export function PokerTable({
       </DndContext>
 
       {partialCashOutDraft ? (
-        <div className="modal-backdrop" role="presentation">
-          <section
-            className="modal table-action-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Partial cash-out"
-          >
-            <div className="modal-heading">
-              <div>
-                <p className="eyebrow">Partial cash-out</p>
-                <h2>Cash out {playerName(partialCashOutDraft.playerId)}</h2>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setPartialCashOutDraft(null)}
-                title="Close"
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <p className="muted">
-              Record a during-game payout without marking this player finished for the night.
-            </p>
-
-            <div className="form-grid two">
-              <label>
-                <span>Amount</span>
-                <input
-                  inputMode="decimal"
-                  value={partialCashOutDraft.amountInput}
-                  onChange={(event) => {
-                    setPartialCashOutDraft({
-                      ...partialCashOutDraft,
-                      amountInput: event.currentTarget.value
-                    });
-                    setPartialCashOutError(null);
-                  }}
-                />
-              </label>
-              <label>
-                <span>Note</span>
-                <input
-                  value={partialCashOutDraft.note}
-                  placeholder="Optional"
-                  onChange={(event) =>
-                    setPartialCashOutDraft({
-                      ...partialCashOutDraft,
-                      note: event.currentTarget.value
-                    })
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="quick-amounts">
-              <TransferQuickAmountButtons
-                defaultBuyInCents={defaultBuyInCents}
-                onSelect={(amountCents) => {
-                  setPartialCashOutDraft({
-                    ...partialCashOutDraft,
-                    amountInput: centsToInputValue(amountCents)
-                  });
-                  setPartialCashOutError(null);
-                }}
-              />
-            </div>
-
-            {partialCashOutAmountCents !== null && partialCashOutAmountCents > 0 ? (
-              <LedgerImpactPreview
-                ariaLabel="Partial cash-out preview"
-                impacts={[
-                  {
-                    currentCents: partialCashOutPlayerNet,
-                    deltaCents: partialCashOutAmountCents,
-                    name: playerName(partialCashOutDraft.playerId),
-                    role: "Player net"
-                  },
-                  {
-                    currentCents: bankBalanceCents,
-                    deltaCents: -partialCashOutAmountCents,
-                    name: "Chip Pool",
-                    role: "In play"
-                  }
-                ]}
-              />
-            ) : null}
-
-            {partialCashOutError ? (
-              <div className="notice notice-warning">{partialCashOutError}</div>
-            ) : null}
-            <div className="modal-actions">
-              <button type="button" onClick={() => setPartialCashOutDraft(null)}>
-                Cancel
-              </button>
-              <button className="primary-button" type="button" onClick={confirmPartialCashOut}>
-                Record partial cash-out
-              </button>
-            </div>
-          </section>
-        </div>
+        <PartialCashOutDialog
+          partialCashOutDraft={partialCashOutDraft}
+          setPartialCashOutDraft={setPartialCashOutDraft}
+          partialCashOutError={partialCashOutError}
+          setPartialCashOutError={setPartialCashOutError}
+          bankBalanceCents={bankBalanceCents}
+          defaultBuyInCents={defaultBuyInCents}
+          summaryByPlayerId={summaryByPlayerId}
+          onAddTransaction={onAddTransaction}
+          playerName={playerName}
+        />
       ) : null}
 
       {transferDraft ? (
-        <div className="modal-backdrop" role="presentation">
-          <section className="modal" role="dialog" aria-modal="true" aria-label="Player transaction">
-            <div className="modal-heading">
-              <div>
-                <p className="eyebrow">
-                  {transferDraft.mode === "cover_buy_in"
-                    ? "Covered buy-in"
-                    : transferDraft.mode === "player_owes"
-                      ? "Player owes"
-                      : "Player gave"}
-                </p>
-                <h2>
-                  {transferDraft.mode === "cover_buy_in"
-                    ? `${playerName(transferDraft.toPlayerId)} receives from ${playerName(transferDraft.fromPlayerId)}`
-                    : transferDraft.mode === "player_owes"
-                      ? `${playerName(transferDraft.fromPlayerId)} owes ${playerName(transferDraft.toPlayerId)}`
-                      : `${playerName(transferDraft.toPlayerId)} receives from ${playerName(transferDraft.fromPlayerId)}`}
-                </h2>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setTransferDraft(null)}
-                title="Close"
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <div className="shape-segments transfer-mode-segments" aria-label="Transfer action">
-              <button
-                type="button"
-                aria-pressed={transferDraft.mode === "player_gave"}
-                onClick={() =>
-                  setTransferDraft({ ...transferDraft, mode: "player_gave" })
-                }
-              >
-                Player gave
-              </button>
-              <button
-                type="button"
-                aria-pressed={transferDraft.mode === "player_owes"}
-                onClick={() =>
-                  setTransferDraft({ ...transferDraft, mode: "player_owes" })
-                }
-              >
-                Player owes
-              </button>
-              <button
-                type="button"
-                aria-pressed={transferDraft.mode === "cover_buy_in"}
-                onClick={() =>
-                  setTransferDraft({ ...transferDraft, mode: "cover_buy_in" })
-                }
-              >
-                Cover buy-in
-              </button>
-            </div>
-
-            <div className="form-grid two">
-              <label>
-                <span>
-                  {transferDraft.mode === "cover_buy_in"
-                    ? "Covered by"
-                    : transferDraft.mode === "player_owes"
-                      ? "Owes"
-                      : "From"}
-                </span>
-                <select
-                  value={transferDraft.fromPlayerId}
-                  onChange={(event) =>
-                    setTransferDraft({
-                      ...transferDraft,
-                      fromPlayerId: event.currentTarget.value
-                    })
-                  }
-                >
-                  {activePlayers.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>
-                  {transferDraft.mode === "cover_buy_in"
-                    ? "Chips to"
-                    : transferDraft.mode === "player_owes"
-                      ? "Owed to"
-                      : "To"}
-                </span>
-                <select
-                  value={transferDraft.toPlayerId}
-                  onChange={(event) =>
-                    setTransferDraft({
-                      ...transferDraft,
-                      toPlayerId: event.currentTarget.value
-                    })
-                  }
-                >
-                  {activePlayers.map((player) => (
-                    <option key={player.id} value={player.id}>
-                      {player.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {showTransferPreview && transferDraft ? (
-                transferDraft.mode === "cover_buy_in" ? (
-                  <div className="covered-buy-in-preview">
-                    <LedgerImpactPreview
-                      ariaLabel="Covered buy-in preview"
-                      impacts={[
-                        {
-                          currentCents: transferFromCurrentNet,
-                          deltaCents: -(transferPreviewAmountCents ?? 0),
-                          name: playerName(transferDraft.fromPlayerId),
-                          role: "Coverer"
-                        },
-                        {
-                          currentCents: bankBalanceCents,
-                          deltaCents: transferPreviewAmountCents ?? 0,
-                          name: "Chip Pool",
-                          role: "In play"
-                        }
-                      ]}
-                    />
-                    <p className="muted transfer-recipient-note">
-                      {playerName(transferDraft.toPlayerId)} receives {formatCurrency(transferPreviewAmountCents ?? 0)} in chips; their net is unchanged.
-                    </p>
-                  </div>
-                ) : (
-                  <TransferPreview
-                    amountCents={transferPreviewAmountCents ?? 0}
-                    fromCurrentNetCents={transferFromCurrentNet}
-                    fromName={playerName(transferDraft.fromPlayerId)}
-                    toCurrentNetCents={transferToCurrentNet}
-                    toName={playerName(transferDraft.toPlayerId)}
-                    mode={transferDraft.mode === "player_owes" ? "owes" : "gave"}
-                  />
-                )
-              ) : null}
-            </div>
-
-            <div className="form-grid transfer-detail-grid">
-              <label>
-                <span>Amount</span>
-                <input
-                  inputMode="decimal"
-                  value={transferDraft.amountInput}
-                  onChange={(event) =>
-                    setTransferDraft({
-                      ...transferDraft,
-                      amountInput: event.currentTarget.value
-                    })
-                  }
-                />
-              </label>
-              <label>
-                <span>Note</span>
-                <input
-                  value={transferDraft.note}
-                  onChange={(event) =>
-                    setTransferDraft({
-                      ...transferDraft,
-                      note: event.currentTarget.value
-                    })
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="quick-amounts">
-              <TransferQuickAmountButtons
-                defaultBuyInCents={defaultBuyInCents}
-                onSelect={(amountCents) =>
-                  setTransferDraft({
-                    ...transferDraft,
-                    amountInput: centsToInputValue(amountCents)
-                  })
-                }
-              />
-            </div>
-
-            {transferError ? <div className="notice notice-warning">{transferError}</div> : null}
-            <div className="modal-actions">
-              <button type="button" onClick={() => setTransferDraft(null)}>
-                Cancel
-              </button>
-              <button className="primary-button" type="button" onClick={confirmTransfer}>
-                {transferDraft.mode === "cover_buy_in"
-                  ? "Record covered buy-in"
-                  : transferDraft.mode === "player_owes"
-                    ? "Record player owes"
-                    : "Record player gave"}
-              </button>
-            </div>
-          </section>
-        </div>
+        <TransferDialog
+          transferDraft={transferDraft}
+          setTransferDraft={setTransferDraft}
+          transferError={transferError}
+          setTransferError={setTransferError}
+          activePlayers={activePlayers}
+          bankBalanceCents={bankBalanceCents}
+          defaultBuyInCents={defaultBuyInCents}
+          summaryByPlayerId={summaryByPlayerId}
+          onAddTransaction={onAddTransaction}
+          playerName={playerName}
+        />
       ) : null}
 
       {renameDraft ? (
-        <div className="modal-backdrop" role="presentation">
-          <section className="modal table-action-modal" role="dialog" aria-modal="true" aria-label="Rename player">
-            <div className="modal-heading">
-              <div>
-                <p className="eyebrow">Seat action</p>
-                <h2>Rename {playerName(renameDraft.playerId)}</h2>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setRenameDraft(null)}
-                title="Close"
-              >
-                <X size={17} />
-              </button>
-            </div>
-            <label>
-              <span>Player name</span>
-              <input
-                value={renameDraft.nameInput}
-                onChange={(event) =>
-                  // Typing keeps the link only while the name still belongs to that person.
-                  setRenameDraft({ ...renameDraft, nameInput: event.currentTarget.value })
-                }
-              />
-            </label>
-            <PersonNameAssist
-              name={renameDraft.nameInput}
-              personId={renameDraft.personId}
-              directory={peopleDirectory}
-              suggestions={personSuggestions}
-              otherPlayers={activePlayers.filter((player) => player.id !== renameDraft.playerId)}
-              showSuggestions
-              onPick={(suggestion) =>
-                setRenameDraft({
-                  playerId: renameDraft.playerId,
-                  nameInput: suggestion.name,
-                  ...(suggestion.personId ? { personId: suggestion.personId } : {}),
-                  ...(renameDraft.venmoInput !== undefined ? { venmoInput: renameDraft.venmoInput } : {})
-                })
-              }
-            />
-            <VenmoHandleInput
-              value={renameVenmoHandle(renameDraft)}
-              onChange={(venmoInput) => {
-                setRenameDraft({ ...renameDraft, venmoInput });
-                setRenameError(null);
-              }}
-            />
-            {renameError ? <div className="notice notice-warning">{renameError}</div> : null}
-            <div className="modal-actions">
-              <button type="button" onClick={() => setRenameDraft(null)}>
-                Cancel
-              </button>
-              <button className="primary-button" type="button" onClick={confirmRename}>
-                Save name
-              </button>
-            </div>
-          </section>
-        </div>
+        <RenamePlayerDialog
+          renameDraft={renameDraft}
+          setRenameDraft={setRenameDraft}
+          renameError={renameError}
+          setRenameError={setRenameError}
+          activePlayers={activePlayers}
+          peopleDirectory={peopleDirectory}
+          personSuggestions={personSuggestions}
+          dispatch={dispatch}
+          playerName={playerName}
+        />
       ) : null}
     </section>
   );
