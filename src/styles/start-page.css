@@ -35,14 +35,15 @@
 
 .friend-home-heading,
 .friend-profile-card,
-.friend-list-item,
-.friend-list-actions {
+.friend-list-heading,
+.friend-room {
   display: flex;
   align-items: center;
 }
 
 .friend-home-heading,
-.friend-list-item {
+.friend-list-heading,
+.friend-room {
   justify-content: space-between;
   gap: 14px;
 }
@@ -107,24 +108,29 @@
 }
 
 .friend-list-item {
+  display: grid;
+  gap: 8px;
   border-bottom: 1px solid var(--line);
   padding: 10px 0;
 }
 
-.friend-list-item > div:first-child {
+.friend-list-heading > div {
   display: grid;
   min-width: 0;
   gap: 2px;
 }
 
+.friend-room > span {
+  min-width: 0;
+}
+
+.friend-room > button {
+  flex: 0 0 auto;
+}
+
 .friend-list-item span {
   color: var(--muted);
   font-size: 0.8rem;
-}
-
-.friend-list-actions {
-  flex: 0 0 auto;
-  gap: 6px;
 }
 
 .friend-code-rotate {

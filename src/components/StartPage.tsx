@@ -205,21 +205,24 @@ export function StartPage({
                     const liveRooms = live ? friendActivityRooms(live) : [];
                     return (
                       <article className="friend-list-item" key={friend.friendCode}>
-                        <div><strong>{live?.displayName ?? friend.displayName}</strong>
-                          {liveRooms.length === 0 ? <span>Not hosting right now</span> : null}
-                          {liveRooms.map((room) => <span key={room.publicId}>{room.name} is live</span>)}</div>
-                        <div className="friend-list-actions">
-                          {live ? liveRooms.map((room) => (
-                            <button className="primary-button" type="button" key={room.publicId}
-                              aria-label={liveRooms.length > 1 ? `Join ${room.name}` : undefined}
-                              onClick={() => onJoinFriendRoom?.(live, room)}>
-                              <Radio size={15} /> Join
-                            </button>
-                          )) : null}
+                        <div className="friend-list-heading">
+                          <div><strong>{live?.displayName ?? friend.displayName}</strong>
+                            {liveRooms.length === 0 ? <span>Not hosting right now</span> : null}</div>
                           <button className="icon-button" type="button"
                             aria-label={`Remove ${live?.displayName ?? friend.displayName}`} title="Stop following"
                             onClick={() => onRemoveFriend?.(friend.friendCode)}><X size={15} /></button>
                         </div>
+                        {/* Each live room sits next to its own Join button. */}
+                        {live ? liveRooms.map((room) => (
+                          <div className="friend-room" key={room.publicId}>
+                            <span>{room.name} is live</span>
+                            <button className="primary-button" type="button"
+                              aria-label={liveRooms.length > 1 ? `Join ${room.name}` : undefined}
+                              onClick={() => onJoinFriendRoom?.(live, room)}>
+                              <Radio size={15} /> Join
+                            </button>
+                          </div>
+                        )) : null}
                       </article>
                     );
                   })}
