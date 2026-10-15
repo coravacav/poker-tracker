@@ -44,6 +44,15 @@
   align-items: center;
 }
 
+.player-row .seat-badge {
+  justify-content: center;
+  min-width: 4.25rem;
+}
+
+.player-row .person-name-assist {
+  grid-column: 2 / -1;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));

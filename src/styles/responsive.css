@@ -103,9 +103,13 @@
 
   .form-grid,
   .form-grid.two,
-  .transfer-detail-grid,
-  .settlement-layout {
+  .transfer-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* minmax(0, ...) so long rows wrap instead of widening the panel past the screen. */
+  .settlement-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .audit-filter-grid {
@@ -165,6 +169,33 @@
   .history-stat-row {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px 12px;
+  }
+
+  .history-stat-average {
+    justify-self: start;
+  }
+
+  .history-range {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .history-range button {
+    padding: 6px 4px;
+  }
+
+  /* Paid and lock controls and the Venmo link share a row under the payment. */
+  .payment-line-label {
+    flex-basis: 100%;
+  }
+
+  .payment-lock-button {
+    margin-left: auto;
+  }
+
+  .payment-lock-button + .venmo-pay-link {
+    margin-left: 0;
   }
 
   .history-merge-form {

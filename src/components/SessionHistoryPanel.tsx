@@ -271,9 +271,9 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                     // One line per currency; amounts in different currencies are never added up.
                     <Fragment key={result.currencyCode}>
                       {index > 0 ? <span className="history-stat-spacer" aria-hidden="true" /> : null}
-                      <span>{result.games} {result.games === 1 ? "game" : "games"}</span>
-                      <span>Avg {formatCurrency(result.averageNetCents, result.currencyCode)}</span>
-                      <strong className={result.totalNetCents >= 0 ? "positive" : "negative"}>
+                      <span className="history-stat-games">{result.games} {result.games === 1 ? "game" : "games"}</span>
+                      <span className="history-stat-average">Avg {formatCurrency(result.averageNetCents, result.currencyCode)}</span>
+                      <strong className={`history-stat-total ${result.totalNetCents >= 0 ? "positive" : "negative"}`}>
                         {formatCurrency(result.totalNetCents, result.currencyCode)}
                       </strong>
                     </Fragment>

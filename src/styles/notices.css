@@ -11,6 +11,7 @@
 
 .inline-error {
   color: var(--red);
+  text-transform: none;
   font-size: 0.78rem;
   font-weight: 700;
 }

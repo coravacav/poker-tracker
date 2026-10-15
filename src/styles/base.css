@@ -72,6 +72,15 @@ textarea {
   background: #fff;
 }
 
+input[type="checkbox"] {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  accent-color: var(--green);
+}
+
 input:focus,
 select:focus,
 textarea:focus,

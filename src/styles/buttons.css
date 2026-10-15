@@ -49,6 +49,13 @@
   font-weight: 700;
 }
 
-.primary-button:hover {
+.modal-actions .primary-button {
+  border-color: var(--green);
+  color: #fff;
+  background: var(--green);
+}
+
+.primary-button:hover,
+.modal-actions .primary-button:hover {
   background: #0f5a37;
 }

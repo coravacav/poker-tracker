@@ -9,7 +9,8 @@
 
 .history-stat-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) auto auto auto;
+  /* Minimum widths keep games, average, and total lined up from row to row. */
+  grid-template-columns: minmax(120px, 1fr) minmax(4.5rem, auto) minmax(7.5rem, auto) minmax(6rem, auto);
   align-items: center;
   gap: 12px;
   padding: 8px 10px;
@@ -21,6 +22,17 @@
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.history-stat-games,
+.history-stat-average,
+.history-stat-total {
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-heading-actions .text-button {
+  white-space: nowrap;
 }
 
 .history-stat-spacer {
@@ -252,7 +264,7 @@
 }
 
 .history-range button {
-  min-height: 36px;
+  min-height: 40px;
   border: 0;
   border-radius: 6px;
   padding: 6px 12px;
@@ -331,6 +343,7 @@
   color: var(--muted);
   background: var(--surface);
   font-weight: 700;
+  text-align: left;
 }
 
 .history-series-toggle[aria-pressed="true"] {

@@ -63,6 +63,13 @@
   gap: 8px;
 }
 
+.invite-link-field > span:last-child {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  text-transform: none;
+}
+
 .invite-link-field input {
   font-size: 0.78rem;
 }
@@ -109,4 +116,19 @@
 .guest-join-card > svg {
   margin: 0 auto;
   color: var(--green);
+}
+
+.invite-management-row {
+  flex-wrap: wrap;
+}
+
+.invite-management-row .text-button {
+  white-space: nowrap;
+}
+
+.friend-visibility-toggle {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 40px;
 }
