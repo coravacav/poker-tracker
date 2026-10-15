@@ -1,0 +1,51 @@
+.guest-join-card label {
+  text-align: left;
+}
+
+.export-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-error {
+  color: var(--red);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.inline-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.notice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-radius: 7px;
+  padding: 9px 10px;
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.notice-warning {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.share-recovery-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.share-recovery-copy p {
+  margin: 0;
+}
+
+.notice-ok {
+  color: var(--green);
+  background: var(--green-soft);
+}

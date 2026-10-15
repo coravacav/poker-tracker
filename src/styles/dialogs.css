@@ -1,0 +1,71 @@
+.modal-backdrop,
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  padding: 18px;
+  background: rgba(10, 18, 16, 0.48);
+}
+
+.modal-backdrop {
+  place-items: center;
+}
+
+.drawer-backdrop {
+  place-items: stretch end;
+}
+
+.modal,
+.drawer-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.modal {
+  width: min(680px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  padding: 16px;
+}
+
+.drawer-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(560px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.drawer-panel-wide {
+  width: min(760px, 100%);
+}
+
+.drawer-panel > .transaction-form-panel,
+.drawer-panel > .audit-compact,
+.drawer-panel > .cashout-panel {
+  min-height: 0;
+  overflow: auto;
+}
+
+.drawer-panel > .transaction-form-panel {
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.drawer-heading {
+  margin-bottom: 12px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}

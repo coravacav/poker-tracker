@@ -1,0 +1,54 @@
+.icon-button,
+.text-button,
+.primary-button,
+.setup-buy-in-presets button,
+.quick-amounts button,
+.modal-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 11px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.icon-button {
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+
+.icon-button:hover,
+.text-button:hover,
+.setup-buy-in-presets button:hover,
+.quick-amounts button:hover,
+.modal-actions button:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-alt);
+}
+
+.setup-buy-in-presets button[aria-pressed="true"] {
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.icon-button.danger {
+  color: var(--red);
+}
+
+.primary-button {
+  border-color: var(--green);
+  color: #fff;
+  background: var(--green);
+  font-weight: 700;
+}
+
+.primary-button:hover {
+  background: #0f5a37;
+}

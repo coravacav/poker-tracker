@@ -1,0 +1,324 @@
+.start-page {
+  display: grid;
+  min-height: 100dvh;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  overflow: auto;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 0, rgba(223, 244, 232, 0.8), transparent 45%),
+    var(--bg);
+}
+
+.home-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 560px));
+  width: min(1160px, 100%);
+  gap: 18px;
+  align-items: start;
+}
+
+.start-card {
+  display: grid;
+  width: min(560px, 100%);
+  gap: 12px;
+  padding: clamp(24px, 5vw, 42px);
+  text-align: center;
+}
+
+.friend-home-card {
+  display: grid;
+  gap: 14px;
+  padding: clamp(24px, 4vw, 36px);
+}
+
+.friend-home-heading,
+.friend-profile-card,
+.friend-list-item,
+.friend-list-actions {
+  display: flex;
+  align-items: center;
+}
+
+.friend-home-heading,
+.friend-list-item {
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.friend-home-heading > svg {
+  color: var(--green);
+}
+
+.friend-profile-setup,
+.friend-profile-name,
+.friend-add-form,
+.friend-list {
+  display: grid;
+  gap: 10px;
+}
+
+.friend-profile-setup label,
+.friend-profile-name label,
+.friend-add-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.friend-profile-card {
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--surface-alt);
+}
+
+.friend-profile-card > svg {
+  flex: 0 0 auto;
+  max-width: 38%;
+  height: auto;
+}
+
+.friend-profile-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.friend-code {
+  overflow-wrap: anywhere;
+  font-size: clamp(1rem, 2.4vw, 1.35rem);
+  letter-spacing: 0.06em;
+}
+
+.friend-profile-name,
+.friend-add-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.friend-list {
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
+}
+
+.friend-list-item {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.friend-list-item > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.friend-list-item span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.friend-list-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.friend-code-rotate {
+  justify-self: start;
+  color: var(--red);
+}
+
+.start-card > svg {
+  margin: 0 auto;
+  color: var(--green);
+}
+
+.start-intro {
+  max-width: 440px;
+  margin: 0 auto;
+  color: var(--muted);
+}
+
+.start-game-summary {
+  display: grid;
+  gap: 14px;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: left;
+  background: var(--surface-alt);
+}
+
+.start-game-summary-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.start-game-summary-heading > div {
+  min-width: 0;
+}
+
+.start-game-summary-heading h2 {
+  overflow-wrap: anywhere;
+}
+
+.start-game-summary-heading > svg {
+  flex: 0 0 auto;
+  color: var(--green);
+}
+
+.start-game-metrics {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+
+.start-game-metrics > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.start-game-metrics > div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.start-game-metrics dt {
+  flex: 0 0 auto;
+  overflow: visible;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  white-space: normal;
+}
+
+.start-game-metrics dd {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  font-size: 0.83rem;
+  font-weight: 750;
+  text-align: right;
+  white-space: normal;
+}
+
+.start-actions {
+  display: grid;
+  gap: 9px;
+  margin-top: 4px;
+}
+
+.start-actions button {
+  width: 100%;
+  min-height: 50px;
+  font-weight: 800;
+}
+
+.start-new-button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 11px;
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.start-new-button:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-alt);
+}
+
+.start-footnote {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.backup-reminder {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--ink);
+  background: var(--surface-alt);
+  text-align: left;
+}
+
+.backup-reminder > svg {
+  margin-top: 1px;
+  color: var(--amber);
+}
+
+.backup-reminder-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.backup-reminder-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.backup-reminder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 2;
+  gap: 8px;
+}
+
+@media (max-width: 420px) {
+  .backup-reminder-actions {
+    grid-column: 1 / -1;
+  }
+
+  .backup-reminder-actions button {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .start-page {
+    padding: 16px;
+  }
+
+  .start-card {
+    padding: 24px 18px;
+  }
+
+  .home-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .friend-home-card {
+    padding: 22px 18px;
+  }
+
+  .friend-profile-name,
+  .friend-add-form {
+    grid-template-columns: 1fr;
+  }
+
+}

@@ -1,0 +1,82 @@
+.metric-grid,
+.compact-metrics {
+  display: grid;
+  gap: 10px;
+}
+
+.metric-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 12px;
+}
+
+.metric-grid div,
+.cashout-row,
+.settlement-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+}
+
+.metric-grid div {
+  padding: 10px;
+}
+
+.metric-wide {
+  grid-column: 1 / -1;
+}
+
+.bank-panel-compact {
+  padding: 10px;
+}
+
+.compact-bank-heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.compact-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compact-metrics div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px;
+  background: #fbfcfc;
+}
+
+dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+dd {
+  margin: 2px 0 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.icon-key {
+  padding: 10px;
+}
+
+.icon-key dl {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin: 0;
+}
+
+.icon-key dt {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 28px;
+  color: var(--ink);
+  text-transform: none;
+}

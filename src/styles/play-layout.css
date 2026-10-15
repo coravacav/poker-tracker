@@ -1,0 +1,41 @@
+.play-mode {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  gap: 12px;
+}
+
+.play-table-area,
+.play-rail,
+.settle-mode {
+  min-width: 0;
+}
+
+.play-table-area {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+.play-table-area > .notice {
+  grid-row: 1;
+}
+
+.play-table-area > .poker-table-panel {
+  grid-row: 2;
+}
+
+.play-rail {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  align-content: start;
+}
+
+.settle-mode {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  max-width: 1180px;
+  margin: 0 auto;
+}

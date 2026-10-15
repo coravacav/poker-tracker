@@ -1,0 +1,125 @@
+.setup-mode > .panel,
+.settle-mode > .panel {
+  min-height: 0;
+  overflow: auto;
+}
+
+.setup-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.setup-buy-in-presets {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 4px;
+}
+
+.setup-buy-in-presets > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.setup-buy-in-presets > div {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.setup-buy-in-presets button {
+  min-width: 0;
+  padding-inline: 4px;
+  font-weight: 700;
+  /* Longer currency labels (e.g. "CHF 100") wrap instead of overflowing on phones. */
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
+.setup-field-wide {
+  grid-column: 1 / -1;
+}
+
+.compact-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.compact-field span,
+label span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.money-field,
+.layout-field {
+  max-width: none;
+}
+
+.compact-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.compact-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+
+.panel,
+.poker-table-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 1px 0 rgba(19, 31, 27, 0.04);
+}
+
+.panel {
+  padding: 14px;
+}
+
+.poker-table-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: auto;
+}
+
+.panel-heading,
+.table-toolbar,
+.modal-heading,
+.drawer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.compact-heading {
+  margin-bottom: 8px;
+}
+
+.table-toolbar {
+  padding: 12px 12px 0;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
