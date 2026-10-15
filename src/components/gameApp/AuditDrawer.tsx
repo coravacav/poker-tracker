@@ -4,6 +4,7 @@ import type { GameState } from "../../domain/pokerTypes";
 import type { SharedActivity } from "../../session/types";
 import type { GameAction } from "../../state/gameReducer";
 import { TransactionTable } from "../TransactionTable";
+import { useDialogFocus } from "../useDialogFocus";
 
 type AuditDrawerProps = {
   state: GameState;
@@ -22,9 +23,12 @@ export function AuditDrawer({
   sharedActivity,
   setAuditDrawerOpen
 }: AuditDrawerProps) {
+  const dialogRef = useDialogFocus<HTMLElement>(true, () => setAuditDrawerOpen(false));
   return (
     <div className="drawer-backdrop" role="presentation">
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         className="drawer-panel drawer-panel-wide"
         role="dialog"
         aria-modal="true"

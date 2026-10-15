@@ -6,6 +6,7 @@ import { createId } from "../../state/seedGame";
 import { useFormatCurrency } from "../CurrencyContext";
 import { LedgerImpactPreview, TransferPreview } from "../TransferPreview";
 import { TransferQuickAmountButtons } from "../TransferQuickAmountButtons";
+import { useDialogFocus } from "../useDialogFocus";
 
 export type TransferDraft = {
   mode: "player_gave" | "player_owes" | "cover_buy_in";
@@ -41,6 +42,7 @@ export function TransferDialog({
   onAddTransaction,
   playerName
 }: TransferDialogProps) {
+  const dialogRef = useDialogFocus<HTMLElement>(true, () => setTransferDraft(null));
   const formatCurrency = useFormatCurrency();
 
   function confirmTransfer() {
@@ -105,7 +107,14 @@ export function TransferDialog({
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="modal" role="dialog" aria-modal="true" aria-label="Player transaction">
+      <section
+        ref={dialogRef}
+        tabIndex={-1}
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Player transaction"
+      >
         <div className="modal-heading">
           <div>
             <p className="eyebrow">

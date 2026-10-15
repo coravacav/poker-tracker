@@ -8,6 +8,7 @@ import type { GameAction } from "../../state/gameReducer";
 import { savePersonVenmoHandle } from "../../state/peopleStore";
 import { PersonNameAssist } from "../PersonNameAssist";
 import { VenmoHandleInput } from "../VenmoHandleInput";
+import { useDialogFocus } from "../useDialogFocus";
 
 export type RenameDraft = {
   playerId: PlayerId;
@@ -42,6 +43,7 @@ export function RenamePlayerDialog({
   dispatch,
   playerName
 }: RenamePlayerDialogProps) {
+  const dialogRef = useDialogFocus<HTMLElement>(true, () => setRenameDraft(null));
   /** The Venmo username the rename dialog shows: typed, or else the one the new link implies. */
   function renameVenmoHandle(draft: RenameDraft): string {
     if (draft.venmoInput !== undefined) return draft.venmoInput;
@@ -88,7 +90,14 @@ export function RenamePlayerDialog({
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="modal table-action-modal" role="dialog" aria-modal="true" aria-label="Rename player">
+      <section
+        ref={dialogRef}
+        tabIndex={-1}
+        className="modal table-action-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Rename player"
+      >
         <div className="modal-heading">
           <div>
             <p className="eyebrow">Seat action</p>

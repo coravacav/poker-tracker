@@ -11,6 +11,7 @@ import type {
 import type { SharedAuditEvent } from "../session/types";
 import type { GameAction } from "../state/gameReducer";
 import { ChipBreakdown } from "./ChipBreakdown";
+import { useDialogFocus } from "./useDialogFocus";
 
 type TransactionTableProps = {
   dispatch: Dispatch<GameAction>;
@@ -102,6 +103,7 @@ function CorrectionDialog({
   onCancel: () => void;
   onConfirm: (reason: string) => void;
 }) {
+  const dialogRef = useDialogFocus<HTMLElement>(true, onCancel);
   const formatCurrency = useFormatCurrency();
   const [reason, setReason] = useState(kind === "void" ? "Correction" : "");
 
@@ -113,6 +115,8 @@ function CorrectionDialog({
   return (
     <div className="modal-backdrop" role="presentation">
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         className="modal table-action-modal"
         role="dialog"
         aria-modal="true"

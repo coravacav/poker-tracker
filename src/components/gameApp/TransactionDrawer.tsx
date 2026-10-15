@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import type { GameState, Transaction } from "../../domain/pokerTypes";
 import { TransactionForm } from "../TransactionForm";
 import type { LedgerOverview } from "./useLedgerOverview";
+import { useDialogFocus } from "../useDialogFocus";
 
 type TransactionDrawerProps = {
   state: GameState;
@@ -27,9 +28,12 @@ export function TransactionDrawer({
   onSubmitGuestTransaction,
   setTransactionDrawerOpen
 }: TransactionDrawerProps) {
+  const dialogRef = useDialogFocus<HTMLElement>(true, () => setTransactionDrawerOpen(false));
   return (
     <div className="drawer-backdrop" role="presentation">
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         className="drawer-panel"
         role="dialog"
         aria-modal="true"

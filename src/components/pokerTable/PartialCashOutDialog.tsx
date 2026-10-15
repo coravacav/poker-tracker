@@ -5,6 +5,7 @@ import type { PlayerId, PlayerLedgerSummary, Transaction } from "../../domain/po
 import { createId } from "../../state/seedGame";
 import { LedgerImpactPreview } from "../TransferPreview";
 import { TransferQuickAmountButtons } from "../TransferQuickAmountButtons";
+import { useDialogFocus } from "../useDialogFocus";
 
 export type PartialCashOutDraft = {
   playerId: PlayerId;
@@ -35,6 +36,7 @@ export function PartialCashOutDialog({
   onAddTransaction,
   playerName
 }: PartialCashOutDialogProps) {
+  const dialogRef = useDialogFocus<HTMLElement>(true, () => setPartialCashOutDraft(null));
   function confirmPartialCashOut() {
     if (!partialCashOutDraft) return;
     const amountCents = parseMoneyToCents(partialCashOutDraft.amountInput);
@@ -69,6 +71,8 @@ export function PartialCashOutDialog({
   return (
     <div className="modal-backdrop" role="presentation">
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         className="modal table-action-modal"
         role="dialog"
         aria-modal="true"

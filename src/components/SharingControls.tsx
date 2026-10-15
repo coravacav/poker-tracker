@@ -2,6 +2,7 @@ import { Copy, Radio, RefreshCw, Share2, StopCircle, UserRound, WifiOff, X } fro
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { QrCode } from "./QrCode";
+import { useDialogFocus } from "./useDialogFocus";
 import { useFormatCurrency } from "./CurrencyContext";
 import type { HostRecovery, HostRoomProjection } from "../session/types";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -65,6 +66,7 @@ export function HostSharingControls({
   const [open, setOpen] = useState(true);
   const [copied, setCopied] = useState(false);
   const duplicate = room?.controllerStatus === "duplicate";
+  const dialogRef = useDialogFocus<HTMLElement>(open, () => setOpen(false));
 
   async function copyInvite() {
     try {
@@ -96,7 +98,14 @@ export function HostSharingControls({
             // The header's backdrop-filter would otherwise make this fixed overlay
             // resolve its inset against the header instead of the viewport.
             <div className="drawer-backdrop sharing-backdrop" role="presentation">
-              <section className="share-dialog" role="dialog" aria-modal="true" aria-label="Share game">
+              <section
+                ref={dialogRef}
+                tabIndex={-1}
+                className="share-dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Share game"
+              >
                 <div className="drawer-heading">
                   <div>
                     <p className="eyebrow">Realtime guest view</p>

@@ -4,6 +4,7 @@ import { formatCurrency } from "../../domain/money";
 import type { Player, PlayerLedgerSummary, Transaction } from "../../domain/pokerTypes";
 import { playerNameById } from "../../domain/settlement";
 import { createId } from "../../state/seedGame";
+import { useDialogFocus } from "../useDialogFocus";
 
 type DebtCoverageDialogProps = {
   coveredPlayerId: string;
@@ -39,6 +40,7 @@ export function DebtCoverageDialog({
   sortedSummaries,
   onAddTransaction
 }: DebtCoverageDialogProps) {
+  const dialogRef = useDialogFocus<HTMLElement>(true, () => setCoveredPlayerId(null));
   function recordDebtCoverage() {
     if (!coveredPlayerId || !coveredByPlayerId) {
       setCoverageError("Choose a player to cover this debt.");
@@ -81,6 +83,8 @@ export function DebtCoverageDialog({
   return (
     <div className="modal-backdrop" role="presentation">
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         className="modal table-action-modal"
         role="dialog"
         aria-modal="true"
