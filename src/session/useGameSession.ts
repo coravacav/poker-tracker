@@ -1,176 +1,30 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { Dispatch } from "react";
-import type { GameState, Transaction } from "../domain/pokerTypes";
-import { archiveGame } from "../state/gameArchive";
-import { validatePersistedState } from "../domain/validation";
-import { gameReducer, type GameAction } from "../state/gameReducer";
+import { useReducer, useRef, useState } from "react";
+import { gameReducer } from "../state/gameReducer";
+import { loadGameState } from "../state/persistence";
+import { configuredDeploymentUrl, convexRoomTransport } from "./convexRoomTransport";
+import { loadInitialLocalEntry, type LocalEntry } from "./localEntry";
 import {
-  loadGameState,
-  migratePersistedState,
-  saveGameState,
-  trySaveGameState
-} from "../state/persistence";
-import {
-  createCapability,
-  createInviteUrl,
-  guestRoomHash,
-  parseInviteRoute,
-  type InviteRoute
-} from "./capabilities";
-import {
-  loadInitialLocalEntry,
-  readLastVisitAt,
-  shouldShowLocalEntry,
-  writeLastVisitAt,
-  type LocalEntry
-} from "./localEntry";
-import {
-  createFriendCode,
-  friendCodeFromHash,
-  loadFollowedFriends,
-  loadFriendProfile,
-  normalizeFriendCode,
-  saveFollowedFriends,
-  saveFriendProfile,
-  validFriendCode,
-  type FollowedFriend,
-  type FriendProfile
-} from "./friendProfiles";
-import {
-  configuredDeploymentUrl,
-  convexRoomTransport,
-  friendProfileErrorMessage,
-  roomErrorMessage,
-  roomErrorCode,
-  SHARING_UNAVAILABLE_MESSAGE
-} from "./convexRoomTransport";
-import {
-  clearGuestSession,
-  clearHostRecovery,
-  getHostControllerId,
-  loadGuestSession,
-  loadHostRecovery,
-  loadRoomHistoryCredentials,
-  recoverGuestSession,
-  saveGuestSession,
-  saveHostRecovery,
-  saveRoomHistoryCredential
-} from "./sessionPersistence";
-import type {
-  GuestRoomProjection,
-  FriendActivity,
-  FriendRoom,
-  GuestSession,
-  HostRecovery,
-  HostRoomProjection,
-  RoomHistoryProjection,
-  RoomTransport
-} from "./types";
-import type { Id } from "../../convex/_generated/dataModel";
+  initialSession,
+  type LocalEntryDestination,
+  type SessionState
+} from "./sessionState";
+import type { RoomTransport } from "./types";
+import { useFriendDiscovery } from "./useFriendDiscovery";
+import { useGuestSession, useInvitePreview } from "./useGuestSession";
+import { useHostRoomControls } from "./useHostRoomControls";
+import { useHostSession } from "./useHostSession";
+import { useLocalEntryActions, useLocalEntryTracking } from "./useLocalEntry";
+import { useRoomHistory, useRoomHistoryCredentials } from "./useRoomHistory";
+import { useMarkNotificationsRead, useRoomConnection } from "./useSharedRoom";
 
-type InviteState = {
-  mode: "joining";
-  route: Extract<InviteRoute, { kind: "invite" }>;
-  preview: { status: "loading" | "active" | "invalid" | "ended" | "closed"; name?: string };
-  error: string | null;
-  joining: boolean;
-};
+export type { LocalEntryDestination } from "./sessionState";
 
-type GuestState = {
-  mode: "guest";
-  credentials: GuestSession;
-  room: GuestRoomProjection | null;
-  connected: boolean;
-  error: string | null;
-};
-
-type HostState = {
-  mode: "hosting" | "creating_room" | "ending" | "recovery_required" | "room_unavailable";
-  recovery: HostRecovery | null;
-  room: HostRoomProjection | null;
-  connected: boolean;
-  roomReady: boolean;
-  pending: boolean;
-  error: string | null;
-};
-
-type LocalState = { mode: "local"; notice: string | null };
-type InvalidState = { mode: "invalid_invite"; message: string };
-type SessionState = LocalState | InviteState | GuestState | HostState | InvalidState;
-export type LocalEntryDestination = "play" | "setup";
-
-const ROOM_UNAVAILABLE_COPY =
-  "The shared room is unavailable. Your latest accepted game is safe on this device.";
-const DEPLOYMENT_MISMATCH_COPY =
-  "This shared room belongs to a different deployment. Your local copy is safe on this device.";
-
-function normalizeRoomState(value: unknown): GameState | null {
-  if (
-    !validatePersistedState(value) ||
-    (value.schemaVersion !== 6 && value.schemaVersion !== 7 && value.schemaVersion !== 8)
-  ) {
-    return null;
-  }
-
-  return migratePersistedState(value);
-}
-
-function updateHostRecovery(
-  recovery: HostRecovery,
-  room: HostRoomProjection,
-  deploymentUrl: string | null
-): HostRecovery {
-  const next: HostRecovery = {
-    ...recovery,
-    roomName: room.name,
-    lastKnownVersion: room.version,
-    ...(deploymentUrl ? { deploymentUrl } : {})
-  };
-  saveHostRecovery(next);
-  return next;
-}
-
-function initialSession(localGameId: string, deploymentUrl: string | null): SessionState {
-  const route = parseInviteRoute();
-  if (route.kind === "invite") {
-    return {
-      mode: "joining",
-      route,
-      preview: { status: "loading" },
-      error: null,
-      joining: false
-    };
-  }
-  if (route.kind === "guest_room") {
-    const credentials =
-      loadGuestSession(route.publicId) ??
-      recoverGuestSession(route.publicId, createCapability(18), deploymentUrl);
-    return credentials
-      ? { mode: "guest", credentials, room: null, connected: false, error: null }
-      : {
-          mode: "invalid_invite",
-          message: "This guest session is not available in this browser tab. Open the original invite again."
-        };
-  }
-  const recovery = loadHostRecovery();
-  if (recovery?.localGameId === localGameId) {
-    const deploymentMismatch =
-      recovery.deploymentUrl !== undefined &&
-      deploymentUrl !== null &&
-      recovery.deploymentUrl !== deploymentUrl;
-    return {
-      mode: deploymentMismatch ? "room_unavailable" : "hosting",
-      recovery,
-      room: null,
-      connected: false,
-      roomReady: false,
-      pending: false,
-      error: deploymentMismatch ? DEPLOYMENT_MISMATCH_COPY : null
-    };
-  }
-  return { mode: "local", notice: null };
-}
-
+/**
+ * Composes the local game, hosted and guest shared-room sessions, friend
+ * discovery, and Home-screen state into the single API the app renders from.
+ * Sub-hooks are called in a fixed order so their effects run in the same
+ * sequence on every commit.
+ */
 export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   const [localState, localDispatch] = useReducer(gameReducer, undefined, loadGameState);
   const deploymentUrl = transport === convexRoomTransport ? configuredDeploymentUrl() : null;
@@ -183,1091 +37,64 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   });
   const [localEntryDestination, setLocalEntryDestination] =
     useState<LocalEntryDestination>("play");
-  const [roomHistory, setRoomHistory] = useState<RoomHistoryProjection[]>([]);
-  const [friendProfile, setFriendProfile] = useState<FriendProfile | null>(loadFriendProfile);
-  const [followedFriends, setFollowedFriends] = useState<FollowedFriend[]>(loadFollowedFriends);
-  const [friendActivity, setFriendActivity] = useState<FriendActivity[]>([]);
-  const [friendPending, setFriendPending] = useState(false);
-  const [friendError, setFriendError] = useState<string | null>(null);
-  const [initialFriendCode, setInitialFriendCode] = useState<string | null>(friendCodeFromHash);
   const sessionRef = useRef(session);
   const localStateRef = useRef(localState);
-  const lastAcceptedHostStateRef = useRef(localState);
   const localEntryRef = useRef(localEntry);
-  const mutationPending = useRef(false);
-  const startingNewGameRef = useRef(false);
-  const historyCredentialSavedRef = useRef(new Set<string>());
   sessionRef.current = session;
   localStateRef.current = localState;
   localEntryRef.current = localEntry;
 
-  const refreshRoomHistory = useCallback(async () => {
-    if (!transport.configured) {
-      return;
-    }
-    const credentials = loadRoomHistoryCredentials();
-    if (credentials.length === 0) return;
-    const rooms = await transport.getRoomHistory(credentials);
-    setRoomHistory(rooms.sort((left, right) => right.createdAt - left.createdAt));
-  }, [transport]);
-
-  useEffect(() => {
-    void refreshRoomHistory();
-  }, [refreshRoomHistory]);
-
-  useEffect(() => {
-    if (!transport.configured || !transport.subscribeFriendActivity || followedFriends.length === 0) {
-      setFriendActivity([]);
-      return;
-    }
-    return transport.subscribeFriendActivity(
-      followedFriends.map((friend) => friend.friendCode),
-      (activity) => {
-        setFriendActivity(activity);
-        setFollowedFriends((current) => {
-          const names = new Map(activity.map((item) => [item.friendCode, item.displayName]));
-          const next = current.map((friend) => ({
-            ...friend,
-            displayName: names.get(friend.friendCode) ?? friend.displayName
-          }));
-          if (JSON.stringify(next) !== JSON.stringify(current)) saveFollowedFriends(next);
-          return next;
-        });
-        setFriendError(null);
-      },
-      () => setFriendError("Friend rooms could not be refreshed. Please try again.")
-    );
-  }, [followedFriends.map((friend) => friend.friendCode).join("|"), transport]);
-
-  useEffect(() => {
-    if (session.mode === "hosting" && session.recovery) {
-      const key = `host:${session.recovery.publicId}`;
-      if (historyCredentialSavedRef.current.has(key)) return;
-      historyCredentialSavedRef.current.add(key);
-      saveRoomHistoryCredential({
-        schemaVersion: 1,
-        publicId: session.recovery.publicId,
-        role: "host",
-        secret: session.recovery.hostSecret,
-        roomName: session.recovery.roomName,
-        joinedAt: Date.now(),
-        ...(deploymentUrl ? { deploymentUrl } : {})
-      });
-    } else if (session.mode === "guest") {
-      const key = `guest:${session.credentials.publicId}`;
-      if (historyCredentialSavedRef.current.has(key)) return;
-      historyCredentialSavedRef.current.add(key);
-      saveRoomHistoryCredential({
-        schemaVersion: 1,
-        publicId: session.credentials.publicId,
-        role: "guest",
-        secret: session.credentials.guestSecret,
-        roomName: session.room?.name ?? "Shared poker game",
-        joinedAt: Date.now(),
-        displayName: session.credentials.displayName,
-        ...(deploymentUrl ? { deploymentUrl } : {})
-      });
-    }
-  }, [deploymentUrl, session]);
-
-  useEffect(() => {
-    if (session.mode === "local" && !localEntry) saveGameState(localState);
-  }, [localEntry, localState, session.mode]);
-
-  useEffect(() => {
-    const recordActiveVisit = () => {
-      const current = sessionRef.current;
-      if (current.mode === "local") {
-        if (!localEntryRef.current) writeLastVisitAt();
-        return;
-      }
-
-      if (
-        current.mode === "guest" ||
-        current.mode === "hosting" ||
-        current.mode === "creating_room" ||
-        current.mode === "ending" ||
-        current.mode === "recovery_required" ||
-        current.mode === "room_unavailable"
-      ) {
-        writeLastVisitAt();
-      }
-    };
-
-    const evaluateReturn = () => {
-      const current = sessionRef.current;
-      if (current.mode === "local") {
-        if (localEntryRef.current) return;
-
-        const now = Date.now();
-        const lastVisitAt = readLastVisitAt();
-        if (shouldShowLocalEntry(lastVisitAt, now)) {
-          setLocalEntry({
-            reason: lastVisitAt === null ? "first_visit" : "stale_return",
-            savedGame: localStateRef.current
-          });
-          setLocalEntryDestination("play");
-          return;
-        }
-
-        writeLastVisitAt(now);
-        return;
-      }
-
-      if (
-        current.mode === "guest" ||
-        current.mode === "hosting" ||
-        current.mode === "creating_room" ||
-        current.mode === "ending" ||
-        current.mode === "recovery_required" ||
-        current.mode === "room_unavailable"
-      ) {
-        writeLastVisitAt();
-      }
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        evaluateReturn();
-      } else {
-        recordActiveVisit();
-      }
-    };
-
-    const onFocus = () => evaluateReturn();
-    const onBlur = () => recordActiveVisit();
-    const onPageHide = () => recordActiveVisit();
-
-    evaluateReturn();
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("blur", onBlur);
-    window.addEventListener("pagehide", onPageHide);
-    const activeVisitInterval = window.setInterval(recordActiveVisit, 60_000);
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("blur", onBlur);
-      window.removeEventListener("pagehide", onPageHide);
-      window.clearInterval(activeVisitInterval);
-    };
-  }, [session.mode]);
-
-  useEffect(() => {
-    if (session.mode === "local" || session.mode === "invalid_invite") return;
-    return transport.subscribeToConnection((connected) => {
-      setSession((current) =>
-        current.mode === "guest" ||
-        current.mode === "hosting" ||
-        current.mode === "creating_room" ||
-        current.mode === "ending" ||
-        current.mode === "recovery_required" ||
-        current.mode === "room_unavailable"
-          ? { ...current, connected }
-          : current
-      );
-      const current = sessionRef.current;
-      if (connected && current.mode === "guest") {
-        void transport
-          .heartbeat(
-            current.credentials.publicId,
-            current.credentials.guestSecret,
-            current.credentials.presenceSessionId
-          )
-          .catch(() => undefined);
-      }
-    });
-  }, [session.mode, transport]);
-
-  useEffect(() => {
-    if (session.mode !== "joining" || session.preview.status !== "loading") return;
-    if (!transport.configured) {
-      setSession((current) =>
-        current.mode === "joining"
-          ? {
-              ...current,
-              preview: { status: "invalid" },
-              error: SHARING_UNAVAILABLE_MESSAGE
-            }
-          : current
-      );
-      return;
-    }
-    let cancelled = false;
-    void transport
-      .getInvitePreview(session.route.publicId, session.route.inviteSecret)
-      .then((preview) => {
-        if (cancelled) return;
-        setSession((current) => {
-          if (current.mode !== "joining") return current;
-          const status =
-            preview.status === "active"
-              ? "active"
-              : preview.status === "ended" || preview.status === "expired"
-                ? "ended"
-                : "invalid";
-          return { ...current, preview: { status, name: preview.name }, error: null };
-        });
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setSession((current) =>
-            current.mode === "joining"
-              ? { ...current, preview: { status: "invalid" }, error: roomErrorMessage(error) }
-              : current
-          );
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [session, transport]);
-
-  const finishHostSession = useCallback(
-    (room: HostRoomProjection, recovery: HostRecovery) => {
-      if (trySaveGameState(room.state)) {
-        localDispatch({ type: "replace_state_from_import", state: room.state });
-        clearHostRecovery();
-        setSession({ mode: "local", notice: "Sharing ended. The final room state is saved locally." });
-      } else {
-        setSession({
-          mode: "recovery_required",
-          recovery: updateHostRecovery(recovery, room, deploymentUrl),
-          room,
-          connected: transport.connectionState(),
-          roomReady: true,
-          pending: false,
-          error: "The room ended, but its final state could not be saved locally. Retry recovery before continuing."
-        });
-      }
-    },
-    [deploymentUrl, transport]
-  );
-
-  useEffect(() => {
-    if (
-      (session.mode !== "hosting" && session.mode !== "ending" && session.mode !== "recovery_required") ||
-      !session.recovery ||
-      !transport.configured
-    ) {
-      return;
-    }
-    const recovery = session.recovery;
-    const controllerId = getHostControllerId(() => createCapability(18));
-    return transport.subscribeHost(
-      { publicId: recovery.publicId, hostSecret: recovery.hostSecret, controllerId },
-      (room) => {
-        const normalizedState = normalizeRoomState(room.state);
-        if (!normalizedState || normalizedState.localGameId !== recovery.localGameId) {
-          setSession((current) =>
-            current.mode === "hosting" || current.mode === "ending" || current.mode === "recovery_required"
-              ? {
-                  ...current,
-                  roomReady: false,
-                  error: "The hosted room returned an invalid game snapshot."
-                }
-              : current
-          );
-          return;
-        }
-        const normalizedRoom = { ...room, state: normalizedState };
-        if (room.status === "ended" || room.status === "expired") {
-          finishHostSession(normalizedRoom, recovery);
-          return;
-        }
-        const nextRecovery = updateHostRecovery(recovery, normalizedRoom, deploymentUrl);
-        lastAcceptedHostStateRef.current = normalizedState;
-        localDispatch({ type: "replace_state_from_import", state: normalizedState });
-        const persisted = trySaveGameState(normalizedState);
-        setSession((current) =>
-          current.mode === "hosting" || current.mode === "ending" || current.mode === "recovery_required"
-            ? {
-                ...current,
-                mode: "hosting",
-                recovery: nextRecovery,
-                room: normalizedRoom,
-                roomReady: true,
-                error: persisted ? null : "Accepted room state could not be cached locally."
-              }
-            : current
-        );
-      },
-      (error) => {
-        setSession((current) => {
-          if (
-            current.mode !== "hosting" &&
-            current.mode !== "ending" &&
-            current.mode !== "recovery_required"
-          ) {
-            return current;
-          }
-          if (roomErrorCode(error) === "ROOM_NOT_FOUND") {
-            return {
-              ...current,
-              mode: "room_unavailable",
-              room: null,
-              roomReady: false,
-              pending: false,
-              error: roomErrorMessage(error)
-            };
-          }
-          return { ...current, roomReady: false, error: roomErrorMessage(error) };
-        });
-      }
-    );
-  }, [
-    finishHostSession,
-    session.mode,
-    "recovery" in session ? session.recovery?.publicId : null,
-    "recovery" in session ? session.recovery?.hostSecret : null,
-    "recovery" in session ? session.recovery?.localGameId : null,
+  const { roomHistory, refreshRoomHistory } = useRoomHistory(transport);
+  const friends = useFriendDiscovery({
+    transport,
+    sessionRef,
+    setSession,
+    setLocalEntry,
+    refreshRoomHistory
+  });
+  useRoomHistoryCredentials(session, deploymentUrl);
+  useLocalEntryTracking({
+    localState,
+    localEntry,
+    sessionMode: session.mode,
+    sessionRef,
+    localStateRef,
+    localEntryRef,
+    setLocalEntry,
+    setLocalEntryDestination
+  });
+  useRoomConnection(session, transport, sessionRef, setSession);
+  useInvitePreview(session, transport, setSession);
+  const host = useHostSession({
+    session,
+    transport,
     deploymentUrl,
-    transport
-  ]);
-
-  useEffect(() => {
-    if (session.mode !== "guest") return;
-    const { credentials } = session;
-    if (!transport.configured) {
-      setSession((current) =>
-        current.mode === "guest"
-          ? { ...current, error: SHARING_UNAVAILABLE_MESSAGE }
-          : current
-      );
-      return;
-    }
-    const unsubscribe = transport.subscribeGuest(
-      { publicId: credentials.publicId, guestSecret: credentials.guestSecret },
-      (room) => {
-        const normalizedState = normalizeRoomState(room.state);
-        if (!normalizedState) {
-          setSession((current) =>
-            current.mode === "guest" ? { ...current, error: "Room data is invalid." } : current
-          );
-          return;
-        }
-        setSession((current) =>
-          current.mode === "guest"
-            ? { ...current, room: { ...room, state: normalizedState }, error: null }
-            : current
-        );
-      },
-      (error) => {
-        setSession((current) =>
-          current.mode === "guest" ? { ...current, error: roomErrorMessage(error) } : current
-        );
-      }
-    );
-    const heartbeat = () => {
-      if (transport.connectionState()) {
-        void transport
-          .heartbeat(
-            credentials.publicId,
-            credentials.guestSecret,
-            credentials.presenceSessionId
-          )
-          .catch(() => undefined);
-      }
-    };
-    const interval = window.setInterval(heartbeat, 30_000);
-    const heartbeatWhenVisible = () => {
-      if (document.visibilityState === "visible") heartbeat();
-    };
-    document.addEventListener("visibilitychange", heartbeatWhenVisible);
-    window.addEventListener("focus", heartbeat);
-    window.addEventListener("online", heartbeat);
-    return () => {
-      unsubscribe();
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", heartbeatWhenVisible);
-      window.removeEventListener("focus", heartbeat);
-      window.removeEventListener("online", heartbeat);
-    };
-  }, [session.mode, session.mode === "guest" ? session.credentials : null, transport]);
-
-  const shareGame = useCallback(async () => {
-    const current = sessionRef.current;
-    if (current.mode !== "local" && current.mode !== "room_unavailable") return;
-    if (!transport.configured) {
-      setSession({ mode: "local", notice: SHARING_UNAVAILABLE_MESSAGE });
-      return;
-    }
-    const sourceState =
-      current.mode === "room_unavailable"
-        ? lastAcceptedHostStateRef.current
-        : localStateRef.current;
-    setSession({
-      mode: "creating_room",
-      recovery: null,
-      room: null,
-      connected: transport.connectionState(),
-      roomReady: false,
-      pending: true,
-      error: null
-    });
-    let provisionalRecovery: HostRecovery | null = null;
-    try {
-      const publicId = createCapability(18);
-      const hostSecret = createCapability();
-      const inviteSecret = createCapability();
-      const controllerId = getHostControllerId(() => createCapability(18));
-      const inviteUrl = createInviteUrl(publicId, inviteSecret);
-      provisionalRecovery = {
-        schemaVersion: 1,
-        publicId,
-        localGameId: sourceState.localGameId,
-        hostSecret,
-        inviteSecret,
-        inviteUrl,
-        roomName: sourceState.settings.gameName.trim() || "Poker Night",
-        lastKnownVersion: 0,
-        ...(deploymentUrl ? { deploymentUrl } : {})
-      };
-      if (!saveHostRecovery(provisionalRecovery)) {
-        throw new Error("The host recovery capability could not be saved locally.");
-      }
-      setSession((current) =>
-        current.mode === "creating_room" ? { ...current, recovery: provisionalRecovery } : current
-      );
-      const room = await transport.createRoom({
-        publicId,
-        localGameId: sourceState.localGameId,
-        snapshot: sourceState,
-        hostSecret,
-        inviteSecret,
-        controllerId,
-        ...(friendProfile
-          ? {
-              friendCode: friendProfile.friendCode,
-              profileOwnerSecret: friendProfile.ownerSecret,
-              visibleToFriends: true
-            }
-          : {})
-      });
-      const normalizedState = normalizeRoomState(room.state);
-      if (!normalizedState) {
-        throw new Error("The room returned an invalid game snapshot.");
-      }
-      const normalizedRoom = { ...room, state: normalizedState };
-      lastAcceptedHostStateRef.current = normalizedState;
-      localDispatch({ type: "replace_state_from_import", state: normalizedState });
-      const recovery: HostRecovery = {
-        ...provisionalRecovery,
-        roomName: normalizedRoom.name,
-        lastKnownVersion: normalizedRoom.version
-      };
-      saveHostRecovery(recovery);
-      saveRoomHistoryCredential({
-        schemaVersion: 1,
-        publicId: recovery.publicId,
-        role: "host",
-        secret: recovery.hostSecret,
-        roomName: recovery.roomName,
-        joinedAt: Date.now()
-      });
-      void refreshRoomHistory();
-      setSession({
-        mode: "hosting",
-        recovery,
-        room: {
-          ...normalizedRoom,
-          guestCount: 0,
-          guestRequests: [],
-          controllerStatus: "active"
-        },
-        connected: transport.connectionState(),
-        roomReady: true,
-        pending: false,
-        error: null
-      });
-    } catch (error) {
-      if (provisionalRecovery) clearHostRecovery();
-      setSession({ mode: "local", notice: roomErrorMessage(error) });
-    }
-  }, [deploymentUrl, friendProfile, refreshRoomHistory, transport]);
-
-  const joinGame = useCallback(
-    async (displayName: string) => {
-      const current = sessionRef.current;
-      if (current.mode !== "joining" || current.preview.status !== "active") return;
-      setSession({ ...current, joining: true, error: null });
-      try {
-        const guestSecret = createCapability();
-        const room = await transport.joinRoom({
-          publicId: current.route.publicId,
-          inviteSecret: current.route.inviteSecret,
-          guestSecret,
-          displayName
-        });
-        const normalizedState = normalizeRoomState(room.state);
-        if (!normalizedState) {
-          throw new Error("The room returned an invalid game snapshot.");
-        }
-        const normalizedRoom = { ...room, state: normalizedState };
-        const credentials: GuestSession = {
-          schemaVersion: 1,
-          publicId: current.route.publicId,
-          guestSecret,
-          presenceSessionId: createCapability(18),
-          displayName: normalizedRoom.displayName
-        };
-        saveGuestSession(credentials);
-        saveRoomHistoryCredential({
-          schemaVersion: 1,
-          publicId: credentials.publicId,
-          role: "guest",
-          secret: credentials.guestSecret,
-          roomName: normalizedRoom.name,
-          joinedAt: Date.now(),
-          displayName: credentials.displayName,
-          ...(deploymentUrl ? { deploymentUrl } : {})
-        });
-        void refreshRoomHistory();
-        window.history.replaceState(null, "", guestRoomHash(credentials.publicId));
-        setSession({
-          mode: "guest",
-          credentials,
-          room: normalizedRoom,
-          connected: transport.connectionState(),
-          error: null
-        });
-      } catch (error) {
-        setSession((next) =>
-          next.mode === "joining" ? { ...next, joining: false, error: roomErrorMessage(error) } : next
-        );
-      }
-    },
-    [refreshRoomHistory, transport]
-  );
-
-  const createFriendProfileForDevice = useCallback(async (displayName: string) => {
-    const name = displayName.trim();
-    if (!name || name.length > 40 || !transport.createFriendProfile) return;
-    setFriendPending(true);
-    setFriendError(null);
-    try {
-      const profile: FriendProfile = {
-        schemaVersion: 1,
-        friendCode: createFriendCode(),
-        displayName: name,
-        ownerSecret: createCapability()
-      };
-      const created = await transport.createFriendProfile(profile);
-      const saved = { ...profile, ...created };
-      if (!saveFriendProfile(saved)) throw new Error("Your friend profile could not be saved on this device.");
-      setFriendProfile(saved);
-    } catch (error) {
-      setFriendError(friendProfileErrorMessage(error, "Friend profile creation failed."));
-    } finally {
-      setFriendPending(false);
-    }
-  }, [transport]);
-
-  const renameFriendProfile = useCallback(async (displayName: string) => {
-    if (!friendProfile || !transport.updateFriendProfileName) return;
-    const name = displayName.trim();
-    if (!name || name.length > 40) return;
-    setFriendPending(true);
-    setFriendError(null);
-    try {
-      const updated = await transport.updateFriendProfileName({
-        friendCode: friendProfile.friendCode,
-        ownerSecret: friendProfile.ownerSecret,
-        displayName: name
-      });
-      const saved = { ...friendProfile, ...updated };
-      if (!saveFriendProfile(saved)) throw new Error("Your updated profile could not be saved on this device.");
-      setFriendProfile(saved);
-    } catch (error) {
-      setFriendError(friendProfileErrorMessage(error, "The display name could not be updated."));
-    } finally {
-      setFriendPending(false);
-    }
-  }, [friendProfile, transport]);
-
-  const rotateFriendCode = useCallback(async () => {
-    if (!friendProfile || !transport.rotateFriendCode) return;
-    setFriendPending(true);
-    setFriendError(null);
-    try {
-      const updated = await transport.rotateFriendCode({
-        friendCode: friendProfile.friendCode,
-        ownerSecret: friendProfile.ownerSecret,
-        newFriendCode: createFriendCode()
-      });
-      const saved = { ...friendProfile, ...updated };
-      if (!saveFriendProfile(saved)) throw new Error("The new friend code could not be saved on this device.");
-      setFriendProfile(saved);
-    } catch (error) {
-      setFriendError(friendProfileErrorMessage(error, "The friend code could not be regenerated."));
-    } finally {
-      setFriendPending(false);
-    }
-  }, [friendProfile, transport]);
-
-  const addFriend = useCallback(async (value: string) => {
-    const friendCode = normalizeFriendCode(value);
-    if (!validFriendCode(friendCode)) {
-      setFriendError("Enter a complete friend code in the format ABCD-EFGH-JKLM-NPQR-STUV.");
-      return;
-    }
-    if (friendProfile?.friendCode === friendCode) {
-      setFriendError("That is your own friend code.");
-      return;
-    }
-    if (followedFriends.some((friend) => friend.friendCode === friendCode)) {
-      setFriendError("You already follow that friend.");
-      return;
-    }
-    if (!transport.lookupFriendProfile) return;
-    setFriendPending(true);
-    setFriendError(null);
-    try {
-      const found = await transport.lookupFriendProfile(friendCode);
-      if (!found) {
-        setFriendError("No friend profile was found for that code.");
-        return;
-      }
-      const next = [
-        ...followedFriends,
-        { schemaVersion: 1 as const, friendCode: found.friendCode, displayName: found.displayName }
-      ].slice(0, 50);
-      if (!saveFollowedFriends(next)) throw new Error("That friend could not be saved on this device.");
-      setFollowedFriends(next);
-      setInitialFriendCode(null);
-      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    } catch (error) {
-      setFriendError(friendProfileErrorMessage(error, "That friend could not be added."));
-    } finally {
-      setFriendPending(false);
-    }
-  }, [followedFriends, friendProfile?.friendCode, transport]);
-
-  const removeFriend = useCallback((friendCode: string) => {
-    const next = followedFriends.filter((friend) => friend.friendCode !== friendCode);
-    if (saveFollowedFriends(next)) {
-      setFollowedFriends(next);
-      setFriendError(null);
-    } else {
-      setFriendError("That friend could not be removed from this device.");
-    }
-  }, [followedFriends]);
-
-  const joinFriendRoom = useCallback(async (
-    activity: FriendActivity,
-    selectedRoom: FriendRoom | null = activity.room
-  ) => {
-    if (
-      sessionRef.current.mode !== "local" ||
-      !selectedRoom ||
-      !friendProfile ||
-      !transport.joinFriendRoom
-    ) return;
-    setFriendPending(true);
-    setFriendError(null);
-    try {
-      const guestSecret = createCapability();
-      const room = await transport.joinFriendRoom({
-        publicId: selectedRoom.publicId,
-        friendCode: activity.friendCode,
-        guestSecret,
-        displayName: friendProfile.displayName
-      });
-      const normalizedState = normalizeRoomState(room.state);
-      if (!normalizedState) throw new Error("The room returned an invalid game snapshot.");
-      const normalizedRoom = { ...room, state: normalizedState };
-      const credentials: GuestSession = {
-        schemaVersion: 1,
-        publicId: selectedRoom.publicId,
-        guestSecret,
-        presenceSessionId: createCapability(18),
-        displayName: normalizedRoom.displayName
-      };
-      saveGuestSession(credentials);
-      saveRoomHistoryCredential({
-        schemaVersion: 1,
-        publicId: credentials.publicId,
-        role: "guest",
-        secret: credentials.guestSecret,
-        roomName: normalizedRoom.name,
-        joinedAt: Date.now(),
-        displayName: credentials.displayName
-      });
-      window.history.replaceState(null, "", guestRoomHash(credentials.publicId));
-      setSession({ mode: "guest", credentials, room: normalizedRoom, connected: transport.connectionState(), error: null });
-      setLocalEntry(null);
-      void refreshRoomHistory();
-    } catch (error) {
-      setFriendError(friendProfileErrorMessage(error, "The friend's room could not be joined."));
-    } finally {
-      setFriendPending(false);
-    }
-  }, [friendProfile, refreshRoomHistory, transport]);
-
-  const dispatch = useMemo<Dispatch<GameAction>>(
-    () => (action) => {
-      const current = sessionRef.current;
-      if (current.mode === "local") {
-        localDispatch(action);
-        return;
-      }
-      if (current.mode !== "hosting" || !current.recovery || !current.room) return;
-      if (!current.connected || current.room.controllerStatus !== "active" || mutationPending.current) {
-        setSession({
-          ...current,
-          error: !current.connected
-            ? "Reconnect before changing the shared game. Actions are not queued offline."
-            : current.room.controllerStatus !== "active"
-              ? "Another tab controls this hosted room."
-              : "Wait for the current room change to be accepted."
-        });
-        return;
-      }
-      mutationPending.current = true;
-      setSession({ ...current, pending: true, error: null });
-      const controllerId = getHostControllerId(() => createCapability(18));
-      void transport
-        .applyAction({
-          publicId: current.recovery.publicId,
-          hostSecret: current.recovery.hostSecret,
-          controllerId,
-          expectedVersion: current.room.version,
-          clientActionId: createCapability(18),
-          action
-        })
-        .then((room) => {
-          mutationPending.current = false;
-          const nextRoom: HostRoomProjection = {
-            ...current.room!,
-            ...room,
-            guestCount: current.room!.guestCount,
-            controllerStatus: "active"
-          };
-          const recovery = updateHostRecovery(current.recovery!, nextRoom, deploymentUrl);
-          lastAcceptedHostStateRef.current = nextRoom.state;
-          localDispatch({ type: "replace_state_from_import", state: nextRoom.state });
-          const persisted = trySaveGameState(nextRoom.state);
-          setSession({
-            mode: "hosting",
-            recovery,
-            room: nextRoom,
-            connected: transport.connectionState(),
-            roomReady: true,
-            pending: false,
-            error: persisted ? null : "Accepted room state could not be cached locally."
-          });
-        })
-        .catch((error) => {
-          mutationPending.current = false;
-          setSession((next) =>
-            next.mode === "hosting"
-              ? { ...next, pending: false, error: roomErrorMessage(error) }
-              : next
-          );
-        });
-    },
-    [deploymentUrl, transport]
-  );
-
-  const endSharing = useCallback(async () => {
-    const current = sessionRef.current;
-    if (
-      (current.mode !== "hosting" && current.mode !== "recovery_required") ||
-      !current.recovery ||
-      !current.room
-    ) return;
-    if (!current.connected) {
-      setSession({ ...current, error: "Reconnect before ending sharing." });
-      return;
-    }
-    const endingActionId = current.recovery.endingActionId ?? createCapability(18);
-    const recovery = { ...current.recovery, endingActionId };
-    saveHostRecovery(recovery);
-    setSession({ ...current, mode: "ending", recovery, pending: true, error: null });
-    try {
-      const room = await transport.endRoom({
-        publicId: recovery.publicId,
-        hostSecret: recovery.hostSecret,
-        controllerId: getHostControllerId(() => createCapability(18)),
-        expectedVersion: current.room.version,
-        clientActionId: endingActionId
-      });
-      finishHostSession({ ...current.room, ...room }, recovery);
-    } catch (error) {
-      setSession({
-        ...current,
-        mode: "recovery_required",
-        recovery,
-        pending: false,
-        error: `Final synchronization was not confirmed: ${roomErrorMessage(error)}`
-      });
-    }
-  }, [finishHostSession, transport]);
-
-  const retryRecovery = useCallback(() => {
-    const current = sessionRef.current;
-    if (current.mode !== "recovery_required" || !current.recovery || !current.room) return;
-    if (current.room.status === "ended" || current.room.status === "expired") {
-      finishHostSession(current.room, current.recovery);
-    } else {
-      void endSharing();
-    }
-  }, [endSharing, finishHostSession]);
-
-  const retryUnavailableRoom = useCallback(() => {
-    const current = sessionRef.current;
-    if (current.mode !== "room_unavailable" || !current.recovery) return;
-    setSession({
-      ...current,
-      mode: "hosting",
-      room: null,
-      roomReady: false,
-      connected: transport.connectionState(),
-      pending: false,
-      error: null
-    });
-  }, [transport]);
-
-  const continueLocally = useCallback(() => {
-    const current = sessionRef.current;
-    if (current.mode !== "room_unavailable") return;
-    const stateToKeep = lastAcceptedHostStateRef.current;
-    if (!trySaveGameState(stateToKeep)) {
-      setSession({
-        ...current,
-        error: "Could not save the local copy. Keep this recovery record and try again."
-      });
-      return;
-    }
-    localDispatch({ type: "replace_state_from_import", state: stateToKeep });
-    clearHostRecovery();
-    setSession({
-      mode: "local",
-      notice: "The shared room is unavailable. Your latest accepted game is safe locally."
-    });
-  }, []);
-
-  const claimHost = useCallback(async () => {
-    const current = sessionRef.current;
-    if (current.mode !== "hosting" || !current.recovery) return;
-    try {
-      await transport.claimHost(
-        current.recovery.publicId,
-        current.recovery.hostSecret,
-        getHostControllerId(() => createCapability(18))
-      );
-      setSession({ ...current, error: null });
-    } catch (error) {
-      setSession({ ...current, error: roomErrorMessage(error) });
-    }
-  }, [transport]);
-
-  const markNotificationsRead = useCallback(async () => {
-    const current = sessionRef.current;
-    try {
-      const hostSession =
-        current.mode === "hosting" ||
-        current.mode === "ending" ||
-        current.mode === "recovery_required";
-      if (hostSession && current.recovery && current.room) {
-        await transport.acknowledgeHostNotifications({
-          publicId: current.recovery.publicId,
-          hostSecret: current.recovery.hostSecret,
-          throughVersion: current.room.version
-        });
-      } else if (current.mode === "guest" && current.room) {
-        await transport.acknowledgeGuestNotifications({
-          publicId: current.credentials.publicId,
-          guestSecret: current.credentials.guestSecret,
-          throughVersion: current.room.version
-        });
-      }
-    } catch (error) {
-      setSession((next) =>
-        next.mode === "guest" ||
-        next.mode === "hosting" ||
-        next.mode === "ending" ||
-        next.mode === "recovery_required"
-          ? { ...next, error: roomErrorMessage(error) }
-          : next
-      );
-    }
-  }, [transport]);
-
-  const submitGuestTransaction = useCallback(async (transaction: Transaction) => {
-    const current = sessionRef.current;
-    if (current.mode !== "guest" || !current.room) return;
-    try {
-      await transport.submitGuestTransaction({
-        publicId: current.credentials.publicId,
-        guestSecret: current.credentials.guestSecret,
-        transaction
-      });
-      setSession((next) =>
-        next.mode === "guest"
-          ? { ...next, error: "Request sent to the host for approval." }
-          : next
-      );
-    } catch (error) {
-      setSession((next) =>
-        next.mode === "guest" ? { ...next, error: roomErrorMessage(error) } : next
-      );
-    }
-  }, [transport]);
-
-  const decideGuestTransaction = useCallback(async (
-    requestId: Id<"roomGuestRequests">,
-    decision: "approved" | "rejected"
-  ) => {
-    const current = sessionRef.current;
-    if (current.mode !== "hosting" || !current.recovery || !current.room) return;
-    try {
-      await transport.decideGuestTransaction({
-        publicId: current.recovery.publicId,
-        hostSecret: current.recovery.hostSecret,
-        controllerId: getHostControllerId(() => createCapability(18)),
-        requestId,
-        decision,
-        expectedVersion: current.room.version
-      });
-      setSession({ ...current, error: null });
-    } catch (error) {
-      setSession((next) =>
-        next.mode === "hosting" ? { ...next, error: roomErrorMessage(error) } : next
-      );
-    }
-  }, [transport]);
-
-  const setJoiningOpen = useCallback(async (open: boolean) => {
-    const current = sessionRef.current;
-    if (current.mode !== "hosting" || !current.recovery) return;
-    try {
-      await transport.setJoiningOpen({
-        publicId: current.recovery.publicId,
-        hostSecret: current.recovery.hostSecret,
-        open
-      });
-      setSession({ ...current, error: null });
-    } catch (error) {
-      setSession({ ...current, error: roomErrorMessage(error) });
-    }
-  }, [transport]);
-
-  const setFriendVisibility = useCallback(async (visible: boolean) => {
-    const current = sessionRef.current;
-    if (current.mode !== "hosting" || !current.recovery || !transport.setFriendVisibility) return;
-    try {
-      await transport.setFriendVisibility({
-        publicId: current.recovery.publicId,
-        hostSecret: current.recovery.hostSecret,
-        visible
-      });
-      setSession({ ...current, error: null });
-    } catch (error) {
-      setSession({ ...current, error: roomErrorMessage(error) });
-    }
-  }, [transport]);
-
-  const rotateInvite = useCallback(async () => {
-    const current = sessionRef.current;
-    if (current.mode !== "hosting" || !current.recovery) return;
-    const inviteSecret = createCapability();
-    try {
-      await transport.rotateInvite({
-        publicId: current.recovery.publicId,
-        hostSecret: current.recovery.hostSecret,
-        inviteSecret
-      });
-      const recovery = {
-        ...current.recovery,
-        inviteSecret,
-        inviteUrl: createInviteUrl(current.recovery.publicId, inviteSecret)
-      };
-      saveHostRecovery(recovery);
-      setSession({ ...current, recovery, error: null });
-    } catch (error) {
-      setSession({ ...current, error: roomErrorMessage(error) });
-    }
-  }, [transport]);
-
-  const revokeGuest = useCallback(async (guestId: Id<"roomGuests">) => {
-    const current = sessionRef.current;
-    if (current.mode !== "hosting" || !current.recovery) return;
-    try {
-      await transport.revokeGuest({
-        publicId: current.recovery.publicId,
-        hostSecret: current.recovery.hostSecret,
-        guestId
-      });
-      setSession({ ...current, error: null });
-    } catch (error) {
-      setSession({ ...current, error: roomErrorMessage(error) });
-    }
-  }, [transport]);
-
-  const leaveGuest = useCallback(() => {
-    clearGuestSession();
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    setLocalEntryDestination("play");
-    setSession({ mode: "local", notice: null });
-  }, []);
-
-  const dismissInvite = useCallback(() => {
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    setLocalEntryDestination("play");
-    setSession({ mode: "local", notice: null });
-  }, []);
-
-  const continueLocalGame = useCallback(() => {
-    if (sessionRef.current.mode !== "local" || !localEntryRef.current) return;
-    writeLastVisitAt();
-    setLocalEntryDestination("play");
-    setLocalEntry(null);
-  }, []);
-
-  const openHome = useCallback(() => {
-    if (sessionRef.current.mode !== "local") return;
-    setLocalEntry({ reason: "stale_return", savedGame: localStateRef.current });
-    setLocalEntryDestination("play");
-  }, []);
-
-  const startNewLocalGame = useCallback(async () => {
-    if (sessionRef.current.mode !== "local" || !localEntryRef.current || startingNewGameRef.current) return;
-
-    const currentState = localStateRef.current;
-    startingNewGameRef.current = true;
-    let archived: boolean;
-    try {
-      archived = currentState.transactions.length === 0 || (await archiveGame(currentState));
-    } finally {
-      startingNewGameRef.current = false;
-    }
-    // The user may have left Home or changed the game while Player History was saving.
-    if (
-      sessionRef.current.mode !== "local" ||
-      !localEntryRef.current ||
-      localStateRef.current !== currentState
-    ) {
-      return;
-    }
-    if (!archived) {
-      setLocalEntry((current) =>
-        current
-          ? {
-              ...current,
-              error: "Could not save the current game to Player History. Your game is still intact."
-            }
-          : current
-      );
-      return;
-    }
-
-    localDispatch({ type: "reset_game" });
-    writeLastVisitAt();
-    setLocalEntryDestination("setup");
-    setLocalEntry(null);
-  }, []);
+    friendProfile: friends.friendProfile,
+    localDispatch,
+    sessionRef,
+    localStateRef,
+    setSession,
+    refreshRoomHistory
+  });
+  const guest = useGuestSession({
+    session,
+    transport,
+    deploymentUrl,
+    sessionRef,
+    setSession,
+    setLocalEntryDestination,
+    refreshRoomHistory
+  });
+  const hostControls = useHostRoomControls(transport, sessionRef, setSession);
+  const markNotificationsRead = useMarkNotificationsRead(transport, sessionRef, setSession);
+  const localEntryActions = useLocalEntryActions({
+    localDispatch,
+    sessionRef,
+    localStateRef,
+    localEntryRef,
+    setLocalEntry,
+    setLocalEntryDestination
+  });
 
   const state =
     session.mode === "guest" && session.room
@@ -1291,48 +118,47 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
         session.pending ||
         session.room?.controllerStatus !== "active"));
 
+
   return {
     state,
-    dispatch,
+    dispatch: host.dispatch,
     session,
     isGuest,
     forcedReadOnly: isGuest || hostReadOnly,
-    shareGame,
-    joinGame,
-    endSharing,
-    retryRecovery,
-    retryUnavailableRoom,
-    continueLocally,
-    claimHost,
+    shareGame: host.shareGame,
+    joinGame: guest.joinGame,
+    endSharing: host.endSharing,
+    retryRecovery: host.retryRecovery,
+    retryUnavailableRoom: host.retryUnavailableRoom,
+    continueLocally: host.continueLocally,
+    claimHost: hostControls.claimHost,
     markNotificationsRead,
-    submitGuestTransaction,
-    decideGuestTransaction,
-    setJoiningOpen,
-    setFriendVisibility,
-    rotateInvite,
-    revokeGuest,
-    leaveGuest,
-    dismissInvite,
+    submitGuestTransaction: guest.submitGuestTransaction,
+    decideGuestTransaction: hostControls.decideGuestTransaction,
+    setJoiningOpen: hostControls.setJoiningOpen,
+    setFriendVisibility: hostControls.setFriendVisibility,
+    rotateInvite: hostControls.rotateInvite,
+    revokeGuest: hostControls.revokeGuest,
+    leaveGuest: guest.leaveGuest,
+    dismissInvite: guest.dismissInvite,
     localEntry,
     localEntryDestination,
-    openHome,
-    continueLocalGame,
-    startNewLocalGame,
-    friendFeatureAvailable:
-      transport.configured &&
-      Boolean(transport.createFriendProfile && transport.lookupFriendProfile && transport.subscribeFriendActivity),
-    friendProfile,
-    followedFriends,
-    friendActivity,
-    friendPending,
-    friendError,
-    initialFriendCode,
-    createFriendProfile: createFriendProfileForDevice,
-    renameFriendProfile,
-    rotateFriendCode,
-    addFriend,
-    removeFriend,
-    joinFriendRoom,
+    openHome: localEntryActions.openHome,
+    continueLocalGame: localEntryActions.continueLocalGame,
+    startNewLocalGame: localEntryActions.startNewLocalGame,
+    friendFeatureAvailable: friends.friendFeatureAvailable,
+    friendProfile: friends.friendProfile,
+    followedFriends: friends.followedFriends,
+    friendActivity: friends.friendActivity,
+    friendPending: friends.friendPending,
+    friendError: friends.friendError,
+    initialFriendCode: friends.initialFriendCode,
+    createFriendProfile: friends.createFriendProfile,
+    renameFriendProfile: friends.renameFriendProfile,
+    rotateFriendCode: friends.rotateFriendCode,
+    addFriend: friends.addFriend,
+    removeFriend: friends.removeFriend,
+    joinFriendRoom: friends.joinFriendRoom,
     roomHistory,
     refreshRoomHistory
   };
