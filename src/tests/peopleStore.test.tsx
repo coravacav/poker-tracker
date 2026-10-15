@@ -214,7 +214,9 @@ describe("Player History currencies", () => {
     render(<SessionHistoryPanel />);
     await screen.findByText("2 archived games");
 
-    const row = screen.getByText("Alex").closest(".history-stat-row") as HTMLElement;
+    // The charts below the table name Alex too.
+    const table = document.querySelector(".history-stat-list") as HTMLElement;
+    const row = within(table).getByText("Alex").closest(".history-stat-row") as HTMLElement;
     expect(row).toHaveTextContent("1 game");
     expect(within(row).getByText("-$10.00")).toBeInTheDocument();
     expect(within(row).getByText("-€5.00")).toBeInTheDocument();

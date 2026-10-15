@@ -1,5 +1,5 @@
 import { BarChart3, Pencil, X } from "lucide-react";
-import { Fragment, useMemo, useState } from "react";
+import { Component, Fragment, lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { formatCurrency } from "../domain/money";
 import {
   indexPeople,
@@ -13,12 +13,34 @@ import {
   type PeopleResult
 } from "../domain/people";
 import { buildPlayerHistoryStats, type PlayerHistoryStat } from "../domain/sessionHistory";
+import { filterGamesByRange, HISTORY_RANGES, historyCurrencies, type HistoryRange } from "../domain/historyTrends";
+
 import { useArchivedGames } from "../state/useArchivedGames";
 import { canSavePeopleDirectory, updatePeopleDirectory } from "../state/peopleStore";
 import { createId } from "../state/seedGame";
 import { usePeopleDirectory } from "../state/usePeople";
 import type { RoomHistoryProjection } from "../session/types";
 import { buildPlayerSummaries } from "../domain/ledger";
+
+// Charts (and the charting library) load on demand so they stay out of the main bundle.
+const HistoryTrends = lazy(() => import("./HistoryTrends"));
+
+/** Keeps Player History usable when the chart code cannot load (for example offline before it was cached). */
+class TrendsBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? (
+      <p className="history-chart-message muted" role="status">
+        Charts could not be loaded. The totals above are unaffected; try again when you are online.
+      </p>
+    ) : this.props.children;
+  }
+}
 
 type MergedPart = { kind: "alias"; personId: string; label: string } | { kind: "person"; personId: string; label: string };
 
@@ -44,8 +66,21 @@ const SAVE_FAILED = "Could not save the change on this device.";
 export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHistoryProjection[] }) {
   const games = useArchivedGames();
   const directory = usePeopleDirectory();
-  const stats = useMemo(() => buildPlayerHistoryStats(games ?? [], directory), [directory, games]);
+  const [range, setRange] = useState<HistoryRange>("all");
   const [managing, setManaging] = useState(false);
+  // Merging and renaming always work on every game, so no row is hidden from them.
+  const effectiveRange: HistoryRange = managing ? "all" : range;
+  const rangeGames = useMemo(
+    () => filterGamesByRange(games ?? [], effectiveRange, Date.now()),
+    [effectiveRange, games]
+  );
+  const allStats = useMemo(() => buildPlayerHistoryStats(games ?? [], directory), [directory, games]);
+  const stats = useMemo(
+    () => (effectiveRange === "all" ? allStats : buildPlayerHistoryStats(rangeGames, directory)),
+    [allStats, directory, effectiveRange, rangeGames]
+  );
+  const rangeCurrencies = useMemo(() => historyCurrencies(rangeGames), [rangeGames]);
+  const rangeLabel = effectiveRange === "all" ? "" : `in the last ${HISTORY_RANGES.find((option) => option.value === effectiveRange)!.label.toLowerCase()}`;
   const [selected, setSelected] = useState<string[]>([]);
   const [mergeName, setMergeName] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{ key: string; value: string } | null>(null);
@@ -87,7 +122,7 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
   }
 
   function saveRename(stat: PlayerHistoryStat, value: string) {
-    const namesake = stats.find((other) => other.key !== stat.key && nameKey(other.name) === nameKey(value));
+    const namesake = allStats.find((other) => other.key !== stat.key && nameKey(other.name) === nameKey(value));
     if (namesake) {
       // Renaming onto another row's name would quietly combine them; make that an explicit merge.
       setError(`${namesake.name} is already in Player History. If they are the same person, select both and merge them instead.`);
@@ -114,7 +149,7 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
       <div className="panel-heading">
         <div><p className="eyebrow">Across poker nights</p><h2>Player History</h2></div>
         <div className="history-heading-actions">
-          {games && stats.length > 0 ? (
+          {games && allStats.length > 0 ? (
             <button
               className="text-button"
               type="button"
@@ -134,10 +169,28 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
         <p className="muted">Completed games appear here after you archive and start a new game.</p>
       ) : (
         <>
+          <div className="history-filters">
+            <div className="history-range" role="group" aria-label="Date range">
+              {HISTORY_RANGES.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={effectiveRange === option.value}
+                  disabled={managing}
+                  onClick={() => setRange(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <p className="muted">
-            {games.length} archived {games.length === 1 ? "game" : "games"}
+            {effectiveRange === "all"
+              ? `${games.length} archived ${games.length === 1 ? "game" : "games"}`
+              : `${rangeGames.length} of ${games.length} archived ${games.length === 1 ? "game" : "games"} ${rangeLabel}`}
             {managing ? " · Select players who are the same person to merge them, or rename one." : ""}
           </p>
+          {!managing && rangeGames.length === 0 ? <p className="muted">No games {rangeLabel}.</p> : null}
           {error ? <div className="notice notice-warning" role="alert">{error}</div> : null}
           <div className="history-stat-list">
             {stats.map((stat) => {
@@ -232,6 +285,19 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
               );
             })}
           </div>
+          {!managing && rangeCurrencies.length > 0 ? (
+            <TrendsBoundary>
+              <Suspense fallback={<p className="history-chart-message muted" role="status">Loading charts…</p>}>
+                <HistoryTrends
+                  games={games}
+                  rangeGames={rangeGames}
+                  directory={directory}
+                  currencies={rangeCurrencies}
+                  rangeLabel={rangeLabel}
+                />
+              </Suspense>
+            </TrendsBoundary>
+          ) : null}
           {managing ? (
             <div className="history-merge-bar">
               {selectedStats.length < 2 ? (

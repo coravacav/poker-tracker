@@ -374,6 +374,215 @@ td {
   gap: 4px;
 }
 
+.history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.history-range {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  background: var(--surface-alt);
+}
+
+.history-range button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 12px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 800;
+}
+
+.history-range button[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 1px 4px rgba(19, 31, 27, 0.12);
+}
+
+.history-trends {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.history-trend {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.history-trend h4 {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.history-trend-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.history-trend-note {
+  font-size: 0.84rem;
+}
+
+.history-person-picker,
+.history-currency-picker {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.history-person-picker select,
+.history-currency-picker select {
+  width: auto;
+  max-width: 220px;
+  min-height: 40px;
+}
+
+.history-series-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.history-series-toggle {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px 4px 8px;
+  color: var(--muted);
+  background: var(--surface);
+  font-weight: 700;
+}
+
+.history-series-toggle[aria-pressed="true"] {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: var(--surface-alt);
+}
+
+.history-series-toggle small {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-series-swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line-strong);
+  border-radius: 999px;
+}
+
+/* react-charts sizes itself to this box. */
+.history-chart {
+  position: relative;
+  height: 240px;
+  min-width: 0;
+  font-size: 0.72rem;
+}
+
+.history-chart text {
+  fill: var(--muted);
+}
+
+.history-chart-message {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.history-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.history-tiles div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface-alt);
+}
+
+.history-tiles dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.history-tiles dd {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.history-tiles dd small {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.history-chart-data summary {
+  min-height: 32px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.history-table-scroll {
+  max-height: 320px;
+  margin-top: 6px;
+  overflow: auto;
+}
+
+.history-table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-table-scroll th,
+.history-table-scroll td {
+  border-bottom: 1px solid var(--line);
+  padding: 5px 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.history-table-scroll th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+
 .person-name-assist {
   display: grid;
   grid-column: 1 / -1;
@@ -3285,5 +3494,10 @@ dd {
 @media (prefers-reduced-motion: reduce) {
   .seat-slot {
     transition: none;
+  }
+
+  /* react-charts sets transitions inline. */
+  .history-chart * {
+    transition: none !important;
   }
 }

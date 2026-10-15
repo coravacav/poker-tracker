@@ -91,7 +91,8 @@ export function historyMainCurrency(games: ArchivedGame[]): CurrencyCode {
   return best?.code ?? DEFAULT_CURRENCY_CODE;
 }
 
-function currencyResult(currencyCode: CurrencyCode, results: number[]): PlayerCurrencyResult {
+/** Summarizes one currency's per-game results (at least one). */
+export function currencyResult(currencyCode: CurrencyCode, results: number[]): PlayerCurrencyResult {
   const totalNetCents = results.reduce((total, result) => total + result, 0);
   return {
     currencyCode,
@@ -103,29 +104,35 @@ function currencyResult(currencyCode: CurrencyCode, results: number[]): PlayerCu
   };
 }
 
+/** One player's net result in one archived game, as grouped into a history row. */
+export type PlayerGameEntry = {
+  game: ArchivedGame;
+  currencyCode: CurrencyCode;
+  netCents: number;
+};
+
+/** One Player History row before money is summarized: who it is and every game they played. */
+export type PlayerHistoryGroup = {
+  key: string;
+  personId?: string;
+  name: string;
+  /** In the order the games were given. */
+  entries: PlayerGameEntry[];
+  lastPlayedAt: string;
+};
+
 /**
- * Per-person results across archived games. Players count for the person they
- * are linked to (via personId, following merges) or whose name/alias they match
- * exactly; anyone else is grouped by lowercased trimmed name as before.
- * Players who never took part (inactive with no transactions) are skipped.
- * Money is grouped per currency (see PlayerHistoryStat.results); rows are
- * ordered by their total in the main currency, then rows without it by games.
+ * Groups players across archived games into Player History rows. Players count
+ * for the person they are linked to (via personId, following merges) or whose
+ * name/alias they match exactly; anyone else is grouped by lowercased trimmed
+ * name. Players who never took part (inactive with no transactions) are skipped.
  */
-export function buildPlayerHistoryStats(
+export function groupPlayerHistory(
   games: ArchivedGame[],
   directory: PeopleDirectory = EMPTY_PEOPLE_DIRECTORY
-): PlayerHistoryStat[] {
+): PlayerHistoryGroup[] {
   const index = indexPeople(directory);
-  const values = new Map<
-    string,
-    {
-      personId?: string;
-      name: string;
-      results: Map<CurrencyCode, number[]>;
-      lastPlayedMs: number;
-      lastPlayedAt: string;
-    }
-  >();
+  const values = new Map<string, PlayerHistoryGroup & { lastPlayedMs: number }>();
   for (const game of games) {
     const summaryById = new Map(
       buildPlayerSummaries(game.state.players, game.state.transactions)
@@ -136,17 +143,20 @@ export function buildPlayerHistoryStats(
       if (!playerParticipated(player, game.state.transactions)) continue;
       const identity = identifyPlayer(index, player);
       if (!identity) continue;
-      const result = summaryById.get(player.id)?.netCents ?? 0;
       const key = "personId" in identity ? `person:${identity.personId}` : `name:${identity.nameKey}`;
       const current = values.get(key) ?? {
+        key,
         ...("personId" in identity ? { personId: identity.personId } : {}),
         name: "personId" in identity ? index.byId.get(identity.personId)?.name ?? player.name.trim() : player.name.trim(),
-        results: new Map<CurrencyCode, number[]>(),
+        entries: [],
         lastPlayedMs: playedMs,
         lastPlayedAt: game.archivedAt
       };
-      const currencyCode = game.state.settings.currencyCode;
-      current.results.set(currencyCode, [...(current.results.get(currencyCode) ?? []), result]);
+      current.entries.push({
+        game,
+        currencyCode: game.state.settings.currencyCode,
+        netCents: summaryById.get(player.id)?.netCents ?? 0
+      });
       if (playedMs > current.lastPlayedMs) {
         current.lastPlayedMs = playedMs;
         current.lastPlayedAt = game.archivedAt;
@@ -156,12 +166,29 @@ export function buildPlayerHistoryStats(
       values.set(key, current);
     }
   }
+  return [...values.values()].map(({ lastPlayedMs: _lastPlayedMs, ...group }) => group);
+}
 
+/**
+ * Per-person results across archived games, grouped as in groupPlayerHistory.
+ * Money is grouped per currency (see PlayerHistoryStat.results); rows are
+ * ordered by their total in the main currency, then rows without it by games.
+ */
+export function buildPlayerHistoryStats(
+  games: ArchivedGame[],
+  directory: PeopleDirectory = EMPTY_PEOPLE_DIRECTORY
+): PlayerHistoryStat[] {
   const mainCurrency = historyMainCurrency(games);
   const mainTotal = (stat: PlayerHistoryStat): number | null =>
     stat.results[0]?.currencyCode === mainCurrency ? stat.results[0].totalNetCents : null;
 
-  return [...values.entries()].map(([key, { personId, name, results, lastPlayedAt }]): PlayerHistoryStat => {
+  return groupPlayerHistory(games, directory).map(({ key, personId, name, entries, lastPlayedAt }): PlayerHistoryStat => {
+    const results = new Map<CurrencyCode, number[]>();
+    for (const entry of entries) {
+      const values = results.get(entry.currencyCode) ?? [];
+      values.push(entry.netCents);
+      results.set(entry.currencyCode, values);
+    }
     const byCurrency = [...results.entries()]
       .map(([currencyCode, values]) => currencyResult(currencyCode, values))
       .sort(
