@@ -16,6 +16,7 @@ import {
 } from "../domain/historyTrends";
 import { formatCurrency, type CurrencyCode } from "../domain/money";
 import type { PeopleDirectory } from "../domain/people";
+import { formatDuration, formatHours, MAX_SESSION_MS, MIN_SESSION_MS } from "../domain/playerHours";
 import type { ArchivedGame } from "../domain/sessionHistory";
 import { CumulativeNetChart, PersonResultsChart, type ChartSeries } from "./HistoryCharts";
 
@@ -216,7 +217,25 @@ export default function HistoryTrends({
           <div><dt>Win rate</dt><dd>{percent.format(summary.winRate)}<small> {summary.wins} of {summary.games}</small></dd></div>
           <div><dt>Best</dt><dd className={tone(summary.biggestWinCents)}>{signed(summary.biggestWinCents, currencyCode)}</dd></div>
           <div><dt>Worst</dt><dd className={tone(summary.biggestLossCents)}>{signed(summary.biggestLossCents, currencyCode)}</dd></div>
+          <div>
+            <dt>Per hour</dt>
+            {summary.hourly.perHourCents === null ? (
+              <dd>—<small> no timed games</small></dd>
+            ) : (
+              <dd className={tone(summary.hourly.perHourCents)}>
+                {signed(summary.hourly.perHourCents, currencyCode)}
+                <small>
+                  {" "}{formatHours(summary.hourly.timedMs)} h
+                  {summary.hourly.timedGames < summary.games ? `, ${summary.hourly.timedGames} of ${summary.games} games` : ""}
+                </small>
+              </dd>
+            )}
+          </div>
         </dl>
+        <p className="muted history-trend-note">
+          Per hour times each game from the player's first buy-in to their last cash-out. Games without both, or
+          timed under {MIN_SESSION_MS / 60_000} minutes or over {MAX_SESSION_MS / 3_600_000} hours, are left out.
+        </p>
         <div className="history-chart">
           <PersonResultsChart
             results={bars}
@@ -232,13 +251,14 @@ export default function HistoryTrends({
           <div className="history-table-scroll">
             <table>
               <thead>
-                <tr><th scope="col">Date</th><th scope="col">Game</th><th scope="col">Result</th><th scope="col">Running total</th></tr>
+                <tr><th scope="col">Date</th><th scope="col">Game</th><th scope="col">Time</th><th scope="col">Result</th><th scope="col">Running total</th></tr>
               </thead>
               <tbody>
                 {focusRows.map((row, index) => (
                   <tr key={`${row.gameId}:${index}`}>
                     <td>{fullDate.format(row.playedAtMs)}</td>
                     <td>{row.gameName}</td>
+                    <td>{row.durationMs === null ? "—" : formatDuration(row.durationMs)}</td>
                     <td className={tone(row.netCents)}>{signed(row.netCents, currencyCode)}</td>
                     <td className={tone(row.cumulativeCents)}>{signed(row.cumulativeCents, currencyCode)}</td>
                   </tr>

@@ -6,8 +6,8 @@ import { cumulativeSeries } from "../domain/historyTrends";
 // Smoke test of the real TanStack Charts library under React 19 in jsdom (no layout, so the initial width).
 describe("history charts", () => {
   const results = [
-    { gameId: "g1", gameName: "Night 1", playedAtMs: Date.UTC(2026, 0, 1), netCents: -1000 },
-    { gameId: "g2", gameName: "Night 2", playedAtMs: Date.UTC(2026, 0, 8), netCents: 2500 }
+    { gameId: "g1", gameName: "Night 1", playedAtMs: Date.UTC(2026, 0, 1), netCents: -1000, durationMs: null },
+    { gameId: "g2", gameName: "Night 2", playedAtMs: Date.UTC(2026, 0, 8), netCents: 2500, durationMs: null }
   ];
 
   it("draws a line per person with a dot per game", () => {

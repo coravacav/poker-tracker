@@ -133,7 +133,9 @@ describe("per-currency series", () => {
       biggestWinCents: 1000,
       biggestLossCents: -2000,
       wins: 1,
-      winRate: 1 / 3
+      winRate: 1 / 3,
+      // Each test game records everything at one moment, so none can be timed.
+      hourly: { timedGames: 0, timedMs: 0, perHourCents: null }
     });
     expect(summarizePersonResults("USD", [])).toBeNull();
   });

@@ -5,6 +5,7 @@
  */
 import type { CurrencyCode } from "./money";
 import type { PeopleDirectory } from "./people";
+import { hourlyResult, playerSessionMs, type HourlyResult } from "./playerHours";
 import {
   archivedAtMs,
   currencyResult,
@@ -82,6 +83,8 @@ export type PersonGameResult = {
   gameName: string;
   playedAtMs: number;
   netCents: number;
+  /** How long the player sat in the game (see playerSessionMs); null when the game cannot tell. */
+  durationMs: number | null;
 };
 
 /** One Player History row's games in a single currency, oldest first. */
@@ -112,7 +115,8 @@ export function buildPersonTimelines(
           gameId: entry.game.state.localGameId,
           gameName: entry.game.state.settings.gameName,
           playedAtMs: gamePlayedAtMs(entry.game),
-          netCents: entry.netCents
+          netCents: entry.netCents,
+          durationMs: playerSessionMs(entry.game.state, entry.playerId)
         }))
         .sort((left, right) => left.playedAtMs - right.playedAtMs || left.gameId.localeCompare(right.gameId))
     }))
@@ -135,6 +139,8 @@ export type PersonResultSummary = PlayerCurrencyResult & {
   wins: number;
   /** Share of games with a net win, 0–1. */
   winRate: number;
+  /** Result per hour over the games with a known length. */
+  hourly: HourlyResult;
 };
 
 /** Totals for one person's games in one currency; null when there are none. */
@@ -147,7 +153,8 @@ export function summarizePersonResults(
   return {
     ...currencyResult(currencyCode, results.map((result) => result.netCents)),
     wins,
-    winRate: wins / results.length
+    winRate: wins / results.length,
+    hourly: hourlyResult(results)
   };
 }
 

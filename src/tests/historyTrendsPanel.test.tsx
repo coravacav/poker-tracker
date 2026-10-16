@@ -83,6 +83,28 @@ describe("Player History over time", () => {
     expect(tiles).toHaveTextContent("67%");
     expect(tiles).toHaveTextContent("Best+$25.00");
     expect(tiles).toHaveTextContent("Worst-$10.00");
+    // These games record every entry at one moment, so none can be timed.
+    expect(tiles).toHaveTextContent("Per hour— no timed games");
+  });
+
+  it("shows a per-hour rate over the games that can be timed", async () => {
+    const timed = game(3, { Alex: -1000, Blair: 1000 });
+    // Alex bought in 2 hours before Blair cashed out; Alex never cashed out, so only Blair is timed.
+    timed.state.transactions[0].createdAt = new Date(Date.parse(timed.state.transactions[1].createdAt) - 2 * 60 * 60 * 1000).toISOString();
+    timed.state.transactions.push({
+      id: "blair_buy_in",
+      type: "bank_buy_in",
+      toPlayerId: timed.state.players[1].id,
+      amountCents: 1000,
+      createdAt: timed.state.transactions[0].createdAt
+    });
+    timed.state.transactions[1].amountCents = 4000;
+    await renderHistory([timed, game(1, { Blair: 500, Casey: -500 })]);
+    fireEvent.change(screen.getByLabelText("Player"), { target: { value: "name:blair" } });
+    const tiles = screen.getByText("Win rate").closest("dl")!;
+    // +$30.00 over 2 hours; the untimed second game is left out of both sides.
+    expect(tiles).toHaveTextContent("Per hour+$15.00 2 h, 1 of 2 games");
+    expect(screen.getByRole("cell", { name: "2 h" })).toBeInTheDocument();
   });
 
   it("toggles people without repainting the others", async () => {

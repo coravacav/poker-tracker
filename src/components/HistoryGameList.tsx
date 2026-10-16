@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { gamePlayedAtMs } from "../domain/historyTrends";
 import { formatCurrency } from "../domain/money";
+import { formatDuration, playerSessionMs } from "../domain/playerHours";
 import { indexPeople, isPlaceholderName, MAX_PERSON_NAME_LENGTH, nameKey, type PeopleDirectory } from "../domain/people";
 import { historyRowLabel, type PlayerGameEntry, type PlayerHistoryStat } from "../domain/sessionHistory";
 import { relinkArchivedPlayers, type RelinkTarget } from "../state/archivedPlayerLinks";
@@ -112,6 +113,7 @@ export function HistoryGameList({
           const date = fullDate.format(gamePlayedAtMs(entry.game));
           const title = gameTitle(entry);
           const recordedAs = entry.playerName && entry.playerName !== row.name ? entry.playerName : null;
+          const durationMs = playerSessionMs(entry.game.state, entry.playerId);
           return (
             <li className="history-game" key={key}>
               <div className="history-game-summary">
@@ -119,6 +121,7 @@ export function HistoryGameList({
                 <span className="muted">
                   <time dateTime={new Date(gamePlayedAtMs(entry.game)).toISOString()}>{date}</time>
                   {recordedAs ? ` · as ${recordedAs}` : ""}
+                  {durationMs === null ? "" : ` · ${formatDuration(durationMs)}`}
                 </span>
               </div>
               <strong className={tone(entry.netCents)}>{signed(entry.netCents, entry)}</strong>
