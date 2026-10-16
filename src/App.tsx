@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { GameApp, preloadGameApp } from "./components/GameApp";
+import { GameApp, preloadGameApp, preloadPlayMode } from "./components/GameApp";
 import { GuestJoinScreen } from "./components/GuestJoinScreen";
 import { whenIdle } from "./components/lazyComponent";
 import { preloadQrCode } from "./components/QrCode";
@@ -39,6 +39,9 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       gameSession.friendProfile !== null ||
       gameSession.followedFriends.length > 0
   );
+
+  // Every screen below except Home leads to (or is) a game, where Play is needed soon.
+  if (!(session.mode === "local" && gameSession.localEntry)) void preloadPlayMode().catch(() => undefined);
 
   if (session.mode === "joining") {
     return (

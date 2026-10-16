@@ -9,12 +9,13 @@ import { validateTransaction } from "../domain/validation";
 import type { RoomHistoryProjection, SharedActivity } from "../session/types";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
-import { PlayMode } from "./gameApp/PlayMode";
 import { TransactionDrawer } from "./gameApp/TransactionDrawer";
 import { useLedgerOverview } from "./gameApp/useLedgerOverview";
 
-// Play is the first screen after Home and stays in the main bundle; the other
-// modes and the audit drawer load as separate chunks (preloaded once idle).
+// Every mode and the audit drawer load as separate chunks, so Home paints without
+// the table and drag code. Play is preloaded as soon as a game screen is coming
+// (see preloadPlayMode); the rest once the browser is idle.
+const PlayMode = lazyWithPreload(() => import("./gameApp/PlayMode").then((module) => module.PlayMode));
 const SetupMode = lazyWithPreload(() => import("./gameApp/SetupMode").then((module) => module.SetupMode));
 const CashOutMode = lazyWithPreload(() => import("./CashOutMode").then((module) => module.CashOutMode));
 const SettleMode = lazyWithPreload(() => import("./gameApp/SettleMode").then((module) => module.SettleMode));
@@ -22,8 +23,13 @@ const AuditDrawer = lazyWithPreload(() => import("./gameApp/AuditDrawer").then((
 
 /** Loads every lazily split game surface so switching to it never waits. */
 export function preloadGameApp(): Promise<unknown> {
-  return Promise.all([SetupMode, CashOutMode, SettleMode, AuditDrawer].map((surface) => surface.preload()));
+  return Promise.all(
+    [PlayMode, SetupMode, CashOutMode, SettleMode, AuditDrawer].map((surface) => surface.preload())
+  );
 }
+
+/** Starts loading Play, the main screen of every game; safe to call repeatedly. */
+export const preloadPlayMode = PlayMode.preload;
 
 function modeFallback(label: string) {
   return <p className="muted" role="status">Loading {label}…</p>;
@@ -216,26 +222,28 @@ export function GameApp({
           </LazyBoundary>
         }
         play={
-          <PlayMode
-            state={state}
-            dispatch={dispatch}
-            guest={guest}
-            readOnly={readOnly}
-            notice={notice}
-            sessionNotice={sessionNotice}
-            layoutEditing={layoutEditing}
-            compactPlayerView={compactPlayerView}
-            activePlayers={activePlayers}
-            bankSummary={bankSummary}
-            imbalanceCents={imbalanceCents}
-            summaryByPlayerId={summaryByPlayerId}
-            repeatableTransaction={repeatableTransaction}
-            addTransaction={addTransaction}
-            addDefaultBuyInToAll={addDefaultBuyInToAll}
-            handleCompactPlayerViewChange={handleCompactPlayerViewChange}
-            setAuditDrawerOpen={setAuditDrawerOpen}
-            setTransactionDrawerOpen={setTransactionDrawerOpen}
-          />
+          <LazyBoundary key="play" fallback={modeFallback("Play")}>
+            <PlayMode
+              state={state}
+              dispatch={dispatch}
+              guest={guest}
+              readOnly={readOnly}
+              notice={notice}
+              sessionNotice={sessionNotice}
+              layoutEditing={layoutEditing}
+              compactPlayerView={compactPlayerView}
+              activePlayers={activePlayers}
+              bankSummary={bankSummary}
+              imbalanceCents={imbalanceCents}
+              summaryByPlayerId={summaryByPlayerId}
+              repeatableTransaction={repeatableTransaction}
+              addTransaction={addTransaction}
+              addDefaultBuyInToAll={addDefaultBuyInToAll}
+              handleCompactPlayerViewChange={handleCompactPlayerViewChange}
+              setAuditDrawerOpen={setAuditDrawerOpen}
+              setTransactionDrawerOpen={setTransactionDrawerOpen}
+            />
+          </LazyBoundary>
         }
         settle={
           <LazyBoundary key="settle" fallback={modeFallback("Settle")}>
