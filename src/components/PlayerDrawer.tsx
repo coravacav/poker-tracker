@@ -20,6 +20,9 @@ type PlayerDrawerProps = {
   transactions: Transaction[];
 };
 
+/** How long after a press began its click may still come (taps, slow presses). */
+const PRESS_WINDOW_MS = 1000;
+
 export function PlayerDrawer({
   dispatch,
   fastEntryDisabled,
@@ -40,6 +43,67 @@ export function PlayerDrawer({
   const pickedPeople = useRef(new Map<string, { name: string; personId: string | null }>());
   const nameInputRefs = useRef(new Map<string, HTMLInputElement>());
   const focusAddedPlayerRef = useRef(false);
+  // When a press began that has not yet produced its click (touch input sends pointerup before the mouse
+  // events that move focus, so the press counts until the click itself).
+  const pressStartedAtRef = useRef(0);
+  const cancelPendingCloseRef = useRef<(() => void) | null>(null);
+
+  function cancelPendingClose() {
+    cancelPendingCloseRef.current?.();
+    cancelPendingCloseRef.current = null;
+  }
+
+  useEffect(() => {
+    const pressed = () => {
+      pressStartedAtRef.current = Date.now();
+    };
+    const clicked = () => {
+      pressStartedAtRef.current = 0;
+    };
+    window.addEventListener("pointerdown", pressed, true);
+    window.addEventListener("click", clicked, true);
+    // A key moves focus by keyboard, whatever press came before (say, a right-click that never clicked).
+    window.addEventListener("keydown", clicked, true);
+    return () => {
+      window.removeEventListener("pointerdown", pressed, true);
+      window.removeEventListener("click", clicked, true);
+      window.removeEventListener("keydown", clicked, true);
+      cancelPendingClose();
+    };
+  }, []);
+
+  /**
+   * Hides a name's Player History hint and suggestions once its field loses
+   * focus. When a tap or click took the focus away, they stay until it lands:
+   * removing them at once would move the rows below while the press is under
+   * way, so the tap would miss, or hit the wrong seat's button.
+   */
+  function stopEditing(playerId: string) {
+    cancelPendingClose();
+    const close = () =>
+      setEditingPlayerId((current) =>
+        current === playerId && document.activeElement !== nameInputRefs.current.get(playerId) ? null : current
+      );
+    if (Date.now() - pressStartedAtRef.current > PRESS_WINDOW_MS) {
+      close();
+      return;
+    }
+    let timer = 0;
+    const cleanUp = () => {
+      window.removeEventListener("click", finish, true);
+      window.clearTimeout(timer);
+    };
+    function finish() {
+      cleanUp();
+      cancelPendingCloseRef.current = null;
+      // After the click's own handlers have run.
+      window.setTimeout(close, 0);
+    }
+    window.addEventListener("click", finish, true);
+    // A press that ends in a scroll or drag never clicks.
+    timer = window.setTimeout(finish, PRESS_WINDOW_MS);
+    cancelPendingCloseRef.current = cleanUp;
+  }
 
   useEffect(() => {
     for (const player of players) {
@@ -305,9 +369,12 @@ export function PlayerDrawer({
                     type="text"
                     value={draftNames[player.id] ?? player.name}
                     disabled={readOnly}
-                    onFocus={() => setEditingPlayerId(player.id)}
+                    onFocus={() => {
+                      cancelPendingClose();
+                      setEditingPlayerId(player.id);
+                    }}
                     onBlur={() => {
-                      setEditingPlayerId((current) => (current === player.id ? null : current));
+                      stopEditing(player.id);
                       commitName(player);
                     }}
                     onChange={(event) => {
