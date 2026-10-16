@@ -1,4 +1,4 @@
-import { BarChart3, ChevronDown, ListTree, Pencil, X } from "lucide-react";
+import { BarChart3, ChevronDown, Download, ListTree, Pencil, X } from "lucide-react";
 import { Component, Fragment, lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { formatCurrency } from "../domain/money";
 import {
@@ -18,9 +18,11 @@ import {
   historyRowLabel,
   type PlayerHistoryStat
 } from "../domain/sessionHistory";
+import { buildHistoryCsv } from "../domain/historyCsv";
 import { filterGamesByRange, HISTORY_RANGES, historyCurrencies, type HistoryRange } from "../domain/historyTrends";
 
 import { relinkArchivedPlayers } from "../state/archivedPlayerLinks";
+import { downloadText } from "../state/backup";
 import { useArchivedGames } from "../state/useArchivedGames";
 import { canSavePeopleDirectory, updatePeopleDirectory } from "../state/peopleStore";
 import { createId } from "../state/seedGame";
@@ -176,6 +178,14 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
     if (ok) setRenaming(null);
   }
 
+  function downloadCsv() {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const suffix = effectiveRange === "all" ? "" : `-last-${effectiveRange}`;
+    // The byte order mark tells Excel the file is UTF-8, so accented names survive.
+    downloadText(`poker-history${suffix}-${today}.csv`, `\uFEFF${buildHistoryCsv(rangeGames, directory)}`, "text/csv;charset=utf-8");
+  }
+
   function stopManaging() {
     setManaging(false);
     setSelected([]);
@@ -224,6 +234,16 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                 </button>
               ))}
             </div>
+            <button
+              className="text-button"
+              type="button"
+              disabled={rangeGames.length === 0}
+              onClick={downloadCsv}
+              title="One row per player per game, for spreadsheets"
+            >
+              <Download size={14} aria-hidden="true" />
+              Download CSV
+            </button>
           </div>
           <p className="muted">
             {effectiveRange === "all"

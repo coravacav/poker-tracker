@@ -130,6 +130,29 @@ describe("Player History over time", () => {
     expect(screen.getByTestId("results-chart")).toHaveTextContent("300");
   });
 
+  it("downloads the games in the range as CSV", async () => {
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:csv"), revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    await renderHistory([game(100, { Alex: -1000, Dana: 1000 }), game(5, { Alex: 300, Blair: -300 })]);
+    fireEvent.click(screen.getByRole("button", { name: "30 days" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+
+    const blob = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+    expect(blob.type).toBe("text/csv;charset=utf-8");
+    const bytes = new Uint8Array(await new Promise<ArrayBuffer>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.readAsArrayBuffer(blob);
+    }));
+    const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+    // Only the game in the last 30 days; Dana played 100 days ago.
+    expect(text.trimEnd().split("\r\n")).toHaveLength(3);
+    expect(text).toMatch(/^\uFEFFDate,Game,Person/);
+    expect(text).not.toContain("Dana");
+    expect((click.mock.contexts[0] as HTMLAnchorElement).download).toMatch(/^poker-history-last-30d-\d{4}-\d{2}-\d{2}\.csv$/);
+    click.mockRestore();
+  });
+
   it("charts one currency at a time", async () => {
     await renderHistory([game(3, { Alex: -100, Blair: 100 }), game(2, { Alex: 700, Blair: -700 }, "EUR"), game(1, { Alex: 50, Blair: -50 })]);
     expect(screen.getByTestId("cumulative-chart")).toHaveTextContent("Alex -100,-50");

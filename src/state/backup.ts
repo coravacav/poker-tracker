@@ -65,8 +65,8 @@ export function downloadJson(filename: string, value: unknown): void {
   downloadText(filename, JSON.stringify(value, null, 2));
 }
 
-export function downloadText(filename: string, text: string): void {
-  const blob = new Blob([text], { type: "application/json" });
+export function downloadText(filename: string, text: string, type = "application/json"): void {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
