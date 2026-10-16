@@ -29,6 +29,15 @@ bun run build
 
 CI (`.github/workflows/ci.yml`) runs these same checks on every pull request and push to `main`; it needs no Convex secrets.
 
+Browser tests (Playwright, local only, not in CI) drive the real app in Chromium on a desktop and an emulated Pixel 7:
+
+```sh
+bunx playwright install chromium   # once
+bun run test:e2e
+```
+
+They start their own Vite dev server on port 5181 (`playwright.config.ts`, tests in `e2e/*.e2e.ts`). The local tests play a game from setup to a settled payment, check dialog focus, sideways scrolling in every mode, and a seat tap right after typing a name. The sharing test hosts a room on the desktop and follows it as a guest on the phone, through a dropped connection, until the guest saves the ended game to Player History; it uses the Convex dev deployment from `.env.local` (keep `bunx convex dev` running so its functions are current) and skips without one. Traces of failed tests are kept in `test-results/`.
+
 If a deployment is already configured, regenerate types with `bun run convex:codegen`. The production backend command is `bunx convex deploy`; run it only as an intentional release step.
 
 ## Environment variables
