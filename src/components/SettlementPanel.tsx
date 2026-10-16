@@ -1,6 +1,6 @@
 
-import { Check, Copy, Plus, Printer, Scale } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Check, Copy, ImageDown, Plus, Printer, Scale } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency } from "../domain/money";
 import type {
   BankSummary,
@@ -17,9 +17,11 @@ import {
 } from "../domain/settlement";
 import type { SettlementPinAction } from "../state/gameActions";
 import { createId } from "../state/seedGame";
+import { buildSettlementImageModel } from "../domain/settlementImage";
 import { DebtCoverageDialog } from "./settlementPanel/DebtCoverageDialog";
 import { PaymentLine, planPaymentKey } from "./settlementPanel/PaymentLine";
 import { PaymentPinForm, type PinDraft } from "./settlementPanel/PaymentPinForm";
+import { shareSettlementImage, type ShareImageResult } from "./settlementPanel/settlementImage";
 
 export type { SettlementPinAction };
 
@@ -62,6 +64,9 @@ export function SettlementPanel({
   const [coverageNote, setCoverageNote] = useState("");
   const [coverageError, setCoverageError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [imageResult, setImageResult] = useState<ShareImageResult | "working" | null>(null);
+  const imageResetRef = useRef(0);
+  useEffect(() => () => window.clearTimeout(imageResetRef.current), []);
   const [pinDraft, setPinDraft] = useState<PinDraft | null>(null);
   const [pinDraftError, setPinDraftError] = useState<string | null>(null);
   const canEditPayments = !hideActions && Boolean(onSettlementPinAction);
@@ -91,6 +96,16 @@ export function SettlementPanel({
     } catch {
       setCopied(false);
     }
+  }
+
+  async function shareImage() {
+    // An earlier share's reset must not unlock this one while its share sheet is open.
+    window.clearTimeout(imageResetRef.current);
+    setImageResult("working");
+    const model = buildSettlementImageModel(gameName, players, summaries, settlementPins, { currencyCode });
+    const result = await shareSettlementImage(model).catch((): ShareImageResult => "failed");
+    setImageResult(result);
+    if (result !== "failed") imageResetRef.current = window.setTimeout(() => setImageResult(null), 1800);
   }
 
   function pinPayment(payment: SettlementPlanPayment, status: SettlementPin["status"]) {
@@ -170,6 +185,32 @@ export function SettlementPanel({
             {copied ? <Check size={15} /> : <Copy size={15} />}
             {copied ? "Copied" : "Copy summary"}
           </button>
+          <button
+            className="text-button"
+            type="button"
+            disabled={imageResult === "working"}
+            aria-busy={imageResult === "working"}
+            title="A picture of the payments and results, for a group chat"
+            onClick={() => void shareImage()}
+          >
+            <ImageDown size={15} />
+            {imageResult === "downloaded"
+              ? "Image saved"
+              : imageResult === "shared"
+                ? "Shared"
+                : imageResult === "failed"
+                  ? "Image unavailable"
+                  : "Share image"}
+          </button>
+          <span className="sr-only" role="status">
+            {imageResult === "downloaded"
+              ? "Settlement image saved."
+              : imageResult === "shared"
+                ? "Settlement image shared."
+                : imageResult === "failed"
+                  ? "This browser cannot make the settlement image."
+                  : ""}
+          </span>
           <button className="text-button" type="button" onClick={() => window.print()}>
             <Printer size={15} />
             Print
