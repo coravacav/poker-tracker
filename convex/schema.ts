@@ -139,5 +139,23 @@ export default defineSchema({
     decidedAt: v.optional(v.number())
   })
     .index("by_room_id_and_status", ["roomId", "status"])
-    .index("by_guest_id", ["guestId"])
+    .index("by_guest_id", ["guestId"]),
+
+  // Browser errors reported by the app (see convex/clientErrors.ts), one row
+  // per distinct error per build, counting repeats. No game data is stored.
+  clientErrors: defineTable({
+    fingerprint: v.string(),
+    kind: v.union(v.literal("error"), v.literal("rejection"), v.literal("render")),
+    message: v.string(),
+    stack: v.optional(v.string()),
+    // Latest page path (no query or fragment) and browser it was seen on.
+    path: v.string(),
+    userAgent: v.string(),
+    build: v.string(),
+    count: v.number(),
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number()
+  })
+    .index("by_fingerprint", ["fingerprint"])
+    .index("by_last_seen_at", ["lastSeenAt"])
 });
