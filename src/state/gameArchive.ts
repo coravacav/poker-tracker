@@ -269,12 +269,17 @@ function write(games: ArchivedGame[], policy: WritePolicy, writeLocal: () => boo
 /**
  * Saves a played game to Player History, replacing an earlier copy of the same
  * game. Its players are linked to people first (new names become new people).
+ * `roomClosedAt` marks a guest's copy of a shared room's game (see ArchivedGame).
  */
-export async function archiveGame(state: GameState): Promise<boolean> {
+export async function archiveGame(state: GameState, roomClosedAt?: number): Promise<boolean> {
   if (state.transactions.length === 0) return false;
   const archivedAt = new Date().toISOString();
   const linked = linkGameToPeople(state);
-  return write([{ archivedAt, state: linked }], "replace", () => archiveLocalGame(linked, archivedAt));
+  return write(
+    [{ archivedAt, ...(roomClosedAt !== undefined ? { roomClosedAt } : {}), state: linked }],
+    "replace",
+    () => archiveLocalGame(linked, archivedAt, roomClosedAt)
+  );
 }
 
 /** Merges restored games into the archive, keeping the newest copy of each game. */

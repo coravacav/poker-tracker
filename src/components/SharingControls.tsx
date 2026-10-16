@@ -2,8 +2,10 @@ import { Copy, Radio, RefreshCw, Share2, StopCircle, UserRound, WifiOff, X } fro
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { QrCode } from "./QrCode";
+import { SaveSharedGameButton } from "./SaveSharedGameButton";
 import { useDialogFocus } from "./useDialogFocus";
 import { useFormatCurrency } from "./CurrencyContext";
+import type { GameState } from "../domain/pokerTypes";
 import type { HostRecovery, HostRoomProjection } from "../session/types";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -264,7 +266,8 @@ export function GuestSessionControls({
   hostProfile,
   followingHost,
   onFollowHost,
-  onLeave
+  onLeave,
+  savableGame
 }: {
   connected: boolean;
   ended: boolean;
@@ -273,6 +276,8 @@ export function GuestSessionControls({
   followingHost?: boolean;
   onFollowHost?: () => void;
   onLeave: () => void;
+  /** The room's game and when it closed, offered for saving once the room has ended (null when a later room of it was joined). */
+  savableGame?: { state: GameState; closedAt: number } | null;
 }) {
   return (
     <div className="guest-session-controls">
@@ -282,6 +287,7 @@ export function GuestSessionControls({
           <UserRound size={15} /> {followingHost ? `Following ${hostProfile.displayName}` : `Follow ${hostProfile.displayName}`}
         </button>
       ) : null}
+      {ended && savableGame ? <SaveSharedGameButton compact {...savableGame} /> : null}
       <button className="text-button" type="button" onClick={onLeave}>Leave</button>
     </div>
   );

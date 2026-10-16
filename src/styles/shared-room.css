@@ -40,3 +40,11 @@
   gap: 8px;
   margin: 12px 0;
 }
+
+.shared-room-save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 10px;
+}

@@ -1,21 +1,26 @@
 import { useEffect, useState } from "react";
 import type { ArchivedGame } from "../domain/sessionHistory";
 import { GAME_ARCHIVE_CHANGED_EVENT, loadArchivedGames, peekArchivedGames } from "./gameArchive";
+import { withoutSharedDuplicates } from "./sharedGameArchive";
 
 /**
  * Player History games, newest first, kept up to date with archive changes in
  * this and other tabs. Null only until the first load finishes; later reloads
- * keep showing the previous games instead of flashing a loading state.
+ * keep showing the previous games instead of flashing a loading state. A
+ * guest's copy of a game is left out when the host's own copy is also here.
  */
 export function useArchivedGames(): ArchivedGame[] | null {
-  const [games, setGames] = useState<ArchivedGame[] | null>(() => peekArchivedGames() ?? null);
+  const [games, setGames] = useState<ArchivedGame[] | null>(() => {
+    const peeked = peekArchivedGames();
+    return peeked ? withoutSharedDuplicates(peeked) : null;
+  });
   useEffect(() => {
     let latest = 0;
     let active = true;
     const refresh = () => {
       const request = ++latest;
       void loadArchivedGames().then((next) => {
-        if (active && request === latest) setGames(next);
+        if (active && request === latest) setGames(withoutSharedDuplicates(next));
       });
     };
     refresh();

@@ -30,6 +30,8 @@ import { usePeopleDirectory } from "../state/usePeople";
 import type { RoomHistoryProjection } from "../session/types";
 import { buildPlayerSummaries } from "../domain/ledger";
 import { HistoryGameList } from "./HistoryGameList";
+import { SaveSharedGameButton } from "./SaveSharedGameButton";
+import { latestRoomPerGame, roomClosedAt } from "../state/sharedGameArchive";
 
 // Charts (and the charting library) load on demand so they stay out of the main bundle.
 const HistoryTrends = lazy(() => import("./HistoryTrends"));
@@ -102,6 +104,10 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
   const [status, setStatus] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const savableRooms = useMemo(
+    () => latestRoomPerGame(sharedRooms.filter((room) => room.role === "guest" && room.status !== "active")),
+    [sharedRooms]
+  );
 
   const statByKey = new Map(stats.map((stat) => [stat.key, stat]));
   const selectedStats = selected.flatMap((key) => statByKey.get(key) ?? []);
@@ -437,7 +443,13 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
         <h3>Shared rooms</h3>
         {sharedRooms.length === 0 ? (
           <p className="muted">Rooms you host or join on this device will remain available here.</p>
-        ) : sharedRooms.map((room) => {
+        ) : null}
+        {sharedRooms.some((room) => room.role === "guest") ? (
+          <p className="muted">
+            Games you joined as a guest count in Player History once you save them, after the host ends the room.
+          </p>
+        ) : null}
+        {sharedRooms.map((room) => {
           const summaries = buildPlayerSummaries(room.state.players, room.state.transactions);
           return (
             <details key={`${room.role}:${room.publicId}`}>
@@ -455,6 +467,15 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                   </span>
                 ))}
               </div>
+              {room.role === "guest" && room.status !== "active" ? (
+                <div className="shared-room-save">
+                  {savableRooms.has(room.publicId) ? (
+                    <SaveSharedGameButton state={room.state} closedAt={roomClosedAt(room)} />
+                  ) : (
+                    <span className="muted">This game continued in a later room; save it from there.</span>
+                  )}
+                </div>
+              ) : null}
             </details>
           );
         })}

@@ -13,6 +13,7 @@ import {
 import { loadArchivedGames } from "./state/gameArchive";
 import { preloadConvexClient } from "./session/convexRoomTransport";
 import { useGameSession } from "./session/useGameSession";
+import { watchedRoomSave } from "./state/sharedGameArchive";
 import { useStoragePersistenceRequest } from "./state/useStoragePersistence";
 import type { RoomTransport, SharedActivity } from "./session/types";
 
@@ -125,6 +126,11 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
           if (session.room?.hostProfile) void gameSession.addFriend(session.room.hostProfile.friendCode);
         }}
         onLeave={gameSession.leaveGuest}
+        savableGame={
+          session.room
+            ? watchedRoomSave({ ...session.room, publicId: session.credentials.publicId }, gameSession.roomHistory)
+            : null
+        }
       />
     );
     sessionNotice = session.room?.status === "ended" ? "The host ended this shared session." : session.error;

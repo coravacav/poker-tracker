@@ -19,6 +19,10 @@
   background: var(--green-soft);
 }
 
+.guest-session-controls {
+  flex-wrap: wrap;
+}
+
 .guest-session-controls .text-button {
   min-height: 30px;
   padding: 3px 8px;

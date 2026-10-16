@@ -23,6 +23,12 @@ export type ArchivedGame = {
    * (archiveRevisionMs). Optional and additive: older builds ignore it.
    */
   editedAt?: string;
+  /**
+   * For a guest's copy of a shared room's game (state/sharedGameArchive.ts):
+   * when that room closed (ended, else was created), in epoch ms. A copy from
+   * a room that closed earlier never replaces it. Optional and additive.
+   */
+  roomClosedAt?: number;
   state: GameState;
 };
 
@@ -61,11 +67,13 @@ export function parseArchivedEntry(entry: unknown): ArchivedGame | null {
   const candidate = entry as { archivedAt?: unknown; state?: unknown };
   if (typeof candidate.archivedAt !== "string" || !validatePersistedState(candidate.state)) return null;
   const editedAt = (entry as { editedAt?: unknown }).editedAt;
+  const roomClosedAt = (entry as { roomClosedAt?: unknown }).roomClosedAt;
   try {
     return {
       archivedAt: candidate.archivedAt,
       // Optional: an unusable time is dropped rather than skipping the game.
       ...(typeof editedAt === "string" && Number.isFinite(Date.parse(editedAt)) ? { editedAt } : {}),
+      ...(typeof roomClosedAt === "number" && Number.isFinite(roomClosedAt) ? { roomClosedAt } : {}),
       state: migratePersistedState(candidate.state)
     };
   } catch {
@@ -79,6 +87,7 @@ export function archiveEntry(game: ArchivedGame): unknown {
     JSON.stringify({
       archivedAt: game.archivedAt,
       ...(game.editedAt ? { editedAt: game.editedAt } : {}),
+      ...(game.roomClosedAt !== undefined ? { roomClosedAt: game.roomClosedAt } : {}),
       state: game.state
     })
   ) as unknown;

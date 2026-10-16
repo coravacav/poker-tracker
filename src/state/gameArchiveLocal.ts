@@ -155,10 +155,10 @@ export function mergeLocalArchivedGames(imported: ArchivedGame[]): boolean {
   return writeLocalArchive(archive, games);
 }
 
-export function archiveLocalGame(state: GameState, archivedAt: string): boolean {
+export function archiveLocalGame(state: GameState, archivedAt: string, roomClosedAt?: number): boolean {
   const archive = readLocalArchive();
   const existing = archive.games.filter((game) => game.state.localGameId !== state.localGameId);
-  return writeLocalArchive(archive, [{ archivedAt, state }, ...existing]);
+  return writeLocalArchive(archive, [{ archivedAt, ...(roomClosedAt !== undefined ? { roomClosedAt } : {}), state }, ...existing]);
 }
 
 /**
