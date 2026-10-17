@@ -113,7 +113,29 @@
   text-transform: capitalize;
 }
 
+.settlement-print-title {
+  display: none;
+}
+
 @media print {
+  .settlement-print-title {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0 0 10px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 8px;
+    font-size: 1.15rem;
+  }
+
+  .settlement-print-title span {
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
   .app-header,
   .settle-toolbar,
   .settlement-share-actions,
@@ -139,6 +161,13 @@
   gap: 1px;
   min-height: 56px;
   overflow: hidden;
+}
+
+/* The empty-list line sits inside the box like a payment line would. */
+.settlement-list > .muted {
+  align-self: center;
+  margin: 0;
+  padding: 8px 10px;
 }
 
 .settlement-line {

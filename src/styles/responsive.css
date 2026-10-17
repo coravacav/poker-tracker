@@ -225,13 +225,23 @@
     grid-template-columns: 1fr;
   }
 
+  /* The game's name and date stack on the left; the result and Change stack on the right. */
   .history-game {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
+  .history-game-summary {
+    grid-row: span 2;
+    align-self: start;
+  }
+
+  .history-game > strong {
+    justify-self: end;
+  }
+
   .history-game-change {
-    grid-column: 1 / -1;
-    justify-self: start;
+    grid-column: 2;
+    justify-self: end;
   }
 
   .history-relink-actions {

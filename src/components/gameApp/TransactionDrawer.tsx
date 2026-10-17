@@ -41,7 +41,7 @@ export function TransactionDrawer({
       >
         <div className="drawer-heading">
           <div>
-            <p className="eyebrow">{guest ? "The host approves" : "Ledger entry"}</p>
+            <p className="eyebrow">{guest ? "Ask the host" : "Ledger entry"}</p>
             <h2>{guest ? "Request Transaction" : "Add Transaction"}</h2>
           </div>
           <button
@@ -69,7 +69,7 @@ export function TransactionDrawer({
           }}
           players={activePlayers}
           readOnly={guest ? false : readOnly}
-          submitLabel={guest ? "Send to host" : undefined}
+          submitLabel={guest ? "Send request" : undefined}
           summaryByPlayerId={summaryByPlayerId}
         />
       </section>

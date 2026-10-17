@@ -12,6 +12,24 @@ import { historyRowLabel, type PlayerGameEntry, type PlayerHistoryStat } from ".
 import { relinkArchivedPlayers, type RelinkTarget } from "../state/archivedPlayerLinks";
 
 const fullDate = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
+const dateAndTime = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit"
+});
+
+/**
+ * Each game's date, with the time of day added where two games fall on the same
+ * day, so two "Poker Night"s on one date can be told apart.
+ */
+export function playedOnLabels(playedAtMs: number[]): string[] {
+  const dates = playedAtMs.map((ms) => fullDate.format(ms));
+  return playedAtMs.map((ms, index) =>
+    dates.indexOf(dates[index]) === dates.lastIndexOf(dates[index]) ? dates[index] : dateAndTime.format(ms)
+  );
+}
 
 function signed(cents: number, entry: PlayerGameEntry): string {
   return `${cents > 0 ? "+" : ""}${formatCurrency(cents, entry.currencyCode)}`;
@@ -55,6 +73,7 @@ export function HistoryGameList({
   const sorted = [...entries].sort(
     (left, right) => gamePlayedAtMs(right.game) - gamePlayedAtMs(left.game) || entryKey(left).localeCompare(entryKey(right))
   );
+  const dates = playedOnLabels(sorted.map((entry) => gamePlayedAtMs(entry.game)));
 
   function startEditing(entry: PlayerGameEntry) {
     // A free recorded name (say "Al" picked as Alexander) is the likely name for a new person. The
@@ -107,10 +126,10 @@ export function HistoryGameList({
     <div className="history-games" id={id}>
       {sorted.length === 0 ? <p className="muted">No games in this range.</p> : null}
       <ul className="history-game-list" aria-label={`Games for ${label}`}>
-        {sorted.map((entry) => {
+        {sorted.map((entry, entryIndex) => {
           const key = entryKey(entry);
           const current = editing?.key === key ? editing : null;
-          const date = fullDate.format(gamePlayedAtMs(entry.game));
+          const date = dates[entryIndex];
           const title = gameTitle(entry);
           const recordedAs = entry.playerName && entry.playerName !== row.name ? entry.playerName : null;
           const durationMs = playerSessionMs(entry.game.state, entry.playerId);

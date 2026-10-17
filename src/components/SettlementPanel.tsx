@@ -175,6 +175,11 @@ export function SettlementPanel({
 
   return (
     <section className="panel settlement-panel">
+      {/* Print hides the app header, so a printed page names its game and date here instead. */}
+      <p className="settlement-print-title">
+        <strong>{gameName.trim() || "Poker Night"}</strong>
+        <span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date())}</span>
+      </p>
       <div className="panel-heading">
         <div>
           <p className="eyebrow">Live totals</p>

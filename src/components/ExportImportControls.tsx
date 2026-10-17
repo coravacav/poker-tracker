@@ -23,6 +23,12 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
     downloadJson(`${state.settings.gameName || "poker-tracker"}.json`, state);
   }
 
+  /** Archives an in-progress game that an imported game would otherwise replace. */
+  async function keepCurrentGame(incomingGameId: string | undefined): Promise<boolean> {
+    if (incomingGameId === state.localGameId || state.transactions.length === 0) return true;
+    return archiveGame(state);
+  }
+
   async function importGame(file: File | undefined) {
     if (!file) {
       return;
@@ -41,12 +47,7 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
         }
         const peopleRestored = mergeStoredPeople(backup.people);
         if (backup.currentGame) {
-          // Keep an in-progress game that the backup would otherwise replace.
-          if (
-            backup.currentGame.localGameId !== state.localGameId &&
-            state.transactions.length > 0 &&
-            !(await archiveGame(state))
-          ) {
+          if (!(await keepCurrentGame(backup.currentGame.localGameId))) {
             setError("Player History was restored, but the current game could not be saved to it, so it was kept.");
             return;
           }
@@ -61,14 +62,21 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
       }
 
       if (!validatePersistedState(parsed)) {
-        setError("Import did not match the saved game schema.");
+        setError("That file is not a Poker Tracker game or backup.");
         return;
       }
 
+      setBusy(true);
+      // Games saved before schema v6 have no id, so they never match the current game.
+      const incomingGameId = "localGameId" in parsed ? parsed.localGameId : undefined;
+      if (!(await keepCurrentGame(incomingGameId))) {
+        setError("The current game could not be saved to Player History, so it was kept and nothing was imported.");
+        return;
+      }
       dispatch({ type: "replace_state_from_import", state: parsed });
       setError(null);
     } catch {
-      setError("Could not read that JSON file.");
+      setError("Could not read that file. Choose a game or backup exported from Poker Tracker.");
     } finally {
       setBusy(false);
       if (inputRef.current) {
@@ -129,7 +137,7 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
         accept="application/json"
         onChange={(event) => void importGame(event.currentTarget.files?.[0])}
       />
-      {error ? <span className="inline-error">{error}</span> : null}
+      {error ? <span className="inline-error" role="alert">{error}</span> : null}
     </div>
   );
 }

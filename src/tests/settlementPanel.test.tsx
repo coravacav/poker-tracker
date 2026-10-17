@@ -118,6 +118,25 @@ describe("SettlementPanel", () => {
     print.mockRestore();
   });
 
+  it("names the game and date for print, where the app header is hidden", () => {
+    render(
+      <SettlementPanel
+        bankSummary={bankSummary}
+        gameName="Friday at Blair's"
+        imbalanceCents={0}
+        onAddTransaction={vi.fn(() => true)}
+        players={players}
+        readOnly={false}
+        settlementReady={true}
+        summaries={summaries}
+      />
+    );
+
+    const title = screen.getByText("Friday at Blair's").closest("p");
+    expect(title).toHaveClass("settlement-print-title");
+    expect(title).toHaveTextContent(new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date()));
+  });
+
   it("locks a payment, then marks the locked payment paid", () => {
     render(<PinHarness />);
 

@@ -65,3 +65,9 @@
   color: var(--green);
   background: var(--green-soft);
 }
+
+/* Nothing is wrong yet; the screen is just waiting for play. */
+.notice-info {
+  color: var(--muted);
+  background: var(--surface-alt);
+}

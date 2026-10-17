@@ -346,10 +346,33 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Player Net" })).toBeInTheDocument();
 
     expect(screen.queryByRole("button", { name: "Chip Counts" })).not.toBeInTheDocument();
-    expect(screen.getByText(/Missing cash-outs/)).toBeInTheDocument();
+    // Before anyone buys in, nobody's cash-out is "missing" yet.
+    expect(screen.getByText(/Nobody has bought in yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/Missing cash-outs/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Transaction Audit" }));
     expect(screen.getByRole("dialog", { name: "Transaction audit" })).toBeInTheDocument();
+  });
+
+  it("lists missing cash-outs once anyone has bought in", () => {
+    const state = createDefaultGameState();
+    state.players = state.players.slice(0, 2);
+    state.transactions = [
+      {
+        id: "alex-buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: state.players[0].id
+      }
+    ];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    renderGameApp();
+    fireEvent.click(screen.getByRole("button", { name: "Settle" }));
+
+    expect(screen.getByText(/Missing cash-outs/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nobody has bought in yet/)).not.toBeInTheDocument();
   });
 
   it("accepts a zero chip pool after partial cash-outs recorded from Play", () => {

@@ -321,7 +321,8 @@ describe("realtime sharing UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Request transaction" }));
     const request = screen.getByRole("dialog", { name: "Request transaction" });
     expect(within(request).getByRole("heading", { name: "Request Transaction" })).toBeInTheDocument();
-    expect(within(request).getByRole("button", { name: "Send to host" })).toBeInTheDocument();
+    expect(within(request).getByText("Ask the host")).toBeInTheDocument();
+    expect(within(request).getByRole("button", { name: "Send request" })).toBeInTheDocument();
     expect(within(request).queryByRole("heading", { name: "Add Transaction" })).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null").settings.gameName).toBe(
       "Local game"

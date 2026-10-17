@@ -89,6 +89,10 @@ export function SettleMode({
     );
   }
 
+  // Before anyone buys in there is nothing to count or settle, so say so once rather
+  // than listing every seat as a missing cash-out.
+  const nothingIssued = bankSummary.incomingCents === 0 && bankSummary.balanceCents === 0;
+
   return (
     <div className="settle-mode">
       <section className="settle-toolbar" aria-label="Settle controls">
@@ -101,7 +105,11 @@ export function SettleMode({
           {auditButton}
         </div>
       </section>
-      {cashOutOverview.missingPlayers.length > 0 || bankSummary.balanceCents !== 0 ? (
+      {nothingIssued ? (
+        <div className="notice notice-info">
+          Nobody has bought in yet. Payments appear here once players buy in and cash out.
+        </div>
+      ) : cashOutOverview.missingPlayers.length > 0 || bankSummary.balanceCents !== 0 ? (
         <div className="settle-warnings">
           {cashOutOverview.missingPlayers.length > 0 &&
           !cashOutOverview.cashOutsCompleteForSettlement ? (

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { playedOnLabels } from "../components/HistoryGameList";
 import { SessionHistoryPanel } from "../components/SessionHistoryPanel";
 import { buildPersonTimelines } from "../domain/historyTrends";
 import {
@@ -380,5 +381,22 @@ describe("Player History game list", () => {
     expect(screen.getByRole("checkbox", { name: "Select Alex" }).closest(".history-stat-row")).toHaveTextContent("2 games");
     // The name stays with the original person: no alias was handed out.
     expect(loadPeopleDirectory().people.find((entry) => entry.name === "Alex Kim")?.aliases).toEqual([]);
+  });
+});
+
+describe("game dates in a Player History row", () => {
+  it("adds the time of day only where two games share a date", () => {
+    const evening = new Date(2026, 9, 16, 19, 30).getTime();
+    const lateNight = new Date(2026, 9, 16, 23, 5).getTime();
+    const nextWeek = new Date(2026, 9, 23, 20, 0).getTime();
+    const [first, second, third] = playedOnLabels([lateNight, evening, nextWeek]);
+    const dateOnly = (ms: number) => new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" }).format(ms);
+
+    expect(third).toBe(dateOnly(nextWeek));
+    expect(first).not.toBe(second);
+    for (const label of [first, second]) {
+      expect(label).not.toBe(dateOnly(evening));
+      expect(label).toContain(String(new Date(evening).getFullYear()));
+    }
   });
 });
