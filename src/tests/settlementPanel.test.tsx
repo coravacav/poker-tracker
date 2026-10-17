@@ -137,6 +137,29 @@ describe("SettlementPanel", () => {
     expect(title).toHaveTextContent(new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date()));
   });
 
+  it("dates the printout by when play started, not when it is printed", () => {
+    // Play started late on March 7; settling and printing run past midnight.
+    const startedAtMs = new Date(2026, 2, 7, 23, 30).getTime();
+    render(
+      <SettlementPanel
+        bankSummary={bankSummary}
+        gameName="Friday at Blair's"
+        imbalanceCents={0}
+        onAddTransaction={vi.fn(() => true)}
+        players={players}
+        readOnly={false}
+        settlementReady={true}
+        startedAtMs={startedAtMs}
+        summaries={summaries}
+      />
+    );
+
+    const title = screen.getByText("Friday at Blair's").closest("p");
+    expect(title).toHaveTextContent(
+      new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(startedAtMs))
+    );
+  });
+
   it("locks a payment, then marks the locked payment paid", () => {
     render(<PinHarness />);
 

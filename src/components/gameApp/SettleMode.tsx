@@ -1,5 +1,6 @@
 import { CircleCheck } from "lucide-react";
 import type { Dispatch } from "react";
+import { firstTransactionAtMs } from "../../domain/ledger";
 import { formatCurrency } from "../../domain/money";
 import type { GameState, Transaction } from "../../domain/pokerTypes";
 import type { GameAction } from "../../state/gameReducer";
@@ -51,6 +52,7 @@ export function SettleMode({
       bankSummary={bankSummary}
       currencyCode={state.settings.currencyCode}
       gameName={state.settings.gameName}
+      startedAtMs={firstTransactionAtMs(state.transactions)}
       hideActions={guest}
       imbalanceCents={imbalanceCents}
       onAddTransaction={addTransaction}

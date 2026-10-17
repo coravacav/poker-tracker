@@ -3,6 +3,7 @@
  * played, date-range filtering, and per-person series in one currency.
  * Amounts in different currencies are never combined.
  */
+import { firstTransactionAtMs } from "./ledger";
 import type { CurrencyCode } from "./money";
 import type { PeopleDirectory } from "./people";
 import { hourlyResult, playerSessionMs, type HourlyResult } from "./playerHours";
@@ -41,13 +42,10 @@ export const DEFAULT_CHART_SERIES = 5;
  * games without readable transaction times.
  */
 export function gamePlayedAtMs(game: ArchivedGame): number {
-  let earliest = Number.POSITIVE_INFINITY;
-  for (const transaction of game.state.transactions) {
-    const ms = Date.parse(transaction.createdAt);
-    if (Number.isFinite(ms) && ms < earliest) earliest = ms;
-  }
-  if (earliest !== Number.POSITIVE_INFINITY) return earliest;
-  return Date.parse(game.state.settings.createdAt) || archivedAtMs(game.archivedAt);
+  return (
+    firstTransactionAtMs(game.state.transactions) ??
+    (Date.parse(game.state.settings.createdAt) || archivedAtMs(game.archivedAt))
+  );
 }
 
 /** Start of the range in epoch ms, or null for all time. */

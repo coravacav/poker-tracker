@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildPlayerSummaries,
   calculateBankSummary,
-  calculateLedgerImbalanceCents
+  calculateLedgerImbalanceCents,
+  firstTransactionAtMs
 } from "../domain/ledger";
 import type { Player, Transaction } from "../domain/pokerTypes";
 
@@ -155,5 +156,25 @@ describe("ledger", () => {
 
     const summaries = buildPlayerSummaries(players, transactions);
     expect(summaries.every((summary) => summary.netCents === 0)).toBe(true);
+  });
+
+  it("finds when play started from the earliest readable transaction", () => {
+    const at = (id: string, createdAt: string): Transaction => ({
+      id,
+      type: "bank_buy_in",
+      createdAt,
+      amountCents: 2000,
+      toPlayerId: "alex"
+    });
+
+    expect(firstTransactionAtMs([])).toBeNull();
+    expect(firstTransactionAtMs([at("bad", "not a date")])).toBeNull();
+    expect(
+      firstTransactionAtMs([
+        at("later", "2026-05-10T01:00:00.000Z"),
+        at("bad", "not a date"),
+        at("first", "2026-05-09T23:30:00.000Z")
+      ])
+    ).toBe(Date.parse("2026-05-09T23:30:00.000Z"));
   });
 });

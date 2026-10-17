@@ -10,6 +10,16 @@ export function getActiveTransactions(transactions: Transaction[]): Transaction[
   return transactions.filter((transaction) => !transaction.voidedAt);
 }
 
+/** When the first readable transaction (the first buy-in) happened, or null before any. */
+export function firstTransactionAtMs(transactions: Transaction[]): number | null {
+  let earliest = Number.POSITIVE_INFINITY;
+  for (const transaction of transactions) {
+    const ms = Date.parse(transaction.createdAt);
+    if (Number.isFinite(ms) && ms < earliest) earliest = ms;
+  }
+  return earliest === Number.POSITIVE_INFINITY ? null : earliest;
+}
+
 export function hasPlayerTransactions(playerId: PlayerId, transactions: Transaction[]): boolean {
   return transactions.some(
     (transaction) =>

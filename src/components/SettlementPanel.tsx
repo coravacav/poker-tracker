@@ -32,6 +32,8 @@ type SettlementPanelProps = {
   imbalanceCents: number;
   hideActions?: boolean;
   gameName?: string;
+  /** When play started (the first buy-in), which dates the printout and the image. */
+  startedAtMs?: number | null;
   players: Player[];
   readOnly: boolean;
   settlementReady: boolean;
@@ -45,6 +47,7 @@ export function SettlementPanel({
   bankSummary,
   currencyCode = "USD",
   gameName = "Poker Night",
+  startedAtMs = null,
   imbalanceCents,
   hideActions = false,
   players,
@@ -59,6 +62,8 @@ export function SettlementPanel({
     () => buildSettlementPlan(summaries, settlementPins),
     [settlementPins, summaries]
   );
+  // Dated by when play started, so a game settled after midnight keeps its night's date.
+  const gameDate = startedAtMs === null ? new Date() : new Date(startedAtMs);
   const [coveredPlayerId, setCoveredPlayerId] = useState<string | null>(null);
   const [coveredByPlayerId, setCoveredByPlayerId] = useState<string>("");
   const [coverageNote, setCoverageNote] = useState("");
@@ -102,7 +107,10 @@ export function SettlementPanel({
     // An earlier share's reset must not unlock this one while its share sheet is open.
     window.clearTimeout(imageResetRef.current);
     setImageResult("working");
-    const model = buildSettlementImageModel(gameName, players, summaries, settlementPins, { currencyCode });
+    const model = buildSettlementImageModel(gameName, players, summaries, settlementPins, {
+      currencyCode,
+      date: gameDate
+    });
     const result = await shareSettlementImage(model).catch((): ShareImageResult => "failed");
     setImageResult(result);
     if (result !== "failed") imageResetRef.current = window.setTimeout(() => setImageResult(null), 1800);
@@ -178,7 +186,7 @@ export function SettlementPanel({
       {/* Print hides the app header, so a printed page names its game and date here instead. */}
       <p className="settlement-print-title">
         <strong>{gameName.trim() || "Poker Night"}</strong>
-        <span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date())}</span>
+        <span>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(gameDate)}</span>
       </p>
       <div className="panel-heading">
         <div>
