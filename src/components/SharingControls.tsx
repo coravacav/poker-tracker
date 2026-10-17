@@ -88,12 +88,24 @@ export function HostSharingControls({
       : sharingLive
         ? "Sharing live"
         : "Reconnecting";
+  // Guest requests wait until the host decides, so keep them visible while the dialog is closed.
+  const waitingRequests = room?.status === "active" ? (room.guestRequests?.length ?? 0) : 0;
 
   return (
     <div className="sharing-controls">
-      <button className="share-button is-active" type="button" onClick={() => setOpen(true)}>
+      <button
+        className="share-button is-active"
+        type="button"
+        aria-label={
+          waitingRequests > 0
+            ? `${statusLabel}, ${waitingRequests} guest ${waitingRequests === 1 ? "request" : "requests"} waiting`
+            : undefined
+        }
+        onClick={() => setOpen(true)}
+      >
         {sharingLive ? <Radio size={16} /> : <WifiOff size={16} />}
         {statusLabel}
+        {waitingRequests > 0 ? <strong className="notification-count">{waitingRequests}</strong> : null}
       </button>
       {open
         ? createPortal(

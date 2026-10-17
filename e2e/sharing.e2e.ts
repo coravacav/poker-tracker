@@ -52,6 +52,16 @@ test("a guest follows a shared game live, through a dropped connection, and keep
   await openMode(guest, "Settle");
   await openMode(guest, "Play");
 
+  // A guest's request waits, counted on the host's sharing button, until the host approves it.
+  await guest.getByRole("button", { name: "Request transaction" }).click();
+  await guest.getByRole("button", { name: "Send request" }).click();
+  await expect(guest.getByText("Request sent to the host for approval.")).toBeVisible();
+  await host.getByRole("button", { name: "Sharing live, 1 guest request waiting" }).click();
+  await host.getByRole("dialog", { name: "Share game" }).getByRole("button", { name: "Approve" }).click();
+  await host.getByRole("dialog", { name: "Share game" }).getByRole("button", { name: "Close" }).click();
+  await expect(host.getByRole("button", { name: "Sharing live" })).toBeVisible();
+  await expect(chipPool(guest).getByRole("definition").first()).toHaveText("$60.00", { timeout: 30_000 });
+
   // The host ends the room; the guest keeps the final game in their own Player History.
   await host.getByRole("button", { name: "Sharing live" }).click();
   host.once("dialog", (dialog) => void dialog.accept());

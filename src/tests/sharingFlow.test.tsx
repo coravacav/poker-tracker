@@ -288,6 +288,55 @@ describe("realtime sharing UI", () => {
     expect(screen.getByLabelText("Guest invitation QR code")).toBeInTheDocument();
   });
 
+  it("counts waiting guest requests on the sharing button until the host decides", async () => {
+    const local = createDefaultGameState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+    saveHostRecovery({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      localGameId: local.localGameId,
+      hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteSecret: "invite_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteUrl: "https://example.test/#/join/room_public_123456/invite",
+      roomName: "Poker Night",
+      lastKnownVersion: 0
+    });
+    const fake = fakeTransport(local);
+    renderGameApp(fake.transport);
+    const host = (guestRequests: HostRoomProjection["guestRequests"]) => ({
+      ...projection(local),
+      guestCount: 1,
+      guestRequests,
+      joiningOpen: true,
+      guests: [],
+      controllerStatus: "active" as const
+    });
+    const request = (id: string) => ({
+      id: id as never,
+      displayName: "Riley",
+      transaction: {
+        id: `transaction_${id}`,
+        type: "bank_buy_in" as const,
+        createdAt: new Date(0).toISOString(),
+        amountCents: 2000,
+        toPlayerId: "player_1"
+      },
+      status: "pending" as const,
+      createdAt: 0
+    });
+    act(() => fake.emitHost(host([request("request_a"), request("request_b")])));
+    fireEvent.click(await screen.findByTitle("Close"));
+
+    const button = screen.getByRole("button", { name: "Sharing live, 2 guest requests waiting" });
+    expect(within(button).getByText("2")).toBeInTheDocument();
+
+    act(() => fake.emitHost(host([request("request_b")])));
+    expect(screen.getByRole("button", { name: "Sharing live, 1 guest request waiting" })).toBeInTheDocument();
+
+    act(() => fake.emitHost(host([])));
+    expect(screen.getByRole("button", { name: "Sharing live" })).toBeInTheDocument();
+  });
+
   it("joins as a named read-only guest without overwriting the local game", async () => {
     const local = createDefaultGameState();
     local.settings.gameName = "Local game";
