@@ -22,6 +22,7 @@ export default defineConfig({
   ],
   webServer: {
     command: `bunx vite --port ${PORT} --strictPort`,
+    env: { PLAYWRIGHT_E2E: "1" },
     url: `http://localhost:${PORT}`,
     reuseExistingServer: true,
     timeout: 60_000

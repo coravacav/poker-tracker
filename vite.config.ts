@@ -16,5 +16,8 @@ function buildId(): string {
 
 export default defineConfig({
   define: { "import.meta.env.VITE_APP_BUILD": JSON.stringify(buildId()) },
+  // Browser tests take pages offline; a live-reload socket would reload the page when the
+  // connection returns, racing the test, so their dev server runs without one.
+  server: process.env.PLAYWRIGHT_E2E ? { ws: false } : undefined,
   plugins: [react(), serviceWorkerPrecache({ entry: "src/pwa/serviceWorker.ts" })]
 });
