@@ -34,6 +34,21 @@ function normalizeLabel(label: string): string {
   return label.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
+function sameRows(a: EditableDenomination[], b: EditableDenomination[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((row, index) => {
+      const other = b[index];
+      return (
+        row.id === other.id &&
+        row.label === other.label &&
+        row.colorHex === other.colorHex &&
+        row.valueInput === other.valueInput
+      );
+    })
+  );
+}
+
 function toFastEntryText(rows: EditableDenomination[]): string {
   return rows
     .filter((row) => row.label.trim() || row.valueInput.trim())
@@ -67,6 +82,9 @@ export function ChipDenominationPanel({
     }
   }, [readOnly]);
 
+  // Edits live only here until saved; switching modes would drop them.
+  const unsaved = !readOnly && !sameRows(rows, denominations.map(toEditable));
+
   function updateRow(id: string, changes: Partial<EditableDenomination>) {
     setRows((current) =>
       current.map((row) => (row.id === id ? { ...row, ...changes } : row))
@@ -74,9 +92,10 @@ export function ChipDenominationPanel({
     setSaved(false);
   }
 
-  function saveKey() {
+  /** Saves the rows as the game's chip key, or shows why it can't. */
+  function saveKey(rowsToSave: EditableDenomination[]) {
     const parsed: ChipDenomination[] = [];
-    for (const row of rows) {
+    for (const row of rowsToSave) {
       const label = row.label.trim();
       const valueCents = parseMoneyToCents(row.valueInput);
       if (!label) {
@@ -152,11 +171,12 @@ export function ChipDenominationPanel({
     });
 
     setRows(nextRows);
-    setError(null);
-    setSaved(false);
     setFastEntryOpen(false);
     setFastEntryDraft("");
     setFastEntryError(null);
+    // Saved at once, so leaving Setup straight after cannot drop the colors; a key the
+    // editor would refuse (say, two fallback swatches alike) waits there with its error.
+    saveKey(nextRows);
   }
 
   return (
@@ -229,7 +249,8 @@ export function ChipDenominationPanel({
               Cancel
             </button>
             <button className="primary-button" type="button" onClick={applyFastEntry}>
-              Apply to editor
+              <Save size={16} />
+              Save chip key
             </button>
           </div>
         </div>
@@ -303,12 +324,16 @@ export function ChipDenominationPanel({
           )}
 
           <div className="chip-key-footer">
-            <span className="muted">Values are in {currencyCode} and may be changed later.</span>
+            {unsaved ? (
+              <span className="chip-key-unsaved">Not saved yet. Save the chip key before leaving Setup.</span>
+            ) : (
+              <span className="muted">Values are in {currencyCode} and may be changed later.</span>
+            )}
             <button
               className="primary-button"
               type="button"
               disabled={readOnly}
-              onClick={saveKey}
+              onClick={() => saveKey(rows)}
             >
               <Save size={16} />
               Save chip key

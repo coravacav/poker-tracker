@@ -172,6 +172,7 @@
 .cashout-grid,
 .audit-compact {
   display: grid;
+  align-content: start;
   gap: 10px;
   min-width: 0;
 }

@@ -146,12 +146,12 @@ describe("App", () => {
       "Chip colors and values (one per line)"
     );
     fireEvent.change(chipFastEntry, { target: { value: "Red = 5\nBlue .25" } });
-    fireEvent.click(screen.getByRole("button", { name: "Apply to editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save chip key" }));
 
     expect(screen.getByLabelText("Red value")).toHaveValue("5.00");
     expect(screen.getByLabelText("Blue value")).toHaveValue("0.25");
-    fireEvent.click(screen.getByRole("button", { name: "Save chip key" }));
     expect(screen.getByText("Chip value key saved.")).toBeInTheDocument();
+    expect(screen.queryByText(/Not saved yet/)).toBeNull();
 
     const persisted = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     expect(persisted.settings.chipDenominations).toEqual([
@@ -458,6 +458,19 @@ describe("App", () => {
     );
     expect(screen.getAllByText("in for $20.00")).toHaveLength(6);
     expect(screen.queryByText(/owes/)).not.toBeInTheDocument();
+
+    // A second tap asks first, since it gives everyone another buy-in; declining adds nothing.
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole("button", { name: "Add default buy-in to all" }));
+    expect(confirm).toHaveBeenCalledWith(
+      "Everyone has already bought in. Add a $20.00 buy-in for all 6 ($120.00 in all)? Undo takes back only the last one."
+    );
+    expect(within(chipPool).getByText("Issued").nextElementSibling).toHaveTextContent("$120.00");
+
+    confirm.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole("button", { name: "Add default buy-in to all" }));
+    expect(within(chipPool).getByText("Issued").nextElementSibling).toHaveTextContent("$240.00");
+    confirm.mockRestore();
   });
 
   it("shows a seat's loss only once the player's final count is recorded", () => {

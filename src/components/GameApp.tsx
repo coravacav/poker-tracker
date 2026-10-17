@@ -6,6 +6,7 @@ import { LazyBoundary, lazyWithPreload } from "./lazyComponent";
 import { SharedNotifications } from "./SharedNotifications";
 import type { GameState, Transaction } from "../domain/pokerTypes";
 import { formatCurrency } from "../domain/money";
+import { buyInToAllConfirmation } from "../domain/quickEntry";
 import { describeRecentTransactionAction } from "../domain/recentTransactionAction";
 import { validateTransaction } from "../domain/validation";
 import type { RoomHistoryProjection, SharedActivity } from "../session/types";
@@ -133,6 +134,14 @@ export function GameApp({
       setNotice(guest ? "Guests have a read-only view." : "Reconnect before changing the shared game.");
       return;
     }
+
+    const confirmation = buyInToAllConfirmation(
+      activePlayers.map((player) => player.id),
+      state.transactions,
+      state.settings.defaultBuyInCents,
+      (cents) => formatCurrency(cents, state.settings.currencyCode)
+    );
+    if (confirmation && !window.confirm(confirmation)) return;
 
     const createdAt = new Date().toISOString();
     const transactions: Transaction[] = activePlayers.map((player) => ({

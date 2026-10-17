@@ -63,6 +63,12 @@
   margin-top: 12px;
 }
 
+/* Edits in the chip key editor are kept only until Setup is left, so say so. */
+.chip-key-unsaved {
+  color: var(--amber);
+  font-weight: 700;
+}
+
 .chip-swatch {
   display: inline-block;
   width: 18px;

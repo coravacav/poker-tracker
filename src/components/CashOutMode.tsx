@@ -234,7 +234,7 @@ export function CashOutMode({
             <div className="chip-aggregate" key={`${item.id}:${item.valueCents}:${item.label}`}>
               <span className="chip-swatch" style={{ backgroundColor: item.colorHex }} aria-hidden="true" />
               <span>{item.label}</span>
-              <strong>{item.count} chips</strong>
+              <strong>{item.count} {item.count === 1 ? "chip" : "chips"}</strong>
               <span>{formatCurrency(item.valueCents)} each</span>
               <strong>{formatCurrency(item.totalCents)}</strong>
             </div>

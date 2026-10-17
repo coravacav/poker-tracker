@@ -128,6 +128,8 @@
     grid-column: auto;
   }
 
+  /* Seats keep their desktop width: the table shows only when the panel is wide enough
+     for that width (useCompactView), and wider seats would overlap their neighbours. */
   .poker-table {
     min-height: 700px;
     border-width: 8px;
@@ -140,10 +142,6 @@
 
   .poker-table.layout-round {
     border-radius: 999px;
-  }
-
-  .seat-slot {
-    width: min(46vw, 180px);
   }
 
   .cashout-row {
@@ -162,6 +160,12 @@
   .drawer-panel {
     width: 100%;
     max-height: calc(100dvh - 20px);
+  }
+
+  /* The audit sheet keeps one height, so its search field stays put under the thumb
+     while a search narrows the list. */
+  .drawer-panel-wide {
+    height: calc(100dvh - 20px);
   }
 }
 
