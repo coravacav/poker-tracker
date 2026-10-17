@@ -1,3 +1,4 @@
+import { CircleCheck } from "lucide-react";
 import type { Dispatch } from "react";
 import { formatCurrency } from "../../domain/money";
 import type { GameState, Transaction } from "../../domain/pokerTypes";
@@ -36,6 +37,58 @@ export function SettleMode({
   setNotice,
   setAuditDrawerOpen
 }: SettleModeProps) {
+  const auditButton = (
+    <button
+      className="text-button"
+      type="button"
+      onClick={() => setAuditDrawerOpen(true)}
+    >
+      Transaction Audit
+    </button>
+  );
+  const settlementPanel = (
+    <SettlementPanel
+      bankSummary={bankSummary}
+      currencyCode={state.settings.currencyCode}
+      gameName={state.settings.gameName}
+      hideActions={guest}
+      imbalanceCents={imbalanceCents}
+      onAddTransaction={addTransaction}
+      onSettlementPinAction={guest ? undefined : (action) => {
+        if (readOnly) {
+          setNotice("Reconnect before changing the shared game.");
+          return;
+        }
+        dispatch(action);
+      }}
+      players={state.players}
+      readOnly={readOnly}
+      settlementPins={state.settlementPins}
+      settlementReady={settlementReady}
+      summaries={settlementSummaries}
+    />
+  );
+
+  // Once every chip is back and the ledger balances, the pool needs no attention:
+  // lead with who pays whom and fold the pool into one confirming line.
+  if (settlementReady && bankSummary.balanceCents === 0 && imbalanceCents === 0) {
+    return (
+      <div className="settle-mode is-ready">
+        {settlementPanel}
+        <section className="settle-toolbar settle-pool-balanced" aria-label="Chip pool">
+          <p>
+            <CircleCheck size={17} aria-hidden="true" />
+            Chip pool balanced: {formatCurrency(bankSummary.incomingCents, state.settings.currencyCode)} issued, all returned.
+            {cashOutOverview.missingPlayers.length > 0
+              ? " Recorded partial cash-outs cover the pool."
+              : null}
+          </p>
+          {auditButton}
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="settle-mode">
       <section className="settle-toolbar" aria-label="Settle controls">
@@ -45,13 +98,7 @@ export function SettleMode({
           variant="compact"
         />
         <div className="settle-actions">
-          <button
-            className="text-button"
-            type="button"
-            onClick={() => setAuditDrawerOpen(true)}
-          >
-            Transaction Audit
-          </button>
+          {auditButton}
         </div>
       </section>
       {cashOutOverview.missingPlayers.length > 0 || bankSummary.balanceCents !== 0 ? (
@@ -75,26 +122,7 @@ export function SettleMode({
           ) : null}
         </div>
       ) : null}
-      <SettlementPanel
-        bankSummary={bankSummary}
-        currencyCode={state.settings.currencyCode}
-        gameName={state.settings.gameName}
-        hideActions={guest}
-        imbalanceCents={imbalanceCents}
-        onAddTransaction={addTransaction}
-        onSettlementPinAction={guest ? undefined : (action) => {
-          if (readOnly) {
-            setNotice("Reconnect before changing the shared game.");
-            return;
-          }
-          dispatch(action);
-        }}
-        players={state.players}
-        readOnly={readOnly}
-        settlementPins={state.settlementPins}
-        settlementReady={settlementReady}
-        summaries={settlementSummaries}
-      />
+      {settlementPanel}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { Transaction } from "./pokerTypes";
+import type { Player, Transaction } from "./pokerTypes";
 
 export const RECENT_TRANSACTION_UNDO_WINDOW_MS = 30_000;
 
@@ -131,4 +131,42 @@ export function isRecentTransactionAction(
 
   const ageMs = nowMs - occurredAtMs;
   return ageMs >= 0 && ageMs < RECENT_TRANSACTION_UNDO_WINDOW_MS;
+}
+
+/** A short sentence naming what Undo would reverse, such as "Casey rebought $20.00". */
+export function describeRecentTransactionAction(
+  action: RecentTransactionAction,
+  transactions: Transaction[],
+  players: Player[],
+  formatAmount: (cents: number) => string
+): string | null {
+  const transaction = transactions.find((candidate) => candidate.id === action.transactionId);
+  if (!transaction) {
+    return null;
+  }
+
+  const nameOf = (playerId: string | undefined) =>
+    players.find((player) => player.id === playerId)?.name ?? "A player";
+  const amount = formatAmount(transaction.amountCents);
+  let description: string;
+  switch (transaction.type) {
+    case "bank_buy_in":
+      description = `${nameOf(transaction.fromPlayerId ?? transaction.toPlayerId)} bought in ${amount}`;
+      break;
+    case "bank_cash_out":
+      description = `${nameOf(transaction.toPlayerId ?? transaction.fromPlayerId)} cashed out ${amount}`;
+      break;
+    case "player_gave":
+    case "player_owes":
+    case "player_transfer":
+      description = `${nameOf(transaction.fromPlayerId)} → ${nameOf(transaction.toPlayerId)} ${amount}`;
+      break;
+    case "debt_coverage":
+      description = `${nameOf(transaction.coveredByPlayerId)} covered ${nameOf(transaction.coveredPlayerId)} ${amount}`;
+      break;
+    default:
+      description = `Bank adjustment ${amount}`;
+  }
+
+  return action.kind === "void" ? `Removed: ${description}` : description;
 }

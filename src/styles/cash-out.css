@@ -289,3 +289,39 @@
   display: grid;
   gap: 10px;
 }
+
+.settle-mode.is-ready {
+  grid-template-rows: minmax(0, max-content) auto;
+  align-content: start;
+}
+
+.settle-pool-balanced {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(20, 108, 67, 0.22);
+  border-radius: 8px;
+  padding: 8px 8px 8px 12px;
+  background: var(--green-soft);
+}
+
+.settle-pool-balanced p {
+  display: inline-flex;
+  flex: 1 1 260px;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  color: var(--green);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.settle-pool-balanced svg {
+  flex: none;
+}
+
+.settle-pool-balanced .text-button {
+  background: var(--surface);
+}

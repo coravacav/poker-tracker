@@ -210,10 +210,19 @@ export function CashOutMode({
           <div><span>Chips remaining</span><strong className={overview.projectedRemainingCents === 0 ? "positive" : "negative"}>{formatCurrency(overview.projectedRemainingCents)}</strong></div>
         </div>
 
+        {/* Chips left while counts are missing are expected, so say both in one line;
+            chips left once everyone is counted are a real mismatch and get their own warning. */}
         {overview.missingPlayers.length > 0 ? (
-          <div className="notice notice-warning"><TriangleAlert size={16} />Missing cash-outs: {overview.missingPlayers.map((player) => player.name).join(", ")}</div>
+          <div className="notice notice-warning">
+            <TriangleAlert size={16} />
+            Missing cash-outs: {overview.missingPlayers.map((player) => player.name).join(", ")}
+            {overview.projectedRemainingCents > 0
+              ? ` (${formatCurrency(overview.projectedRemainingCents)} of chips still to count)`
+              : null}
+          </div>
         ) : null}
-        {overview.projectedRemainingCents !== 0 ? (
+        {overview.projectedRemainingCents !== 0 &&
+        (overview.missingPlayers.length === 0 || overview.projectedRemainingCents < 0) ? (
           <div className="notice notice-warning"><TriangleAlert size={16} />Projected counts leave {formatCurrency(overview.projectedRemainingCents)} in the chip pool.</div>
         ) : null}
         {overview.manualFinalPlayerIds.size > 0 ? (
@@ -315,7 +324,8 @@ export function CashOutMode({
                   {errors[player.id] ? <div className="notice notice-warning">{errors[player.id]}</div> : null}
                   <div className="cash-out-card-actions">
                     {draft ? <button className="text-button" type="button" disabled={readOnly} onClick={() => clearDraft(player.id)}><Trash2 size={15} />Clear draft</button> : null}
-                    <button className="primary-button" type="button" disabled={readOnly || !!errors[player.id] || (denominations.length === 0 && lines.length === 0)} onClick={() => recordPlayer(player)}>
+                    {/* Nothing counted yet: confirming $0 is for a busted player, so it should not look like the next step. */}
+                    <button className={totalCents === 0 ? "text-button" : "primary-button"} type="button" disabled={readOnly || !!errors[player.id] || (denominations.length === 0 && lines.length === 0)} onClick={() => recordPlayer(player)}>
                       {totalCents === 0 ? `Confirm ${formatCurrency(0, { trimWholeCents: true })}` : draft?.correctingTransactionId ? "Record correction" : "Record cash-out"}
                     </button>
                   </div>

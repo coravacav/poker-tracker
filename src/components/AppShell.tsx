@@ -21,6 +21,8 @@ type AppShellProps = {
   onUndoRecentTransaction: (action: RecentTransactionAction) => void;
   readOnly: boolean;
   recentTransactionAction: RecentTransactionAction | null;
+  /** What Undo would reverse, shown beside it on phones. */
+  recentTransactionLabel?: string | null;
   guest?: boolean;
   ledgerLabel?: string;
   notifications?: ReactNode;
@@ -40,12 +42,14 @@ const modeLabels: Array<{ mode: AppMode; label: string }> = [
 
 type RecentTransactionUndoButtonProps = {
   action: RecentTransactionAction;
+  label?: string | null;
   onUndo: (action: RecentTransactionAction) => void;
   readOnly: boolean;
 };
 
 function RecentTransactionUndoButton({
   action,
+  label,
   onUndo,
   readOnly
 }: RecentTransactionUndoButtonProps) {
@@ -77,14 +81,17 @@ function RecentTransactionUndoButton({
       className="undo-transaction-nav-button"
       type="button"
       aria-label="Undo recent transaction action"
-      title="Undo recent transaction action"
+      title={label ? `Undo: ${label}` : "Undo recent transaction action"}
       onClick={() => {
         setAvailable(false);
         onUndo(action);
       }}
     >
-      <Undo2 size={16} />
-      Undo
+      {label ? <span className="undo-transaction-label">{label}</span> : null}
+      <span className="undo-transaction-action">
+        <Undo2 size={16} />
+        Undo
+      </span>
     </button>
   );
 }
@@ -105,6 +112,7 @@ export function AppShell({
   play,
   readOnly,
   recentTransactionAction,
+  recentTransactionLabel,
   sessionControls,
   setup,
   settle
@@ -120,8 +128,8 @@ export function AppShell({
           <h1>Poker Tracker</h1>
         </div>
         {onHome ? (
-          <button className="text-button" type="button" onClick={onHome}>
-            <Home size={16} /> Home
+          <button className="text-button home-button" type="button" aria-label="Home" onClick={onHome}>
+            <Home size={16} /> <span className="home-button-label">Home</span>
           </button>
         ) : null}
         {sessionControls}
@@ -143,6 +151,7 @@ export function AppShell({
             <RecentTransactionUndoButton
               key={`${recentTransactionAction.kind}:${recentTransactionAction.transactionId}:${recentTransactionAction.occurredAt}`}
               action={recentTransactionAction}
+              label={recentTransactionLabel}
               onUndo={onUndoRecentTransaction}
               readOnly={readOnly}
             />

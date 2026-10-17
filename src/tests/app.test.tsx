@@ -377,7 +377,7 @@ describe("App", () => {
 
     expect(screen.queryByText(/Missing cash-outs/)).not.toBeInTheDocument();
     expect(
-      screen.getByText("No chips remain in play; recorded partial cash-outs cover the pool.")
+      screen.getByText(/Chip pool balanced: .* Recorded partial cash-outs cover the pool\./)
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cover debt" })).toBeEnabled();
   });

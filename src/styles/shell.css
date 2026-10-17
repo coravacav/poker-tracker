@@ -60,6 +60,17 @@
   min-width: 92px;
 }
 
+.undo-transaction-action {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+}
+
+/* Shown only on phones, where Undo becomes a snackbar naming the entry. */
+.undo-transaction-label {
+  display: none;
+}
+
 .layout-edit-nav-button.is-active {
   border-color: var(--green);
   color: var(--green);

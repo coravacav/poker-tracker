@@ -5,6 +5,8 @@ import { CurrencyProvider } from "./CurrencyContext";
 import { LazyBoundary, lazyWithPreload } from "./lazyComponent";
 import { SharedNotifications } from "./SharedNotifications";
 import type { GameState, Transaction } from "../domain/pokerTypes";
+import { formatCurrency } from "../domain/money";
+import { describeRecentTransactionAction } from "../domain/recentTransactionAction";
 import { validateTransaction } from "../domain/validation";
 import type { RoomHistoryProjection, SharedActivity } from "../session/types";
 import type { GameAction } from "../state/gameReducer";
@@ -208,6 +210,16 @@ export function GameApp({
         }
         readOnly={readOnly}
         recentTransactionAction={recentTransactionAction}
+        recentTransactionLabel={
+          recentTransactionAction
+            ? describeRecentTransactionAction(
+                recentTransactionAction,
+                state.transactions,
+                state.players,
+                (cents) => formatCurrency(cents, state.settings.currencyCode)
+              )
+            : null
+        }
         sessionControls={sessionControls}
         setup={
           <LazyBoundary key="setup" fallback={modeFallback("Setup")}>
