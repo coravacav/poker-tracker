@@ -185,7 +185,16 @@ describe("Player History merging", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rename Alexandra" }));
     fireEvent.change(screen.getByLabelText("New name for Alexandra"), { target: { value: "michael" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.getByRole("alert")).toHaveTextContent(/merge them instead/);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/merge them instead/);
+    // The error stays with the row being renamed and is tied to its name field.
+    expect(alert.closest(".history-stat-row")).toBe(screen.getByRole("checkbox", { name: "Select Alexandra" }).closest(".history-stat-row"));
+    const field = screen.getByLabelText("New name for Alexandra");
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription(/merge them instead/);
+    // Editing the name clears it.
+    fireEvent.change(field, { target: { value: "michael k" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Select Alexandra" })).toBeInTheDocument();
   });
 

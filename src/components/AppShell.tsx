@@ -21,7 +21,7 @@ type AppShellProps = {
   onUndoRecentTransaction: (action: RecentTransactionAction) => void;
   readOnly: boolean;
   recentTransactionAction: RecentTransactionAction | null;
-  /** What Undo would reverse, shown beside it on phones. */
+  /** What Undo would reverse, shown beside it where Undo is a snackbar (phones, tablets in portrait, short landscape screens). */
   recentTransactionLabel?: string | null;
   guest?: boolean;
   ledgerLabel?: string;

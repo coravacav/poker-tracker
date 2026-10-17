@@ -148,6 +148,9 @@ describe("CashOutMode", () => {
     expect(screen.getByText("1 / 1")).toBeInTheDocument();
     expect(within(card).getByText("Total cashed out")).toBeInTheDocument();
     expect(within(card).getAllByText("$20.00").length).toBeGreaterThan(0);
+    // The earlier cash-out is named once, beside the buy-ins, and the final count is told apart.
+    expect(within(card).getAllByText(/earlier/i)).toHaveLength(1);
+    expect(within(card).getByText("Final count $15.00.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Correct count" })).toBeInTheDocument();
   });
 });

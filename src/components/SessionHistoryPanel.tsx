@@ -99,7 +99,8 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
   const rangeLabel = effectiveRange === "all" ? "" : `in the last ${HISTORY_RANGES.find((option) => option.value === effectiveRange)!.label.toLowerCase()}`;
   const [selected, setSelected] = useState<string[]>([]);
   const [mergeName, setMergeName] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<{ key: string; value: string } | null>(null);
+  // A rename's error stays with its row (and goes when the name is edited), not at the top of the list.
+  const [renaming, setRenaming] = useState<{ key: string; value: string; error?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -117,7 +118,8 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
   );
   const suggestedMergeName = [...selectedStats].sort((left, right) => right.games - left.games)[0]?.name ?? "";
 
-  function apply(change: (directory: PeopleDirectory, now: string) => PeopleResult | PeopleDirectory): boolean {
+  /** Saves a change to the people directory; returns why it failed, or null once saved. */
+  function applyChange(change: (directory: PeopleDirectory, now: string) => PeopleResult | PeopleDirectory): string | null {
     let failure: string | null = null;
     const saved = updatePeopleDirectory((current) => {
       const result = change(current, new Date().toISOString());
@@ -127,8 +129,17 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
       }
       return "directory" in result ? result.directory : result;
     });
-    setError(saved ? null : failure ?? SAVE_FAILED);
-    return saved !== null;
+    return saved ? null : failure ?? SAVE_FAILED;
+  }
+
+  function apply(change: (directory: PeopleDirectory, now: string) => PeopleResult | PeopleDirectory): boolean {
+    const failure = applyChange(change);
+    setError(failure);
+    return failure === null;
+  }
+
+  function renameFailed(stat: PlayerHistoryStat, value: string, error: string) {
+    setRenaming({ key: stat.key, value, error });
   }
 
   function toggleGames(key: string) {
@@ -152,7 +163,7 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
     const namesake = allStats.find((other) => other.key !== stat.key && nameKey(other.name) === nameKey(value));
     if (namesake) {
       // Renaming onto another row's name would quietly combine them; make that an explicit merge.
-      setError(`${namesake.name} is already in Player History. If they are the same person, select both and merge them instead.`);
+      renameFailed(stat, value, `${namesake.name} is already in Player History. If they are the same person, select both and merge them instead.`);
       return;
     }
     if (stat.keptApart) {
@@ -165,10 +176,9 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
           { kind: "new", name: value }
         );
         if ("error" in result) {
-          setError(result.error);
+          renameFailed(stat, value, result.error);
           return;
         }
-        setError(null);
         setRenaming(null);
         setStatus(`${historyRowLabel(stat)} is now ${value.trim()}.`);
       } finally {
@@ -176,12 +186,13 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
       }
       return;
     }
-    const ok = apply((current, now) =>
+    const failure = applyChange((current, now) =>
       stat.personId
         ? renamePerson(current, stat.personId, value, now)
         : mergeIntoPerson(current, [{ name: stat.name }], value, now, createId("person"))
     );
-    if (ok) setRenaming(null);
+    if (failure) renameFailed(stat, value, failure);
+    else setRenaming(null);
   }
 
   function downloadCsv() {
@@ -316,6 +327,8 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                         >
                           <input
                             aria-label={`New name for ${label}`}
+                            aria-invalid={renaming.error ? true : undefined}
+                            aria-describedby={renaming.error ? `${gamesId}-rename-error` : undefined}
                             autoFocus
                             maxLength={80}
                             value={renaming.value}
@@ -327,6 +340,11 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                           <button className="text-button" type="button" onClick={() => setRenaming(null)}>
                             Cancel
                           </button>
+                          {renaming.error ? (
+                            <p className="notice notice-warning history-rename-error" id={`${gamesId}-rename-error`} role="alert">
+                              {renaming.error}
+                            </p>
+                          ) : null}
                         </form>
                       ) : (
                         <>

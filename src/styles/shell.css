@@ -78,7 +78,7 @@
   align-items: center;
 }
 
-/* Shown only on phones, where Undo becomes a snackbar naming the entry. */
+/* Shown only where Undo becomes a snackbar naming the entry: phones, tablets in portrait, and short landscape screens. */
 .undo-transaction-label {
   display: none;
 }

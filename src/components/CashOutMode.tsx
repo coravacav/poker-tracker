@@ -333,7 +333,10 @@ export function CashOutMode({
               ) : (
                 <>
                   <div className="cash-out-card-total"><span>Total cashed out</span><strong>{formatCurrency(recordedTotal)}</strong></div>
-                  {earlierTotal > 0 ? <p className="muted">Earlier cash-outs {formatCurrency(earlierTotal)}.</p> : null}
+                  {/* The heading line already names the earlier cash-outs; say what the final count added. */}
+                  {earlierTotal > 0 && currentFinalCashOut ? (
+                    <p className="muted">Final count {formatCurrency(currentFinalCashOut.amountCents)}.</p>
+                  ) : null}
                   {/* A counted card stays short, with its breakdown folded away, so the players
                       still to count come into view sooner; cards never reorder mid-count. */}
                   <div className="cash-out-recorded-footer">

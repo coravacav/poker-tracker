@@ -51,6 +51,33 @@ test("fits the screen without sideways scrolling in every mode", async ({ page }
   }
 });
 
+test("uses the phone header and Undo snackbar on tablets in portrait and short landscape screens", async ({ page, isMobile }) => {
+  test.skip(isMobile, "resizes one desktop page through the sizes, which is enough for the layout");
+  await startGame(page, ["Alex", "Blair", "Casey"]);
+  await openMode(page, "Play");
+  await buyIn(page, "Alex");
+  const undo = page.getByRole("button", { name: "Undo recent transaction action" });
+  const sizes = [
+    { name: "tablet portrait", width: 810, height: 1080, compact: true },
+    { name: "phone landscape", width: 915, height: 412, compact: true },
+    { name: "tablet landscape", width: 1024, height: 768, compact: false },
+    { name: "desktop", width: 1280, height: 720, compact: false }
+  ];
+  for (const size of sizes) {
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await openMode(page, "Play");
+    // The phone shell: Undo is a snackbar naming the entry, and Home is just its icon.
+    await expect(undo, size.name).toHaveCSS("position", size.compact ? "fixed" : "static");
+    await expect(undo.getByText("Alex bought in"), size.name).toBeVisible({ visible: size.compact });
+    await expect(page.getByRole("button", { name: "Home" }).getByText("Home"), size.name).toBeVisible({ visible: !size.compact });
+    for (const mode of ["Setup", "Play", "Cash Out", "Settle"] as const) {
+      await openMode(page, mode);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow, `${mode} scrolls sideways at ${size.name}`).toBeLessThanOrEqual(0);
+    }
+  }
+});
+
 test("removes a seat with one tap right after typing a name", async ({ page, isMobile }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Start new game" }).click();

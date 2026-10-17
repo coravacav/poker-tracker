@@ -215,16 +215,23 @@
   margin: 0;
 }
 
+/* The name, Save, and Cancel keep one line, even on a phone; an error sits right under them. */
 .history-rename-form {
-  display: flex;
+  display: grid;
   flex: 1 1 100%;
-  flex-wrap: wrap;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
+  align-items: center;
 }
 
 .history-rename-form input {
-  flex: 1 1 160px;
-  width: auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.history-rename-error {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .history-merge-bar {
