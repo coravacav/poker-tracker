@@ -65,6 +65,13 @@
 .friend-add-form label {
   display: grid;
   gap: 5px;
+}
+
+/* Only the caption is small and bold, so the field's text and its example placeholder read
+   as ordinary input (and phones do not zoom in on a tiny field). */
+.friend-profile-setup label > span,
+.friend-profile-name label > span,
+.friend-add-form label > span {
   color: var(--muted);
   font-size: 0.76rem;
   font-weight: 800;

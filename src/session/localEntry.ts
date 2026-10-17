@@ -59,3 +59,8 @@ export function loadInitialLocalEntry(_now = Date.now()): LocalEntry | null {
     savedGame: loadSavedGameState()
   };
 }
+
+/** Whether this device has a local game to go back to; leaving a shared room without one opens Home instead. */
+export function hasSavedLocalGame(): boolean {
+  return loadSavedGameState() !== null;
+}

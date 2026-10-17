@@ -1,8 +1,8 @@
-import { useReducer, useRef, useState } from "react";
+import { useCallback, useReducer, useRef, useState } from "react";
 import { gameReducer } from "../state/gameReducer";
 import { loadGameState } from "../state/persistence";
 import { configuredDeploymentUrl, convexRoomTransport } from "./convexRoomTransport";
-import { loadInitialLocalEntry, type LocalEntry } from "./localEntry";
+import { hasSavedLocalGame, loadInitialLocalEntry, type LocalEntry } from "./localEntry";
 import {
   initialSession,
   type LocalEntryDestination,
@@ -85,6 +85,19 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     setLocalEntryDestination,
     refreshRoomHistory
   });
+  // Leaving a room (or turning down an invitation) on a device with no local game of its
+  // own opens Home, rather than an empty table nobody set up.
+  const { leaveGuest: leaveGuestRoom, dismissInvite: dismissGuestInvite } = guest;
+  const leaveGuest = useCallback(() => {
+    const toHome = !hasSavedLocalGame();
+    leaveGuestRoom();
+    if (toHome) setLocalEntry({ reason: "first_visit", savedGame: null });
+  }, [leaveGuestRoom]);
+  const dismissInvite = useCallback(() => {
+    const toHome = !hasSavedLocalGame();
+    dismissGuestInvite();
+    if (toHome) setLocalEntry({ reason: "first_visit", savedGame: null });
+  }, [dismissGuestInvite]);
   const hostControls = useHostRoomControls(transport, sessionRef, setSession);
   const markNotificationsRead = useMarkNotificationsRead(transport, sessionRef, setSession);
   const localEntryActions = useLocalEntryActions({
@@ -139,8 +152,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     setFriendVisibility: hostControls.setFriendVisibility,
     rotateInvite: hostControls.rotateInvite,
     revokeGuest: hostControls.revokeGuest,
-    leaveGuest: guest.leaveGuest,
-    dismissInvite: guest.dismissInvite,
+    leaveGuest,
+    dismissInvite,
     localEntry,
     localEntryDestination,
     openHome: localEntryActions.openHome,

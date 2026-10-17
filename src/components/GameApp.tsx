@@ -43,6 +43,7 @@ type GameAppProps = {
   forcedReadOnly: boolean;
   guest: boolean;
   ledgerLabel: string;
+  title?: string;
   sessionControls?: ReactNode;
   sessionNotice: string | null;
   sharedActivity?: SharedActivity;
@@ -59,6 +60,7 @@ export function GameApp({
   forcedReadOnly,
   guest,
   ledgerLabel,
+  title,
   onMarkNotificationsRead,
   onSubmitGuestTransaction,
   roomHistory,
@@ -185,6 +187,7 @@ export function GameApp({
         }
         guest={guest}
         ledgerLabel={ledgerLabel}
+        title={title}
         notifications={
           sharedActivity ? (
             <SharedNotifications

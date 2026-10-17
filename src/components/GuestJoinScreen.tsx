@@ -8,6 +8,8 @@ type GuestJoinScreenProps = {
   joining: boolean;
   onJoin: (displayName: string) => void;
   onCancel: () => void;
+  /** Whether turning back returns to this device's own game; without one it goes Home. */
+  hasLocalGame?: boolean;
 };
 
 export function GuestJoinScreen({
@@ -16,7 +18,8 @@ export function GuestJoinScreen({
   error,
   joining,
   onJoin,
-  onCancel
+  onCancel,
+  hasLocalGame = true
 }: GuestJoinScreenProps) {
   const [displayName, setDisplayName] = useState("");
 
@@ -66,7 +69,9 @@ export function GuestJoinScreen({
           </>
         ) : null}
         {error && status === "active" ? <div className="notice notice-warning">{error}</div> : null}
-        <button className="text-button" type="button" onClick={onCancel}>Return to local game</button>
+        <button className="text-button" type="button" onClick={onCancel}>
+          {hasLocalGame ? "Return to local game" : "Back to Home"}
+        </button>
       </section>
     </main>
   );

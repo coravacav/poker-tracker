@@ -135,10 +135,13 @@ describe("realtime sharing UI", () => {
   it("creates a host room and never puts host authority in the invitation", async () => {
     const fake = fakeTransport();
     renderGameApp(fake.transport);
+    expect(screen.getByRole("heading", { level: 1, name: "Poker Tracker" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Share game" }));
     const dialog = await screen.findByRole("dialog", { name: "Share game" });
     expect(dialog).toBeInTheDocument();
+    // Once shared, the header names the game.
+    expect(screen.getByRole("heading", { level: 1, name: "Poker Night" })).toBeInTheDocument();
     const createArgs = fake.createRoom.mock.calls[0]![0];
     const invite = screen.getByRole("textbox", { name: "Invite link" });
     expect((invite as HTMLInputElement).value).toContain("#/join/");
@@ -306,6 +309,8 @@ describe("realtime sharing UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Join game" }));
 
     await screen.findByText("Viewing as Observer");
+    // The header names the room's game rather than the app.
+    expect(screen.getByRole("heading", { level: 1, name: "Remote table" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Play" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settle" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Setup" })).not.toBeInTheDocument();
@@ -321,6 +326,50 @@ describe("realtime sharing UI", () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null").settings.gameName).toBe(
       "Local game"
     );
+  });
+
+  it("returns a guest without a local game to Home, not an empty table", async () => {
+    const remote = createDefaultGameState();
+    remote.settings.gameName = "Remote table";
+    const fake = fakeTransport(remote);
+    window.history.replaceState(
+      null,
+      "",
+      "/#/join/room_public_123456/invite_abcdefghijklmnopqrstuvwxyz0123456789"
+    );
+
+    renderGameApp(fake.transport);
+    await screen.findByRole("heading", { name: "Remote table" });
+    expect(screen.queryByRole("button", { name: "Return to local game" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Display name" }), {
+      target: { value: "Observer" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Join game" }));
+    await screen.findByText("Viewing as Observer");
+
+    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+    expect(await screen.findByRole("heading", { name: "Ready for poker night?" })).toBeInTheDocument();
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("names where turning down an invitation goes", async () => {
+    const fake = fakeTransport();
+    const invite = "/#/join/room_public_123456/invite_abcdefghijklmnopqrstuvwxyz0123456789";
+    window.history.replaceState(null, "", invite);
+    const first = renderGameApp(fake.transport);
+    fireEvent.click(await screen.findByRole("button", { name: "Back to Home" }));
+    expect(await screen.findByRole("heading", { name: "Ready for poker night?" })).toBeInTheDocument();
+    first.unmount();
+
+    const local = createDefaultGameState();
+    local.settings.gameName = "Local game";
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+    window.history.replaceState(null, "", invite);
+    renderGameApp(fake.transport);
+    fireEvent.click(await screen.findByRole("button", { name: "Return to local game" }));
+    // Straight back to the game, as before.
+    expect(await screen.findByRole("button", { name: "Play" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { level: 1, name: "Poker Tracker" })).toBeInTheDocument();
   });
 
   it("restores a guest after tab storage is discarded", async () => {

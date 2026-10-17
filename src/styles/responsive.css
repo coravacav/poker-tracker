@@ -252,9 +252,10 @@
     backdrop-filter: none;
   }
 
-  .app-header > div:first-child {
-    flex: 1 1 auto;
-    min-width: 0;
+  /* The title takes the room its buttons leave, so a long game name shortens rather than
+     pushing them onto a row of their own. */
+  .app-header > .app-title {
+    flex: 1 1 0;
   }
 
   .home-button {
@@ -544,7 +545,7 @@
     gap: 6px;
   }
 
-  /* The title row keeps Home and Share beside "Poker Tracker". */
+  /* The title row keeps Home and Share beside the title. */
   .share-button {
     padding-inline: 10px;
   }
@@ -567,6 +568,32 @@
 
   /* The labels alone keep Setup's file actions on one line each. */
   .export-row-files svg {
+    display: none;
+  }
+
+  /* The transfer dialog's three types share the full width, each label on one line. */
+  .transfer-mode-segments {
+    width: 100%;
+    grid-template-columns: repeat(3, auto);
+  }
+
+  .transfer-mode-segments button {
+    padding-inline: 4px;
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+
+  /* Settle's Copy summary, Share image, and Print keep one row: the labels drop their icons. */
+  .settlement-share-actions {
+    gap: 6px;
+  }
+
+  .settlement-share-actions > .text-button:not(.settlement-print) {
+    padding-inline: 6px;
+    font-size: 0.9rem;
+  }
+
+  .settlement-share-actions > .text-button:not(.settlement-print) svg {
     display: none;
   }
 }

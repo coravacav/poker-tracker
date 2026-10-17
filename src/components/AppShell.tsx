@@ -25,6 +25,8 @@ type AppShellProps = {
   recentTransactionLabel?: string | null;
   guest?: boolean;
   ledgerLabel?: string;
+  /** The header's title; shared rooms show the game's name so hosts and guests can tell rooms apart. */
+  title?: string;
   notifications?: ReactNode;
   sessionControls?: ReactNode;
   cashOut: ReactNode;
@@ -100,6 +102,7 @@ export function AppShell({
   cashOut,
   guest = false,
   ledgerLabel = "Local ledger",
+  title,
   notifications,
   hideLayoutEditing = false,
   layoutEditing,
@@ -123,9 +126,9 @@ export function AppShell({
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div>
+        <div className="app-title">
           <p className="eyebrow">{ledgerLabel}</p>
-          <h1>Poker Tracker</h1>
+          <h1 title={title}>{title ?? "Poker Tracker"}</h1>
         </div>
         {onHome ? (
           <button className="text-button home-button" type="button" aria-label="Home" onClick={onHome}>

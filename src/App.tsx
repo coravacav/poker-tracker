@@ -12,6 +12,7 @@ import {
 } from "./components/SharingControls";
 import { loadArchivedGames } from "./state/gameArchive";
 import { preloadConvexClient } from "./session/convexRoomTransport";
+import { hasSavedLocalGame } from "./session/localEntry";
 import { useGameSession } from "./session/useGameSession";
 import { watchedRoomSave } from "./state/sharedGameArchive";
 import { useStoragePersistenceRequest } from "./state/useStoragePersistence";
@@ -48,6 +49,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
     return (
       <GuestJoinScreen
         error={session.error}
+        hasLocalGame={hasSavedLocalGame()}
         joining={session.joining}
         onCancel={gameSession.dismissInvite}
         onJoin={(displayName) => void gameSession.joinGame(displayName)}
@@ -61,6 +63,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
     return (
       <GuestJoinScreen
         error={session.message}
+        hasLocalGame={hasSavedLocalGame()}
         joining={false}
         onCancel={gameSession.dismissInvite}
         onJoin={() => undefined}
@@ -73,6 +76,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
     return (
       <GuestJoinScreen
         error={session.error}
+        hasLocalGame={hasSavedLocalGame()}
         joining={false}
         onCancel={gameSession.leaveGuest}
         onJoin={() => undefined}
@@ -183,6 +187,8 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
             ? "Local ledger"
             : "Shared host ledger"
       }
+      // A shared room is titled by its game, so a guest (or a host with several rooms) can tell which one this is.
+      title={session.mode === "local" ? undefined : gameSession.state.settings.gameName.trim() || undefined}
       sessionControls={sessionControls}
       sessionNotice={sessionNotice}
       sharedActivity={sharedActivity}

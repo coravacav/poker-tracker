@@ -59,8 +59,11 @@ test("a guest follows a shared game live, through a dropped connection, and keep
   await expect(guest.getByText("Session ended")).toBeVisible({ timeout: 30_000 });
   await guest.getByRole("button", { name: "Save to Player History" }).click();
   await expect(guest.getByRole("button", { name: "Update in Player History" })).toBeVisible();
-  // Player History lives in the guest's own games, under Setup.
+  // With no game of its own, the guest's device goes Home on leaving; Player History is
+  // under Setup, which a new game opens on.
   await guest.getByRole("button", { name: "Leave" }).click();
+  await expect(guest.getByRole("heading", { name: "Ready for poker night?" })).toBeVisible();
+  await guest.getByRole("button", { name: "Start new game" }).click();
   await openMode(guest, "Setup");
   const history = guest.getByRole("region", { name: "Session history" });
   await expect(history.getByText("Alex", { exact: true })).toBeVisible();

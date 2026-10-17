@@ -18,6 +18,18 @@
   backdrop-filter: blur(10px);
 }
 
+/* A shared room's title is its game's name, which can be long: it takes one line and
+   gives way to the header's buttons. */
+.app-title {
+  min-width: 0;
+}
+
+.app-title h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .offline-status,
 .install-app-button {
   display: inline-flex;
