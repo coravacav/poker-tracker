@@ -281,14 +281,14 @@ export function GuestSessionControls({
 }) {
   return (
     <div className="guest-session-controls">
-      <span>{ended ? "Session ended" : connected ? `Viewing as ${displayName}` : "Reconnecting"}</span>
+      <span className="guest-session-status">{ended ? "Session ended" : connected ? `Viewing as ${displayName}` : "Reconnecting"}</span>
       {hostProfile ? (
         <button className="text-button" type="button" disabled={followingHost} onClick={onFollowHost}>
           <UserRound size={15} /> {followingHost ? `Following ${hostProfile.displayName}` : `Follow ${hostProfile.displayName}`}
         </button>
       ) : null}
       {ended && savableGame ? <SaveSharedGameButton compact {...savableGame} /> : null}
-      <button className="text-button" type="button" onClick={onLeave}>Leave</button>
+      <button className="text-button guest-leave-button" type="button" onClick={onLeave}>Leave</button>
     </div>
   );
 }

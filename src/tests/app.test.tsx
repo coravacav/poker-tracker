@@ -407,8 +407,10 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add transaction" }));
 
-    expect(screen.getByRole("dialog", { name: "Add transaction" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Add Transaction" })).toBeInTheDocument();
+    const drawer = screen.getByRole("dialog", { name: "Add transaction" });
+    // The drawer is titled once, by its own heading.
+    expect(within(drawer).getAllByRole("heading")).toHaveLength(1);
+    expect(within(drawer).getByRole("heading", { name: "Add Transaction" })).toBeInTheDocument();
   });
 
   it("opens transaction audit from Play", () => {

@@ -71,7 +71,7 @@ export function PlayerSeat({
   return (
     <article
       ref={setSeatNodeRef}
-      className={`player-seat ${compactView ? "is-compact" : ""}`}
+      className={`player-seat ${compactView ? "is-compact" : ""} ${hideActions ? "is-view-only" : ""}`}
       style={{
         transform: CSS.Translate.toString(seatDrag.transform)
       }}

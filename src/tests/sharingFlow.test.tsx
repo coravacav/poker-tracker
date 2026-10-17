@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
 import type { GameState } from "../domain/pokerTypes";
@@ -312,6 +312,12 @@ describe("realtime sharing UI", () => {
     expect(screen.queryByRole("button", { name: "Add transaction" })).not.toBeInTheDocument();
     expect(screen.queryByTitle("Rename player")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Transaction Audit" })).toBeInTheDocument();
+    // A guest's entry is a request, and its drawer says so.
+    fireEvent.click(screen.getByRole("button", { name: "Request transaction" }));
+    const request = screen.getByRole("dialog", { name: "Request transaction" });
+    expect(within(request).getByRole("heading", { name: "Request Transaction" })).toBeInTheDocument();
+    expect(within(request).getByRole("button", { name: "Send to host" })).toBeInTheDocument();
+    expect(within(request).queryByRole("heading", { name: "Add Transaction" })).not.toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null").settings.gameName).toBe(
       "Local game"
     );

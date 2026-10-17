@@ -1,4 +1,3 @@
-import { PlusCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { centsToInputValue, parseMoneyToCents } from "../domain/money";
@@ -26,6 +25,8 @@ type TransactionFormProps = {
   summaryByPlayerId?: Map<PlayerId, PlayerLedgerSummary>;
   allowFinalCashOut?: boolean;
   chipDenominations?: ChipDenomination[];
+  /** The submit button's label; a guest's entry is a request for the host. */
+  submitLabel?: string;
 };
 
 type TransactionEntryType =
@@ -51,7 +52,8 @@ export function TransactionForm({
   readOnly,
   summaryByPlayerId,
   allowFinalCashOut = false,
-  chipDenominations = []
+  chipDenominations = [],
+  submitLabel = "Add transaction"
 }: TransactionFormProps) {
   const formatCurrency = useFormatCurrency();
   const [type, setType] = useState<TransactionEntryType>("bank_buy_in");
@@ -181,14 +183,6 @@ export function TransactionForm({
 
   return (
     <section className="panel transaction-form-panel">
-      <div className="panel-heading">
-        <div>
-          <p className="eyebrow">Ledger entry</p>
-          <h2>Add Transaction</h2>
-        </div>
-        <PlusCircle size={20} />
-      </div>
-
       <form onSubmit={submit}>
         <div className="form-grid">
           <label>
@@ -377,7 +371,7 @@ export function TransactionForm({
             )
           ) : null}
           <button className="primary-button" type="submit" disabled={readOnly || (type === "final_chip_count" && chipDenominations.length === 0)}>
-            Add transaction
+            {submitLabel}
           </button>
         </div>
 

@@ -37,10 +37,13 @@ export function TransactionDrawer({
         className="drawer-panel"
         role="dialog"
         aria-modal="true"
-        aria-label="Add transaction"
+        aria-label={guest ? "Request transaction" : "Add transaction"}
       >
         <div className="drawer-heading">
-          <h2>Transaction Entry</h2>
+          <div>
+            <p className="eyebrow">{guest ? "The host approves" : "Ledger entry"}</p>
+            <h2>{guest ? "Request Transaction" : "Add Transaction"}</h2>
+          </div>
           <button
             className="icon-button"
             type="button"
@@ -66,6 +69,7 @@ export function TransactionDrawer({
           }}
           players={activePlayers}
           readOnly={guest ? false : readOnly}
+          submitLabel={guest ? "Send to host" : undefined}
           summaryByPlayerId={summaryByPlayerId}
         />
       </section>

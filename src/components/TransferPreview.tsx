@@ -48,12 +48,17 @@ function FormulaCard({
         <strong className={signedClass(currentNetCents)}>
           {formatCurrency(currentNetCents)}
         </strong>
-        <span className="formula-operator">{deltaSign}</span>
-        <strong className="formula-delta">{formatCurrency(Math.abs(deltaCents))}</strong>
-        <span className="formula-operator">=</span>
-        <strong className={signedClass(nextNetCents)}>
-          {formatCurrency(nextNetCents)}
-        </strong>
+        {/* Each operator stays with its amount, so a narrow phone wraps a whole step. */}
+        <span className="formula-step">
+          <span className="formula-operator">{deltaSign}</span>
+          <strong className="formula-delta">{formatCurrency(Math.abs(deltaCents))}</strong>
+        </span>
+        <span className="formula-step">
+          <span className="formula-operator">=</span>
+          <strong className={signedClass(nextNetCents)}>
+            {formatCurrency(nextNetCents)}
+          </strong>
+        </span>
       </div>
     </article>
   );

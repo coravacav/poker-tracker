@@ -266,6 +266,48 @@
     display: none;
   }
 
+  /* In a shared room the Activity button keeps its bell and count (and its name for
+     screen readers) but drops the word, so it fits beside the title. */
+  .notification-button {
+    justify-content: center;
+    min-width: 42px;
+  }
+
+  .notification-button > span {
+    display: none;
+  }
+
+  /* A guest's bar gets its own full-width row under the title and bell: the status with
+     Leave at its end, then Follow or Save to Player History on a line of their own. */
+  .app-header > .app-nav {
+    order: 2;
+  }
+
+  .guest-session-controls {
+    order: 1;
+    flex: 1 1 100%;
+    border-radius: 10px;
+    padding: 5px 5px 5px 12px;
+  }
+
+  .guest-session-status {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .guest-session-controls > .text-button {
+    order: 2;
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .guest-session-controls > .guest-leave-button {
+    order: 1;
+    flex: none;
+    min-height: 32px;
+  }
+
   .undo-transaction-nav-button {
     position: fixed;
     right: 12px;
@@ -396,8 +438,14 @@
     flex-direction: column;
   }
 
+  /* Fast entry and Add chip share a row under the title, so neither label wraps. */
+  .chip-denomination-panel > .panel-heading {
+    flex-wrap: wrap;
+  }
+
   .chip-key-heading-actions {
     display: grid;
+    flex: 1 1 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -456,9 +504,57 @@
   }
 }
 
+/* Small phones: iPhone SE and mini (375px) and the first SE (320px). */
+@media (max-width: 380px) {
+  .app-header h1 {
+    font-size: 1.12rem;
+  }
+
+  /* Tabs size to their labels, so "Cash Out" keeps one line. */
+  .mode-tabs button {
+    flex: 1 1 auto;
+    padding-inline: 4px;
+    white-space: nowrap;
+  }
+
+  /* Each seat action puts its icon above its label, so "Transaction" fits a third of the row. */
+  .poker-table.is-player-list .seat-actions .icon-button {
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 2px;
+    white-space: nowrap;
+  }
+
+  /* The Undo snackbar's entry takes two lines rather than cut off the amount. */
+  .undo-transaction-label {
+    display: -webkit-box;
+    white-space: normal;
+    text-align: left;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
 @media (max-width: 340px) {
   body {
     min-width: 0;
+  }
+
+  .app-header {
+    gap: 6px;
+  }
+
+  /* The title row keeps Home and Share beside "Poker Tracker". */
+  .share-button {
+    padding-inline: 10px;
+  }
+
+  .share-button > svg {
+    display: none;
+  }
+
+  .mode-tabs button {
+    font-size: 0.9rem;
   }
 
   .poker-table.is-player-list .seat-actions {
@@ -466,8 +562,6 @@
   }
 
   .poker-table.is-player-list .seat-actions .icon-button {
-    gap: 4px;
-    padding-inline: 5px;
     font-size: 0.72rem;
   }
 

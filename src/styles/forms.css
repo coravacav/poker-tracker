@@ -80,6 +80,11 @@
   gap: 4px;
 }
 
+/* A dialog's one-line explanation, kept clear of the field below it. */
+.modal-description {
+  margin-bottom: 12px;
+}
+
 .note-field {
   grid-column: span 2;
 }
@@ -163,18 +168,31 @@
   text-transform: uppercase;
 }
 
+/* Three equal parts (amount, operator and amount, = and result) that never break an
+   amount; if they cannot fit side by side, the last steps wrap whole. */
 .preview-formula {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
-  gap: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   align-items: center;
   font-size: 0.92rem;
   font-weight: 800;
 }
 
+.preview-formula > strong,
+.formula-step {
+  flex: 1 1 0;
+  min-width: max-content;
+}
+
+.formula-step {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
 .preview-formula strong {
-  min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .formula-operator {

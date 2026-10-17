@@ -348,6 +348,13 @@
   font-size: 0.88rem;
 }
 
+/* Without the rename button beside the name (guests), nothing leaves room to tuck
+   the result up beside it, so it sits below the name. */
+.poker-table.is-player-list .player-seat.is-view-only .seat-net {
+  margin-top: 2px;
+  padding-right: 0;
+}
+
 .poker-table.is-player-list .seat-actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

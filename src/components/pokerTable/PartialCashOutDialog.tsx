@@ -93,7 +93,7 @@ export function PartialCashOutDialog({
           </button>
         </div>
 
-        <p className="muted">
+        <p className="muted modal-description">
           Record a during-game payout without marking this player finished for the night.
         </p>
 
