@@ -54,9 +54,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "replace_state_from_import":
       return reconcileSeatIndexes(migratePersistedState(action.state));
 
-    case "reset_game":
-      // The next game is most likely played in the same currency.
-      return createDefaultGameState(state.settings.currencyCode);
+    case "reset_game": {
+      // The next game is most likely the same game again: same currency, chip set,
+      // buy-in, name, and table. Players, seats, and the ledger start fresh.
+      const next = createDefaultGameState(state.settings.currencyCode);
+      return {
+        ...next,
+        settings: {
+          ...next.settings,
+          gameName: state.settings.gameName,
+          defaultBuyInCents: state.settings.defaultBuyInCents,
+          tableShape: state.settings.tableShape,
+          chipDenominations: state.settings.chipDenominations.map((denomination) => ({ ...denomination }))
+        }
+      };
+    }
 
     default:
       return state;

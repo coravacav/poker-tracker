@@ -9,11 +9,13 @@ import {
   Pencil,
   Move
 } from "lucide-react";
-import { describeSignedMoney } from "../domain/money";
+import { describeSignedMoney, formatCurrency } from "../domain/money";
 import { useCurrencyCode } from "./CurrencyContext";
 import type { Player, PlayerLedgerSummary } from "../domain/pokerTypes";
 
 type PlayerSeatProps = {
+  /** Whether the player's final chip count is recorded, which makes their net a result. */
+  cashedOut?: boolean;
   compactView?: boolean;
   layoutEditing?: boolean;
   player: Player;
@@ -28,6 +30,7 @@ type PlayerSeatProps = {
 };
 
 export function PlayerSeat({
+  cashedOut = false,
   compactView = false,
   layoutEditing = false,
   player,
@@ -52,7 +55,11 @@ export function PlayerSeat({
 
   const netCents = summary?.netCents ?? 0;
   const hasBoughtIn = (summary?.bankBuyInsCents ?? 0) > 0;
-  const netClass = netCents > 0 ? "positive" : netCents < 0 ? "negative" : "neutral";
+  // Until the final count, the net leaves out the chips the player still holds, so a
+  // negative net is what they are in for rather than a loss, and is not shown in red.
+  const inForCents = !cashedOut && netCents < 0 ? -netCents : 0;
+  const netClass =
+    netCents > 0 ? "positive" : netCents < 0 && inForCents === 0 ? "negative" : "neutral";
   const setSeatNodeRef = useCallback(
     (element: HTMLElement | null) => {
       seatDrag.setNodeRef(element);
@@ -109,7 +116,11 @@ export function PlayerSeat({
           </button>
         ) : null}
       </div>
-      <p className={`seat-net ${netClass}`}>{describeSignedMoney(netCents, currencyCode)}</p>
+      <p className={`seat-net ${netClass}`}>
+        {inForCents > 0
+          ? `in for ${formatCurrency(inForCents, currencyCode)}`
+          : describeSignedMoney(netCents, currencyCode)}
+      </p>
 
       {!hideActions ? <div className="seat-actions">
         <button

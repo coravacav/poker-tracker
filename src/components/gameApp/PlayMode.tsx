@@ -19,6 +19,7 @@ type PlayModeProps = {
   compactPlayerView: boolean;
   activePlayers: LedgerOverview["activePlayers"];
   bankSummary: LedgerOverview["bankSummary"];
+  cashedOutPlayerIds: LedgerOverview["cashOutOverview"]["completedPlayerIds"];
   imbalanceCents: number;
   summaryByPlayerId: LedgerOverview["summaryByPlayerId"];
   repeatableTransaction: LedgerOverview["repeatableTransaction"];
@@ -41,6 +42,7 @@ export function PlayMode({
   compactPlayerView,
   activePlayers,
   bankSummary,
+  cashedOutPlayerIds,
   imbalanceCents,
   summaryByPlayerId,
   repeatableTransaction,
@@ -62,6 +64,7 @@ export function PlayMode({
         <PokerTable
           activePlayers={activePlayers}
           bankBalanceCents={bankSummary.balanceCents}
+          cashedOutPlayerIds={cashedOutPlayerIds}
           defaultBuyInCents={state.settings.defaultBuyInCents}
           dispatch={dispatch}
           hideActions={guest}

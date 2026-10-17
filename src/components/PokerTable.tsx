@@ -27,6 +27,8 @@ import { pokerTableCollisionDetection, usePokerTableDrag } from "./pokerTable/us
 type PokerTableProps = {
   activePlayers: Player[];
   bankBalanceCents: number;
+  /** Players whose final chip count is recorded. */
+  cashedOutPlayerIds: ReadonlySet<PlayerId>;
   defaultBuyInCents: number;
   dispatch: Dispatch<GameAction>;
   hideActions?: boolean;
@@ -42,6 +44,7 @@ type PokerTableProps = {
 export function PokerTable({
   activePlayers,
   bankBalanceCents,
+  cashedOutPlayerIds,
   defaultBuyInCents,
   dispatch,
   layoutEditing,
@@ -247,6 +250,7 @@ export function PokerTable({
             return (
               <SeatSlot
                 key={slot.seatIndex}
+                cashedOut={player ? cashedOutPlayerIds.has(player.id) : false}
                 compactView={compactView}
                 layoutEditing={effectiveLayoutEditing}
                 isSeatDragging={activeDragType === "seat"}

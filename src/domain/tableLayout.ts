@@ -96,6 +96,19 @@ export function createDefaultSeatPlacements(
   }).slice(0, topCount + bottomCount);
 }
 
+/** Whether the seats are still where createDefaultSeatPlacements puts them, in seat order. */
+export function isDefaultSeatArrangement(placements: TableSeatPlacement[]): boolean {
+  const bySeat = [...placements].sort((a, b) => a.seatIndex - b.seatIndex);
+  const defaults = createDefaultSeatPlacements(bySeat.length);
+  return (
+    bySeat.length > 0 &&
+    bySeat.every(
+      (placement, index) =>
+        placement.rail === defaults[index]?.rail && placement.order === defaults[index]?.order
+    )
+  );
+}
+
 export function normalizeSeatPlacements(
   placements: TableSeatPlacement[],
   activeSeatIndexes: number[],

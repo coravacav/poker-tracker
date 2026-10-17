@@ -413,7 +413,34 @@ describe("App", () => {
     expect(within(chipPool).getByText("In play").nextElementSibling).toHaveTextContent(
       "$120.00"
     );
-    expect(screen.getAllByText("owes $20.00")).toHaveLength(6);
+    expect(screen.getAllByText("in for $20.00")).toHaveLength(6);
+    expect(screen.queryByText(/owes/)).not.toBeInTheDocument();
+  });
+
+  it("shows a seat's loss only once the player's final count is recorded", () => {
+    const state = createDefaultGameState();
+    state.players = state.players.slice(0, 2);
+    const [alex, blair] = state.players;
+    state.transactions = [
+      { id: "alex-buy-in", type: "bank_buy_in", createdAt: "2026-01-01T00:00:00.000Z", amountCents: 2000, toPlayerId: alex.id },
+      { id: "blair-buy-in", type: "bank_buy_in", createdAt: "2026-01-01T00:01:00.000Z", amountCents: 2000, toPlayerId: blair.id },
+      {
+        id: "alex-final-cash-out",
+        type: "bank_cash_out",
+        cashOutKind: "final",
+        createdAt: "2026-01-01T01:00:00.000Z",
+        amountCents: 500,
+        fromPlayerId: alex.id
+      }
+    ];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    renderGameApp();
+
+    const alexSeat = screen.getByRole("heading", { name: alex.name }).closest("article")!;
+    const blairSeat = screen.getByRole("heading", { name: blair.name }).closest("article")!;
+    expect(within(alexSeat as HTMLElement).getByText("owes $15.00")).toHaveClass("negative");
+    expect(within(blairSeat as HTMLElement).getByText("in for $20.00")).toHaveClass("neutral");
   });
 
   it("offers give-chips and covered-buy-in actions directly from a player card", () => {

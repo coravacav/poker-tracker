@@ -246,6 +246,7 @@ export function GameApp({
               compactPlayerView={compactPlayerView}
               activePlayers={activePlayers}
               bankSummary={bankSummary}
+              cashedOutPlayerIds={cashOutOverview.completedPlayerIds}
               imbalanceCents={imbalanceCents}
               summaryByPlayerId={summaryByPlayerId}
               repeatableTransaction={repeatableTransaction}

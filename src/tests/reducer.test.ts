@@ -37,6 +37,39 @@ describe("gameReducer", () => {
     ]);
   });
 
+  it("starts the next game with the same chip key, buy-in, name, and table but fresh players and ledger", () => {
+    let state = createDefaultGameState();
+    const white = { id: "chip-white", label: "White", colorHex: "#ffffff", valueCents: 100 };
+    state = gameReducer(state, { type: "set_chip_denominations", denominations: [white] });
+    state = {
+      ...state,
+      settings: { ...state.settings, gameName: "Friday game", defaultBuyInCents: 5000, tableShape: "oval" }
+    };
+    state = gameReducer(state, { type: "rename_player", playerId: state.players[0]!.id, name: "Sam" });
+    state = gameReducer(state, {
+      type: "add_transaction",
+      transaction: {
+        id: "buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        amountCents: 5000,
+        toPlayerId: state.players[0]!.id
+      }
+    });
+
+    const next = gameReducer(state, { type: "reset_game" });
+
+    expect(next.localGameId).not.toBe(state.localGameId);
+    expect(next.settings).toMatchObject({
+      gameName: "Friday game",
+      defaultBuyInCents: 5000,
+      tableShape: "oval",
+      chipDenominations: [white]
+    });
+    expect(next.transactions).toEqual([]);
+    expect(next.players.map((player) => player.name)).toEqual(createDefaultGameState().players.map((player) => player.name));
+  });
+
   it("adds, renames, and reorders players", () => {
     let state = createDefaultGameState();
     state = gameReducer(state, { type: "add_player", name: "Sam" });
@@ -597,6 +630,42 @@ describe("gameReducer", () => {
 
     expect(state.players.filter((player) => player.isActive)).toHaveLength(16);
     expect(state.settings.tableSeatPlacements).toHaveLength(16);
+  });
+
+  it("spreads the seats left after removing players from the default table before play", () => {
+    let state = createDefaultGameState();
+    for (const player of state.players.slice(4)) {
+      state = gameReducer(state, { type: "archive_player", playerId: player.id });
+    }
+
+    expect(state.settings.tableSeatPlacements).toEqual([
+      { seatIndex: 0, rail: "top", order: 0 },
+      { seatIndex: 1, rail: "top", order: 1 },
+      { seatIndex: 2, rail: "bottom", order: 0 },
+      { seatIndex: 3, rail: "bottom", order: 1 }
+    ]);
+  });
+
+  it("keeps a rearranged table, or one in play, where it is when players are removed", () => {
+    const fresh = createDefaultGameState();
+    const moved = gameReducer(fresh, { type: "move_table_seat", seatIndex: 5, rail: "right", order: 0 });
+    const afterMovedRemoval = gameReducer(moved, { type: "archive_player", playerId: moved.players[4]!.id });
+    expect(afterMovedRemoval.settings.tableSeatPlacements).toContainEqual({ seatIndex: 5, rail: "right", order: 0 });
+    expect(afterMovedRemoval.settings.tableSeatPlacements).toContainEqual({ seatIndex: 3, rail: "bottom", order: 0 });
+
+    const inPlay = gameReducer(fresh, {
+      type: "add_transaction",
+      transaction: {
+        id: "buy-in",
+        type: "bank_buy_in",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        amountCents: 2000,
+        toPlayerId: fresh.players[0]!.id
+      }
+    });
+    const afterInPlayRemoval = gameReducer(inPlay, { type: "archive_player", playerId: inPlay.players[3]!.id });
+    expect(afterInPlayRemoval.settings.tableSeatPlacements).toContainEqual({ seatIndex: 2, rail: "top", order: 2 });
+    expect(afterInPlayRemoval.settings.tableSeatPlacements).toContainEqual({ seatIndex: 4, rail: "bottom", order: 0 });
   });
 
   it("moves physical table seats between rails", () => {

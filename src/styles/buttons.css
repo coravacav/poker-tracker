@@ -49,13 +49,20 @@
   font-weight: 700;
 }
 
-.modal-actions .primary-button {
+.modal-actions .primary-button,
+.quick-amounts .primary-button {
   border-color: var(--green);
   color: #fff;
   background: var(--green);
 }
 
+/* A form's submit can share the quick-amount row; it sits apart, at the row's end. */
+.quick-amounts .primary-button {
+  margin-left: auto;
+}
+
 .primary-button:hover,
-.modal-actions .primary-button:hover {
+.modal-actions .primary-button:hover,
+.quick-amounts .primary-button:hover {
   background: #0f5a37;
 }

@@ -12,6 +12,7 @@ function positionFor(slot: TableSeatSlot): CSSProperties {
 }
 
 type SeatSlotProps = {
+  cashedOut: boolean;
   compactView: boolean;
   layoutEditing: boolean;
   isSeatDragging: boolean;
@@ -28,6 +29,7 @@ type SeatSlotProps = {
 };
 
 export function SeatSlot({
+  cashedOut,
   compactView,
   layoutEditing,
   isSeatDragging,
@@ -55,6 +57,7 @@ export function SeatSlot({
     >
       {player ? (
         <PlayerSeat
+          cashedOut={cashedOut}
           compactView={compactView}
           layoutEditing={layoutEditing}
           player={player}

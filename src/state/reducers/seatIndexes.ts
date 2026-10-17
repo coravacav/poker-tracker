@@ -1,4 +1,4 @@
-import { normalizeSeatPlacements } from "../../domain/tableLayout";
+import { isDefaultSeatArrangement, normalizeSeatPlacements } from "../../domain/tableLayout";
 import type { GameState, Player, PlayerId } from "../../domain/pokerTypes";
 
 export function reconcileSeatIndexes(state: GameState): GameState {
@@ -41,13 +41,19 @@ export function reconcileSeatIndexes(state: GameState): GameState {
   const activeSeatIndexes = players
     .filter((player) => player.isActive)
     .map((player) => player.seatIndex);
+  // Removing seats before play from a table nobody has rearranged lays it out afresh,
+  // so four players left of the six default seats sit two a side rather than three and one.
+  const rearrangeDefaultTable =
+    state.transactions.length === 0 &&
+    activeSeatIndexes.length < state.settings.tableSeatPlacements.length &&
+    isDefaultSeatArrangement(state.settings.tableSeatPlacements);
 
   return {
     ...state,
     settings: {
       ...state.settings,
       tableSeatPlacements: normalizeSeatPlacements(
-        state.settings.tableSeatPlacements,
+        rearrangeDefaultTable ? [] : state.settings.tableSeatPlacements,
         activeSeatIndexes,
         state.settings.tableShape
       )
