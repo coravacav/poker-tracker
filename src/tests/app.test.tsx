@@ -302,6 +302,24 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Rectangle" })).not.toBeInTheDocument();
   });
 
+  it("labels Setup's game file actions and keeps the reset apart from them", () => {
+    renderGameApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "Setup" }));
+    const files = screen.getByRole("group", { name: "Game files" });
+    expect(within(files).getByRole("button", { name: "Export JSON" })).toHaveTextContent("Export");
+    expect(within(files).getByRole("button", { name: "Back up all games" })).toHaveTextContent("Back up");
+    expect(within(files).getByRole("button", { name: "Import JSON or backup" })).toHaveTextContent("Import");
+    const reset = screen.getByRole("button", { name: "Archive and start new game" });
+    expect(files).not.toContainElement(reset);
+
+    // Read-only mode locks import and reset, but exports stay available.
+    fireEvent.click(screen.getByRole("button", { name: "Editable" }));
+    expect(within(files).getByRole("button", { name: "Import JSON or backup" })).toBeDisabled();
+    expect(reset).toBeDisabled();
+    expect(within(files).getByRole("button", { name: "Export JSON" })).toBeEnabled();
+  });
+
   it("switches to Cash Out mode and shows full-page player counting", () => {
     renderGameApp();
 

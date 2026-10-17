@@ -211,11 +211,12 @@ export function SettlementPanel({
                   ? "This browser cannot make the settlement image."
                   : ""}
           </span>
-          <button className="text-button" type="button" onClick={() => window.print()}>
-            <Printer size={15} />
-            Print
+          {/* Named by aria-label too, since phones show only the printer icon to keep one row. */}
+          <button className="text-button settlement-print" type="button" aria-label="Print" title="Print" onClick={() => window.print()}>
+            <Printer size={15} aria-hidden="true" />
+            <span>Print</span>
           </button>
-          <Scale size={20} />
+          <Scale className="settlement-scale" size={20} aria-hidden="true" />
         </div>
       </div>
 

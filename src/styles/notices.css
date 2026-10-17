@@ -3,10 +3,25 @@
 }
 
 .export-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
-  align-items: center;
+}
+
+.export-row-files {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.export-row-files .text-button {
+  min-width: 0;
+  padding-inline: 6px;
+}
+
+.export-row-reset {
+  justify-self: start;
+  margin-top: 6px;
+  color: var(--red);
 }
 
 .inline-error {

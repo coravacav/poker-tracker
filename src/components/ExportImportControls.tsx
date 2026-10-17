@@ -93,30 +93,34 @@ export function ExportImportControls({ dispatch, readOnly = false, state }: Expo
   }
 
   return (
-    <div className="export-row">
-      <button className="icon-button" type="button" onClick={exportGame} title="Export JSON">
-        <Download size={17} />
-      </button>
-      <button
-        className="icon-button"
-        type="button"
-        onClick={() => void exportFullBackup(state)}
-        title="Back up all games"
-        aria-label="Back up all games"
-      >
-        <DatabaseBackup size={17} />
-      </button>
-      <button
-        className="icon-button"
-        type="button"
-        disabled={readOnly || busy}
-        onClick={() => inputRef.current?.click()}
-        title="Import JSON or backup"
-      >
-        <Upload size={17} />
-      </button>
-      <button className="icon-button danger" type="button" disabled={readOnly || busy} onClick={() => void resetGame()} title="Archive and start new game">
-        <RotateCcw size={17} />
+    <div className="export-row setup-field-wide">
+      {/* File actions share a row; the red reset sits apart on its own line, away from them. */}
+      <div className="export-row-files" role="group" aria-label="Game files">
+        <button className="text-button" type="button" onClick={exportGame} title="Export JSON" aria-label="Export JSON">
+          <Download size={16} aria-hidden="true" />Export
+        </button>
+        <button
+          className="text-button"
+          type="button"
+          onClick={() => void exportFullBackup(state)}
+          title="Back up all games"
+          aria-label="Back up all games"
+        >
+          <DatabaseBackup size={16} aria-hidden="true" />Back up
+        </button>
+        <button
+          className="text-button"
+          type="button"
+          disabled={readOnly || busy}
+          onClick={() => inputRef.current?.click()}
+          title="Import JSON or backup"
+          aria-label="Import JSON or backup"
+        >
+          <Upload size={16} aria-hidden="true" />Import
+        </button>
+      </div>
+      <button className="text-button export-row-reset" type="button" disabled={readOnly || busy} onClick={() => void resetGame()}>
+        <RotateCcw size={16} aria-hidden="true" />Archive and start new game
       </button>
       <input
         ref={inputRef}

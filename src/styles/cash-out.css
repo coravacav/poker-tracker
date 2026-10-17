@@ -238,6 +238,31 @@
   min-width: 0;
 }
 
+/* Breakdown toggle and "Correct count" share a line; an opened breakdown takes the full width. */
+.cash-out-recorded-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.cash-out-recorded-footer > p {
+  margin: 0;
+}
+
+/* A finger-sized toggle, as tall as the button beside it. */
+.cash-out-recorded-footer summary {
+  padding-block: 12px;
+}
+
+.cash-out-recorded-footer > .chip-breakdown-details[open] {
+  grid-column: 1 / -1;
+}
+
+.cash-out-recorded-footer > .text-button {
+  grid-column: 2;
+}
+
 .chip-breakdown-details summary {
   cursor: pointer;
   color: var(--green);

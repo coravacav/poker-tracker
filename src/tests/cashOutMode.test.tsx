@@ -73,6 +73,21 @@ describe("CashOutMode", () => {
     expect(screen.getByText("1 / 1")).toBeInTheDocument();
   });
 
+  it("shows a counted player's total once, with the breakdown folded away", () => {
+    render(<Harness />);
+    const card = screen.getByRole("article");
+    fireEvent.change(within(card).getByLabelText("Player 1 Blue chip count"), { target: { value: "3" } });
+    fireEvent.click(within(card).getByRole("button", { name: "Record cash-out" }));
+
+    expect(within(card).getByText("Total cashed out")).toBeInTheDocument();
+    expect(within(card).getAllByText("$15.00")).toHaveLength(2); // the total and its one breakdown line
+    expect(within(card).queryByText("Total")).not.toBeInTheDocument();
+    const breakdown = within(card).getByText("Chip breakdown").closest("details");
+    expect(breakdown).not.toHaveAttribute("open");
+    expect(within(breakdown as HTMLElement).getByText("3 × $5.00")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Correct count" })).toBeInTheDocument();
+  });
+
   it("requires an explicit zero confirmation", () => {
     render(<Harness />);
     expect(screen.getByText("0 / 1")).toBeInTheDocument();

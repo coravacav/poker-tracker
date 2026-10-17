@@ -185,6 +185,28 @@
     padding: 6px 4px;
   }
 
+  /* Settle's actions fit one row under the title: the two sharing actions split the
+     width, Print shrinks to its icon, and the decorative scales drop out. */
+  .settlement-share-actions {
+    flex: 1 1 100%;
+  }
+
+  .settlement-share-actions > .text-button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .settlement-share-actions > .settlement-print {
+    flex: 0 0 44px;
+    padding: 0;
+  }
+
+  .settlement-print > span,
+  .settlement-scale {
+    display: none;
+  }
+
   /* With a Venmo link, the lock and the link share a row under the payment;
      without one, the lock stays beside the amount. */
   .payment-line:has(.venmo-pay-link) .payment-line-label {
@@ -286,17 +308,33 @@
     padding: 10px;
   }
 
+  /* The player list's heading takes two short lines: "Players" over the default buy-in,
+     with the arrange buttons beside them instead of on a row of their own. */
   .poker-table-panel.is-player-list-view .table-toolbar {
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    align-items: center;
   }
 
   .poker-table-panel.is-player-list-view .table-toolbar-controls {
-    flex-direction: column;
-    align-items: flex-end;
+    display: contents;
+  }
+
+  /* "Player actions" only repeats the heading. */
+  .poker-table-panel.is-player-list-view .table-toolbar .eyebrow {
+    display: none;
+  }
+
+  .poker-table-panel.is-player-list-view .player-arrangement-controls {
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
 
   .poker-table-panel.is-player-list-view .default-buy-in {
-    order: -1;
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
   }
 
   .app-nav {
@@ -431,6 +469,11 @@
     gap: 4px;
     padding-inline: 5px;
     font-size: 0.72rem;
+  }
+
+  /* The labels alone keep Setup's file actions on one line each. */
+  .export-row-files svg {
+    display: none;
   }
 }
 

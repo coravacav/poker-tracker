@@ -5,9 +5,11 @@ import type { ChipCountLine } from "../domain/pokerTypes";
 type ChipBreakdownProps = {
   lines: ChipCountLine[];
   disclosure?: boolean;
+  /** Off where the caller already shows the same total next to the breakdown. */
+  showTotal?: boolean;
 };
 
-function BreakdownContent({ lines }: { lines: ChipCountLine[] }) {
+function BreakdownContent({ lines, showTotal }: { lines: ChipCountLine[]; showTotal: boolean }) {
   const formatCurrency = useFormatCurrency();
   return (
     <div className="chip-breakdown-list">
@@ -22,23 +24,25 @@ function BreakdownContent({ lines }: { lines: ChipCountLine[] }) {
           <strong>{formatCurrency(chipCountLineTotalCents(line))}</strong>
         </div>
       ))}
-      <div className="chip-breakdown-total">
-        <span>Total</span>
-        <strong>{formatCurrency(chipCountTotalCents(lines))}</strong>
-      </div>
+      {showTotal ? (
+        <div className="chip-breakdown-total">
+          <span>Total</span>
+          <strong>{formatCurrency(chipCountTotalCents(lines))}</strong>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-export function ChipBreakdown({ lines, disclosure = false }: ChipBreakdownProps) {
+export function ChipBreakdown({ lines, disclosure = false, showTotal = true }: ChipBreakdownProps) {
   if (disclosure) {
     return (
       <details className="chip-breakdown-details">
         <summary>Chip breakdown</summary>
-        <BreakdownContent lines={lines} />
+        <BreakdownContent lines={lines} showTotal={showTotal} />
       </details>
     );
   }
 
-  return <BreakdownContent lines={lines} />;
+  return <BreakdownContent lines={lines} showTotal={showTotal} />;
 }

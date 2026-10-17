@@ -109,6 +109,15 @@ describe("SettlementPanel", () => {
     expect(screen.queryByRole("button", { name: "Clear marks" })).not.toBeInTheDocument();
   });
 
+  it("keeps Print named while phones show only its icon", () => {
+    const print = vi.spyOn(window, "print").mockImplementation(() => {});
+    render(<PinHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Print" }));
+    expect(print).toHaveBeenCalledTimes(1);
+    print.mockRestore();
+  });
+
   it("locks a payment, then marks the locked payment paid", () => {
     render(<PinHarness />);
 

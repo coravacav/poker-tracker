@@ -334,14 +334,18 @@ export function CashOutMode({
                 <>
                   <div className="cash-out-card-total"><span>Total cashed out</span><strong>{formatCurrency(recordedTotal)}</strong></div>
                   {earlierTotal > 0 ? <p className="muted">Earlier cash-outs {formatCurrency(earlierTotal)}.</p> : null}
-                  {currentFinalCashOut?.chipCountBreakdown !== undefined ? (
-                    <ChipBreakdown lines={currentFinalCashOut.chipCountBreakdown} />
-                  ) : <p className="muted">Final cash-out recorded without a color breakdown.</p>}
-                  {currentFinalCashOut ? (
-                    <button className="text-button" type="button" disabled={readOnly || (denominations.length === 0 && currentFinalCashOut.chipCountBreakdown === undefined)} onClick={() => dispatch({ type: "start_cash_out_correction", playerId: player.id, transactionId: currentFinalCashOut.id })}>
-                      <RotateCcw size={15} />{currentFinalCashOut.chipCountBreakdown === undefined ? "Recount by color" : "Correct count"}
-                    </button>
-                  ) : null}
+                  {/* A counted card stays short, with its breakdown folded away, so the players
+                      still to count come into view sooner; cards never reorder mid-count. */}
+                  <div className="cash-out-recorded-footer">
+                    {currentFinalCashOut?.chipCountBreakdown !== undefined ? (
+                      <ChipBreakdown lines={currentFinalCashOut.chipCountBreakdown} disclosure showTotal={false} />
+                    ) : <p className="muted">Final cash-out recorded without a color breakdown.</p>}
+                    {currentFinalCashOut ? (
+                      <button className="text-button" type="button" disabled={readOnly || (denominations.length === 0 && currentFinalCashOut.chipCountBreakdown === undefined)} onClick={() => dispatch({ type: "start_cash_out_correction", playerId: player.id, transactionId: currentFinalCashOut.id })}>
+                        <RotateCcw size={15} />{currentFinalCashOut.chipCountBreakdown === undefined ? "Recount by color" : "Correct count"}
+                      </button>
+                    ) : null}
+                  </div>
                 </>
               )}
             </article>
