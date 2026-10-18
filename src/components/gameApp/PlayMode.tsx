@@ -4,6 +4,7 @@ import { repeatTransaction } from "../../domain/quickEntry";
 import type { GameAction } from "../../state/gameReducer";
 import { createId } from "../../state/seedGame";
 import { BankSummaryPanel } from "../BankSummary";
+import { ChipKey } from "../ChipKey";
 import { IconKey } from "../IconKey";
 import { PokerTable } from "../PokerTable";
 import type { LedgerOverview } from "./useLedgerOverview";
@@ -52,6 +53,8 @@ export function PlayMode({
   setAuditDrawerOpen,
   setTransactionDrawerOpen
 }: PlayModeProps) {
+  const showChipKey = guest && state.settings.chipDenominations.length > 0;
+
   return (
     <div className={`play-mode ${compactPlayerView ? "is-compact-player-view" : ""}`}>
       <section
@@ -78,12 +81,13 @@ export function PlayMode({
         />
       </section>
 
-      <aside className="play-rail" aria-label="Play controls">
+      <aside className={`play-rail ${showChipKey ? "has-chip-key" : ""}`} aria-label="Play controls">
         <BankSummaryPanel
           bankSummary={bankSummary}
           imbalanceCents={imbalanceCents}
           variant="compact"
         />
+        {showChipKey ? <ChipKey denominations={state.settings.chipDenominations} /> : null}
         {!compactPlayerView && !guest ? <IconKey layoutEditing={layoutEditing} /> : null}
         <div className="play-actions">
           <button

@@ -32,6 +32,13 @@
   align-content: start;
 }
 
+/* A guest's chip key gives way on short screens, scrolling inside its card, so Request
+   transaction stays in view. */
+.play-rail.has-chip-key {
+  grid-template-rows: auto minmax(0, auto) auto;
+  min-height: 0;
+}
+
 .settle-mode {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);

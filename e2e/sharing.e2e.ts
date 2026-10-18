@@ -38,6 +38,7 @@ test("a guest follows a shared game live, through a dropped connection, and keep
   await buyIn(host, "Alex");
   await openMode(guest, "Play");
   await expect(chipPool(guest).getByRole("definition").first()).toHaveText("$20.00");
+  await expect(guest.getByRole("region", { name: "Chip key" })).toContainText("White$1");
 
   // The guest's connection drops while the host keeps going; it reconnects, catches up, and stays responsive.
   await guestContext.setOffline(true);

@@ -80,3 +80,52 @@ dd {
   color: var(--ink);
   text-transform: none;
 }
+
+.chip-key-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  padding: 10px;
+}
+
+/* One column in the Play rail; two or more where Play stacks on phones, one again on the
+   narrowest, so names keep to whole words. */
+.chip-key-card dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+}
+
+.chip-key-card dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: #fbfcfc;
+}
+
+.chip-key-card dt {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+/* A long name pushes the value onto its own line, still on the right. */
+.chip-key-card dd {
+  margin: 0 0 0 auto;
+  white-space: nowrap;
+}

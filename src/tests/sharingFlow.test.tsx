@@ -343,6 +343,10 @@ describe("realtime sharing UI", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
     const remote = createDefaultGameState();
     remote.settings.gameName = "Remote table";
+    remote.settings.chipDenominations = [
+      { id: "chip_white", label: "White", colorHex: "#ffffff", valueCents: 25 },
+      { id: "chip_red", label: "Red", colorHex: "#ff0000", valueCents: 100 }
+    ];
     const fake = fakeTransport(remote);
     window.history.replaceState(
       null,
@@ -366,6 +370,10 @@ describe("realtime sharing UI", () => {
     expect(screen.queryByRole("button", { name: "Add transaction" })).not.toBeInTheDocument();
     expect(screen.queryByTitle("Rename player")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Transaction Audit" })).toBeInTheDocument();
+    // Without Setup, the chip key shows on Play.
+    const chipKey = screen.getByRole("region", { name: "Chip key" });
+    expect(within(chipKey).getByText("White").closest("div")).toHaveTextContent("White$0.25");
+    expect(within(chipKey).getByText("Red").closest("div")).toHaveTextContent("Red$1");
     // A guest's entry is a request, and its drawer says so.
     fireEvent.click(screen.getByRole("button", { name: "Request transaction" }));
     const request = screen.getByRole("dialog", { name: "Request transaction" });
