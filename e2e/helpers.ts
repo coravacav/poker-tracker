@@ -19,6 +19,18 @@ export async function openMode(page: Page, mode: "Setup" | "Play" | "Cash Out" |
   await expect(modes(page).getByRole("button", { name: mode, exact: true })).toHaveAttribute("aria-pressed", "true");
 }
 
+/** A seated guest's tab when players confirm each other (Inbox's name carries its count). */
+export async function openGuestTab(page: Page, tab: "Table" | "Chips" | "Inbox" | "Settle") {
+  const button = modes(page).getByRole("button", { name: new RegExp(`^${tab}\\b`) });
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+}
+
+/** Whether the page scrolls sideways (it never should on a phone). */
+export async function scrollsSideways(page: Page): Promise<boolean> {
+  return await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+}
+
 export function seat(page: Page, name: string) {
   return page.getByRole("article").filter({ has: page.getByRole("heading", { name, exact: true }) });
 }

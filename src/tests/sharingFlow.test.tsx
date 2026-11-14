@@ -16,6 +16,7 @@ import { createDefaultGameState } from "../state/seedGame";
 import type {
   GuestRoomProjection,
   HostRoomProjection,
+  RoomAgreement,
   RoomProjection,
   RoomTransport,
   SpectatorRoomProjection
@@ -1079,6 +1080,252 @@ describe("realtime sharing UI", () => {
       await waitFor(() => expect(fake.endRoom).toHaveBeenCalledTimes(2));
       const [first, second] = fake.endRoom.mock.calls.map(([args]) => args.clientActionId);
       expect(second).toBe(first);
+    });
+  });
+
+  describe("players confirm each other", () => {
+    const guestSecret = "guest_abcdefghijklmnopqrstuvwxyz0123456789";
+    function openAsGuest(fake: ReturnType<typeof fakeTransport>) {
+      saveRoomHistoryCredential({
+        schemaVersion: 1,
+        publicId: "room_public_123456",
+        role: "guest",
+        secret: guestSecret,
+        roomName: "Poker Night",
+        joinedAt: Date.now(),
+        displayName: "Maya"
+      });
+      window.history.replaceState(null, "", "/#/room/room_public_123456");
+      renderGameApp(fake.transport);
+    }
+    function agreementView(overrides: Partial<RoomAgreement>): RoomAgreement {
+      return {
+        id: "agreement_1" as never,
+        kind: "give",
+        amountCents: 2000,
+        note: null,
+        proposerPlayerId: "player_x",
+        proposerName: "Player",
+        counterpartyPlayerId: null,
+        counterpartyName: null,
+        witnessPlayerId: null,
+        witnessName: null,
+        status: "open",
+        closedReason: null,
+        bounceReason: null,
+        bouncedByHost: false,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 30 * 60_000,
+        decidedAt: null,
+        confirmedByPlayerId: null,
+        confirmedByName: null,
+        confirmedVia: null,
+        transactionId: null,
+        voided: false,
+        ...overrides
+      };
+    }
+    function guestRoom(
+      state: GameState,
+      overrides: Partial<GuestRoomProjection> = {}
+    ): GuestRoomProjection {
+      return {
+        ...projection(state),
+        displayName: "Maya",
+        seatPlayerId: state.players[1]!.id,
+        seats: state.players.map((player, index) => ({
+          playerId: player.id,
+          name: player.name,
+          claimed: index === 1 || index === 2,
+          isHost: index === 0
+        })),
+        peerConfirm: true,
+        agreements: { needsMe: [], mine: [], bounced: [], recentDone: [] },
+        ...overrides
+      };
+    }
+    const guestModes = () => screen.getByRole("navigation", { name: "Poker tracker modes" });
+
+    it("gives a seated guest Table, Chips, and Inbox, and keeps Play and Settle otherwise", async () => {
+      const remote = createDefaultGameState();
+      const [, me, other] = remote.players as [GameState["players"][number], GameState["players"][number], GameState["players"][number]];
+      const fake = fakeTransport(remote);
+      openAsGuest(fake);
+      const waiting = agreementView({
+        proposerPlayerId: other.id,
+        proposerName: other.name,
+        counterpartyPlayerId: me.id,
+        counterpartyName: me.name
+      });
+      act(() => fake.emitGuest(guestRoom(remote, {
+        agreements: { needsMe: [waiting], mine: [], bounced: [], recentDone: [] }
+      })));
+      expect(await screen.findByText(`Playing as ${me.name}`)).toBeInTheDocument();
+      expect(within(guestModes()).getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(guestModes()).getByRole("button", { name: "Chips" })).toBeInTheDocument();
+      expect(within(guestModes()).getByRole("button", { name: "Inbox, 1 waiting" })).toBeInTheDocument();
+      expect(within(guestModes()).queryByRole("button", { name: "Play" })).not.toBeInTheDocument();
+      // Nothing to settle yet, so no Settle tab.
+      expect(within(guestModes()).queryByRole("button", { name: "Settle" })).not.toBeInTheDocument();
+      const you = screen.getByRole("region", { name: "You" });
+      expect(within(you).getByRole("heading", { name: me.name })).toBeInTheDocument();
+      // Your own row on the read-only table is marked.
+      const mySeat = screen.getAllByRole("article").find((article) =>
+        within(article).queryByRole("heading", { name: me.name, level: 3 })
+      );
+      expect(mySeat).toHaveClass("is-you");
+      expect(within(mySeat!).getByText("You")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /1 waiting on you/ }));
+      expect(within(guestModes()).getByRole("button", { name: "Inbox, 1 waiting" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("article", { name: `${other.name} gave you $20 in chips` })).toBeInTheDocument();
+
+      // Once the game ends, the settlement is a tab away.
+      act(() => fake.emitGuest(guestRoom(remote, { status: "ended", endedAt: Date.now() })));
+      expect(within(guestModes()).getByRole("button", { name: "Settle" })).toBeInTheDocument();
+
+      // Without a seat, or with the host approving everything, it's Play and Settle as before.
+      act(() => fake.emitGuest(guestRoom(remote, { seatPlayerId: null })));
+      expect(within(guestModes()).getByRole("button", { name: "Play" })).toBeInTheDocument();
+      expect(within(guestModes()).getByRole("button", { name: "Settle" })).toBeInTheDocument();
+      expect(within(guestModes()).queryByRole("button", { name: "Chips" })).not.toBeInTheDocument();
+      act(() => fake.emitGuest(guestRoom(remote, { peerConfirm: false })));
+      expect(within(guestModes()).getByRole("button", { name: "Play" })).toBeInTheDocument();
+      expect(within(guestModes()).queryByRole("button", { name: /Inbox/ })).not.toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Request transaction" })).toBeInTheDocument();
+    });
+
+    it("sends chips from Chips, lands on Inbox, and answers from Inbox", async () => {
+      const remote = createDefaultGameState();
+      const [, me, other] = remote.players as [GameState["players"][number], GameState["players"][number], GameState["players"][number]];
+      const fake = fakeTransport(remote);
+      const proposeAgreement = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["proposeAgreement"]>>[0]) => "agreement_new" as never);
+      const answerAgreement = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["answerAgreement"]>>[0]) => ({ status: "recorded" as const, reason: null }));
+      Object.assign(fake.transport, { proposeAgreement, answerAgreement });
+      openAsGuest(fake);
+      act(() => fake.emitGuest(guestRoom(remote)));
+      fireEvent.click(await within(guestModes()).findByRole("button", { name: "Chips" }));
+      fireEvent.click(within(screen.getByRole("group", { name: "Player" })).getByRole("button", { name: new RegExp(other.name) }));
+      fireEvent.click(screen.getByRole("button", { name: "$20" }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: `Send to ${other.name} to confirm` }));
+      });
+      expect(proposeAgreement.mock.calls[0]![0]).toMatchObject({
+        publicId: "room_public_123456",
+        guestSecret,
+        kind: "give",
+        amountCents: 2000,
+        counterpartyPlayerId: other.id
+      });
+      expect(within(guestModes()).getByRole("button", { name: "Inbox" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("status")).toHaveTextContent(`Sent. Waiting on ${other.name} to confirm.`);
+
+      act(() => fake.emitGuest(guestRoom(remote, {
+        agreements: {
+          needsMe: [agreementView({
+            id: "agreement_buy" as never,
+            kind: "buy",
+            proposerPlayerId: other.id,
+            proposerName: other.name,
+            counterpartyPlayerId: me.id,
+            counterpartyName: me.name
+          })],
+          mine: [],
+          bounced: [],
+          recentDone: []
+        }
+      })));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+      });
+      expect(answerAgreement.mock.calls[0]![0]).toMatchObject({
+        publicId: "room_public_123456",
+        guestSecret,
+        agreementId: "agreement_buy",
+        answer: "confirm"
+      });
+
+      // Anything else still goes to the host as a request.
+      fireEvent.click(within(guestModes()).getByRole("button", { name: "Chips" }));
+      fireEvent.click(screen.getByRole("button", { name: "Something else? Ask the host" }));
+      expect(screen.getByRole("dialog", { name: "Request transaction" })).toBeInTheDocument();
+    });
+
+    it("shows the host what needs them, counts it on the sharing button, and toggles the mode", async () => {
+      const local = createDefaultGameState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+      saveHostRecovery({
+        schemaVersion: 1,
+        publicId: "room_public_123456",
+        localGameId: local.localGameId,
+        hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+        inviteSecret: "invite_abcdefghijklmnopqrstuvwxyz0123456789",
+        inviteUrl: "https://example.test/#/join/room_public_123456/invite",
+        roomName: "Poker Night",
+        lastKnownVersion: 0
+      });
+      const fake = fakeTransport(local);
+      const setPeerConfirm = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["setPeerConfirm"]>>[0]) => undefined);
+      const hostAnswerAgreement = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["hostAnswerAgreement"]>>[0]) => ({ status: "recorded" as const, reason: null }));
+      const hostResolveBounced = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["hostResolveBounced"]>>[0]) => ({ status: "recorded" as const, reason: null }));
+      Object.assign(fake.transport, { setPeerConfirm, hostAnswerAgreement, hostResolveBounced });
+      renderGameApp(fake.transport);
+      const [, maya, dev] = local.players as [GameState["players"][number], GameState["players"][number], GameState["players"][number]];
+      act(() => fake.emitHost({
+        ...projection(local),
+        guestCount: 1,
+        guestRequests: [],
+        joiningOpen: true,
+        guests: [],
+        controllerStatus: "active",
+        peerConfirm: true,
+        needsHost: {
+          answer: [{
+            ...agreementView({
+              id: "agreement_seat" as never,
+              proposerPlayerId: maya.id,
+              proposerName: maya.name,
+              counterpartyPlayerId: dev.id,
+              counterpartyName: dev.name
+            }),
+            answerAs: "seat"
+          }],
+          bounced: [agreementView({
+            id: "agreement_bounced" as never,
+            kind: "buy",
+            status: "bounced",
+            proposerPlayerId: maya.id,
+            proposerName: maya.name,
+            counterpartyPlayerId: dev.id,
+            counterpartyName: dev.name
+          })]
+        }
+      }));
+      const dialog = await screen.findByRole("dialog", { name: "Share game" });
+      const needs = within(dialog).getByRole("region", { name: /Needs you/ });
+      const seatItem = within(needs).getByRole("article", { name: `${maya.name} gave ${dev.name} $20 in chips` });
+      expect(within(seatItem).getByText(`for ${dev.name} (no phone)`)).toBeInTheDocument();
+      fireEvent.click(within(seatItem).getByRole("button", { name: "Confirm" }));
+      await waitFor(() => expect(hostAnswerAgreement).toHaveBeenCalledWith(expect.objectContaining({
+        publicId: "room_public_123456",
+        hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+        agreementId: "agreement_seat",
+        answer: "confirm",
+        controllerId: expect.any(String)
+      })));
+      fireEvent.click(within(needs).getByRole("button", { name: "Record anyway" }));
+      await waitFor(() => expect(hostResolveBounced).toHaveBeenCalledWith(expect.objectContaining({
+        agreementId: "agreement_bounced",
+        decision: "record"
+      })));
+
+      const toggle = within(dialog).getByRole("checkbox", { name: /Players confirm each other/ });
+      expect(toggle).toBeChecked();
+      fireEvent.click(toggle);
+      await waitFor(() => expect(setPeerConfirm).toHaveBeenCalledWith(expect.objectContaining({ on: false })));
+
+      fireEvent.click(within(dialog).getByTitle("Close"));
+      const button = screen.getByRole("button", { name: "Sharing live, 2 entries need you" });
+      expect(within(button).getByText("2")).toBeInTheDocument();
     });
   });
 });

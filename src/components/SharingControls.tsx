@@ -6,9 +6,11 @@ import { SaveSharedGameButton } from "./SaveSharedGameButton";
 import { useDialogFocus } from "./useDialogFocus";
 import { useFormatCurrency } from "./CurrencyContext";
 import { HostSeatList } from "./HostSeatList";
+import { HostAgreementNeeds, hostNeedsCount } from "./HostAgreementNeeds";
+import { useNow } from "./guestPlay/useNow";
 import type { GameState } from "../domain/pokerTypes";
 import { createWatchUrl, watchLinkIdForSecret } from "../session/capabilities";
-import type { HostRecovery, HostRoomProjection } from "../session/types";
+import type { AgreementResult, HostRecovery, HostRoomProjection } from "../session/types";
 import type { Id } from "../../convex/_generated/dataModel";
 
 type HostSharingControlsProps = {
@@ -39,6 +41,16 @@ type HostSharingControlsProps = {
   onReleaseSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
   onAssignSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
   onSetHostPlayer: (playerId: string | null) => void;
+  /** Turns "Players confirm each other" on or off. */
+  onSetPeerConfirm?: (on: boolean) => void;
+  onHostAnswerAgreement?: (
+    agreementId: Id<"roomAgreements">,
+    answer: "confirm" | "not_right"
+  ) => Promise<AgreementResult | null>;
+  onResolveBouncedAgreement?: (
+    agreementId: Id<"roomAgreements">,
+    decision: "dismiss" | "record"
+  ) => Promise<AgreementResult | null>;
 };
 
 type ShareTab = "players" | "watchers";
@@ -180,7 +192,10 @@ export function HostSharingControls({
   onRevokeGuest,
   onReleaseSeat,
   onAssignSeat,
-  onSetHostPlayer
+  onSetHostPlayer,
+  onSetPeerConfirm,
+  onHostAnswerAgreement,
+  onResolveBouncedAgreement
 }: HostSharingControlsProps) {
   const formatCurrency = useFormatCurrency();
   const [open, setOpen] = useState(true);
@@ -199,17 +214,20 @@ export function HostSharingControls({
         : "Reconnecting";
   // Guest requests wait until the host decides, so keep them visible while the dialog is closed.
   const waitingRequests = room?.status === "active" ? (room.guestRequests?.length ?? 0) : 0;
+  // So are entries players agreed on that need the host (answers for phoneless seats, disputes).
+  const needsNow = useNow((room?.needsHost?.answer.length ?? 0) > 0);
+  const needsYou = room?.status === "active" ? hostNeedsCount(room.needsHost, needsNow) : 0;
+  const waitingLabel = [
+    waitingRequests > 0 ? `${waitingRequests} guest ${waitingRequests === 1 ? "request" : "requests"} waiting` : null,
+    needsYou > 0 ? `${needsYou} ${needsYou === 1 ? "entry needs" : "entries need"} you` : null
+  ].filter(Boolean).join(", ");
 
   return (
     <div className="sharing-controls">
       <button
         className="share-button is-active"
         type="button"
-        aria-label={
-          waitingRequests > 0
-            ? `${statusLabel}, ${waitingRequests} guest ${waitingRequests === 1 ? "request" : "requests"} waiting`
-            : undefined
-        }
+        aria-label={waitingLabel ? `${statusLabel}, ${waitingLabel}` : undefined}
         onClick={() => {
           // Guest requests live on Players, so the dialog opens there.
           setTab("players");
@@ -218,7 +236,9 @@ export function HostSharingControls({
       >
         {sharingLive ? <Radio size={16} /> : <WifiOff size={16} />}
         {statusLabel}
-        {waitingRequests > 0 ? <strong className="notification-count">{waitingRequests}</strong> : null}
+        {waitingRequests + needsYou > 0 ? (
+          <strong className="notification-count">{waitingRequests + needsYou}</strong>
+        ) : null}
       </button>
       {open
         ? createPortal(
@@ -325,6 +345,32 @@ export function HostSharingControls({
                             <RefreshCw size={15} /> Rotate invite
                           </button>
                         </div>
+                        {room.peerConfirm !== undefined && onSetPeerConfirm ? (
+                          <label className="peer-confirm-toggle">
+                            <input
+                              type="checkbox"
+                              checked={room.peerConfirm}
+                              aria-describedby="peer-confirm-help"
+                              onChange={(event) => onSetPeerConfirm(event.currentTarget.checked)}
+                            />
+                            <span>
+                              <strong>Players confirm each other</strong>
+                              <small id="peer-confirm-help">
+                                {room.peerConfirm
+                                  ? "Give, buy, and bank buy-ins are recorded when another player agrees. You don’t need to approve."
+                                  : "Players send their chips to you as requests to approve."}
+                              </small>
+                            </span>
+                          </label>
+                        ) : null}
+                        {room.needsHost && onHostAnswerAgreement && onResolveBouncedAgreement ? (
+                          <HostAgreementNeeds
+                            needs={room.needsHost}
+                            hostPlayerId={room.hostPlayerId ?? null}
+                            onAnswer={onHostAnswerAgreement}
+                            onResolve={onResolveBouncedAgreement}
+                          />
+                        ) : null}
                         {room.friendProfileLinked ? (
                           <label className="friend-visibility-toggle">
                             <input

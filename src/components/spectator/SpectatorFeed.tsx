@@ -19,11 +19,20 @@ function eventDetail(event: SharedAuditEvent): string | null {
 }
 
 /** The latest ledger entries, live: buy-ins, transfers, cash-outs, and corrections. */
-export function SpectatorFeed({ events, live }: { events: SharedAuditEvent[]; live: boolean }) {
+export function SpectatorFeed({
+  events,
+  live,
+  label = "Live feed"
+}: {
+  events: SharedAuditEvent[];
+  live: boolean;
+  /** The region's name; a player's Table calls it "Recent activity". */
+  label?: string;
+}) {
   const entries = events.filter((event) => event.kind !== "game").slice(0, FEED_LENGTH);
 
   return (
-    <section className="panel spectator-feed" aria-label="Live feed">
+    <section className="panel spectator-feed" aria-label={label}>
       <div className="spectator-feed-heading">
         <h2>Recent</h2>
         {live ? (

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { GameApp, preloadGameApp, preloadPlayMode } from "./components/GameApp";
 import type { GuestSeatControls } from "./components/gameApp/GuestSeatPrompt";
+import type { PeerGuestControls } from "./components/guestPlay/types";
 import { GuestJoinScreen } from "./components/GuestJoinScreen";
 import { LazyBoundary, lazyWithPreload, whenIdle } from "./components/lazyComponent";
 import { preloadQrCode } from "./components/QrCode";
@@ -131,6 +132,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
   let sessionControls: ReactNode;
   let sessionNotice: string | null = null;
   let guestSeat: GuestSeatControls | undefined;
+  let peerGuest: PeerGuestControls | undefined;
   if (session.mode === "local") {
     sessionControls = <LocalShareButton onShare={() => void gameSession.shareGame()} />;
     sessionNotice = session.notice;
@@ -148,6 +150,19 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         seatLost: session.room.seatLost ?? null,
         seats: session.room.seats,
         onClaimSeat: gameSession.claimSeat
+      };
+    }
+    // Seated, in a room where players confirm each other: Table · Chips · Inbox.
+    if (session.room?.peerConfirm === true && seatPlayerId !== null && session.room.agreements) {
+      peerGuest = {
+        seatPlayerId,
+        agreements: session.room.agreements,
+        seats: session.room.seats ?? [],
+        ended: session.room.status !== "active",
+        onPropose: gameSession.proposeAgreement,
+        onAnswer: gameSession.answerAgreement,
+        onCancel: gameSession.cancelAgreement,
+        onDismiss: gameSession.dismissAgreement
       };
     }
     sessionControls = (
@@ -194,6 +209,9 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onReleaseSeat={(guestId, playerId) => void gameSession.releaseSeat(guestId, playerId)}
         onAssignSeat={(guestId, playerId) => void gameSession.assignSeat(guestId, playerId)}
         onSetHostPlayer={(playerId) => void gameSession.setHostPlayer(playerId)}
+        onSetPeerConfirm={(on) => void gameSession.setPeerConfirm(on)}
+        onHostAnswerAgreement={gameSession.hostAnswerAgreement}
+        onResolveBouncedAgreement={gameSession.resolveBouncedAgreement}
         pending={session.pending}
         recovery={session.recovery}
         recoveryRequired={session.mode === "recovery_required"}
@@ -219,6 +237,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       forcedReadOnly={gameSession.forcedReadOnly}
       guest={gameSession.isGuest}
       guestSeat={guestSeat}
+      peerGuest={peerGuest}
       ledgerLabel={
         gameSession.isGuest
           ? "Shared read-only ledger"

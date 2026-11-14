@@ -180,3 +180,39 @@ export function calculateLedgerImbalanceCents(
 
   return playersTotal + bankSummary.balanceCents;
 }
+
+/**
+ * What one player and each other player owe each other at settle-up from
+ * entries settled later, pair by pair: chips given (player_gave), debts
+ * (player_owes), covered buy-ins, and debt coverage. Positive: the other
+ * player owes this one; negative: this one owes them. Pairs that net to zero
+ * are left out. These are the same entries buildPlayerSummaries counts, split
+ * by who is on the other side.
+ */
+export function settleLaterBalances(
+  playerId: PlayerId,
+  transactions: Transaction[]
+): Map<PlayerId, number> {
+  const balances = new Map<PlayerId, number>();
+  // `creditor` is owed `amount` by `debtor`.
+  const add = (creditor: PlayerId | undefined, debtor: PlayerId | undefined, amount: number) => {
+    if (!creditor || !debtor || creditor === debtor) return;
+    if (creditor === playerId) balances.set(debtor, (balances.get(debtor) ?? 0) + amount);
+    if (debtor === playerId) balances.set(creditor, (balances.get(creditor) ?? 0) - amount);
+  };
+
+  for (const transaction of getActiveTransactions(transactions)) {
+    if (transaction.type === "player_gave" || transaction.type === "player_transfer") {
+      add(transaction.fromPlayerId, transaction.toPlayerId, transaction.amountCents);
+    } else if (transaction.type === "player_owes") {
+      add(transaction.toPlayerId, transaction.fromPlayerId, transaction.amountCents);
+    } else if (transaction.type === "bank_buy_in" && transaction.coveredByPlayerId) {
+      add(transaction.coveredByPlayerId, transaction.toPlayerId, transaction.amountCents);
+    } else if (transaction.type === "debt_coverage") {
+      add(transaction.coveredByPlayerId, transaction.coveredPlayerId, transaction.amountCents);
+    }
+  }
+
+  for (const [otherId, cents] of balances) if (cents === 0) balances.delete(otherId);
+  return balances;
+}

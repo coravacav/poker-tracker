@@ -20,6 +20,8 @@ type PlayerSeatProps = {
   layoutEditing?: boolean;
   player: Player;
   hideActions?: boolean;
+  /** The viewing guest's own seat, marked "You". */
+  isYou?: boolean;
   readOnly: boolean;
   summary?: PlayerLedgerSummary;
   onBuyIn: (player: Player) => void;
@@ -35,6 +37,7 @@ export function PlayerSeat({
   layoutEditing = false,
   player,
   hideActions = false,
+  isYou = false,
   readOnly,
   summary,
   onBuyIn,
@@ -71,7 +74,7 @@ export function PlayerSeat({
   return (
     <article
       ref={setSeatNodeRef}
-      className={`player-seat ${compactView ? "is-compact" : ""} ${hideActions ? "is-view-only" : ""}`}
+      className={`player-seat ${compactView ? "is-compact" : ""} ${hideActions ? "is-view-only" : ""} ${isYou ? "is-you" : ""}`}
       style={{
         transform: CSS.Translate.toString(seatDrag.transform)
       }}
@@ -104,6 +107,7 @@ export function PlayerSeat({
 
       <div className="seat-name-row">
         <h3>{player.name}</h3>
+        {isYou ? <span className="seat-you-badge">You</span> : null}
         {!layoutEditing && !hideActions ? (
           <button
             className="icon-button"

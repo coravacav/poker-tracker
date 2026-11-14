@@ -39,6 +39,8 @@ type PokerTableProps = {
   tableSeatPlacements: TableSeatPlacement[];
   tableShape: TableShape;
   summaryByPlayerId: Map<PlayerId, PlayerLedgerSummary>;
+  /** A seated guest's own player, marked "You". */
+  youPlayerId?: PlayerId;
 };
 
 export function PokerTable({
@@ -54,7 +56,8 @@ export function PokerTable({
   readOnly,
   tableSeatPlacements,
   tableShape,
-  summaryByPlayerId
+  summaryByPlayerId,
+  youPlayerId
 }: PokerTableProps) {
   const [transferDraft, setTransferDraft] = useState<TransferDraft | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
@@ -256,6 +259,7 @@ export function PokerTable({
                 isSeatDragging={activeDragType === "seat"}
                 player={player}
                 hideActions={hideActions}
+                isYou={player !== undefined && player.id === youPlayerId}
                 readOnly={readOnly}
                 slot={slot}
                 summary={player ? summaryByPlayerId.get(player.id) : undefined}

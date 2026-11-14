@@ -13,6 +13,11 @@ import type { RoomHistoryProjection, SharedActivity } from "../session/types";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
 import type { GuestSeatControls } from "./gameApp/GuestSeatPrompt";
+import { ChipsTab } from "./guestPlay/ChipsTab";
+import { GuestTableTab } from "./guestPlay/GuestTableTab";
+import { InboxTab, waitingOnMeCount } from "./guestPlay/InboxTab";
+import type { ChipsDraft, PeerGuestControls } from "./guestPlay/types";
+import { useNow } from "./guestPlay/useNow";
 import { TransactionDrawer } from "./gameApp/TransactionDrawer";
 import { useLedgerOverview } from "./gameApp/useLedgerOverview";
 
@@ -46,6 +51,8 @@ type GameAppProps = {
   guest: boolean;
   /** A guest's own seat and the seats they could take (shared rooms that have seats). */
   guestSeat?: GuestSeatControls;
+  /** A seated guest in a room where players confirm each other: Table · Chips · Inbox. */
+  peerGuest?: PeerGuestControls;
   ledgerLabel: string;
   title?: string;
   sessionControls?: ReactNode;
@@ -64,6 +71,7 @@ export function GameApp({
   forcedReadOnly,
   guest,
   guestSeat,
+  peerGuest,
   ledgerLabel,
   title,
   onMarkNotificationsRead,
@@ -83,6 +91,9 @@ export function GameApp({
   const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
   const [layoutEditing, setLayoutEditing] = useState(false);
   const [compactPlayerView, setCompactPlayerView] = useState(false);
+  // A seated guest's Chips draft (Edit & resend, or a shortcut from Table) and the note Inbox opens with.
+  const [chipsDraft, setChipsDraft] = useState<{ key: number; draft: ChipsDraft } | null>(null);
+  const [peerNotice, setPeerNotice] = useState<string | null>(null);
   const {
     activePlayers,
     playerSummaries,
@@ -95,6 +106,18 @@ export function GameApp({
     repeatableTransaction,
     settlementReady
   } = useLedgerOverview(state);
+
+  const peerSeatPlayer = guest && peerGuest
+    ? activePlayers.find((player) => player.id === peerGuest.seatPlayerId)
+    : undefined;
+  const peer = peerSeatPlayer && peerGuest ? { ...peerGuest, me: peerSeatPlayer } : null;
+  const settleAvailable = settlementReady || (peer?.ended ?? false);
+  const badgeNow = useNow((peer?.agreements.needsMe.length ?? 0) > 0);
+  const inboxCount = peer ? waitingOnMeCount(peer.agreements, badgeNow) : 0;
+  // Tabs that don't exist for this guest fall back to their Table / Play.
+  const activeMode: AppMode = peer
+    ? mode === "setup" || mode === "cash_out" || (mode === "settle" && !settleAvailable) ? "play" : mode
+    : mode === "chips" || mode === "inbox" ? "play" : mode;
 
   function addTransaction(transaction: Transaction): boolean {
     if (readOnly) {
@@ -171,9 +194,38 @@ export function GameApp({
 
   function changeMode(nextMode: AppMode) {
     setMode(nextMode);
+    setPeerNotice(null);
     setTransactionDrawerOpen(false);
     setAuditDrawerOpen(false);
     setLayoutEditing(false);
+  }
+
+  function openChips(draft: ChipsDraft) {
+    setChipsDraft((current) => ({ key: (current?.key ?? 0) + 1, draft }));
+    changeMode("chips");
+  }
+
+  async function sendProposal(
+    proposal: Parameters<PeerGuestControls["onPropose"]>[0],
+    draft: ChipsDraft
+  ): Promise<boolean> {
+    if (!peer) return false;
+    const sent = await peer.onPropose(proposal);
+    if (sent === null) return false;
+    // Resending a bounced entry replaces it.
+    if (draft.resendOf) void peer.onDismiss(draft.resendOf);
+    const nameOf = (playerId: string | undefined) =>
+      state.players.find((player) => player.id === playerId)?.name ?? "them";
+    setChipsDraft(null);
+    changeMode("inbox");
+    setPeerNotice(
+      proposal.kind === "bank"
+        ? proposal.witnessPlayerId
+          ? `Sent. Waiting on ${nameOf(proposal.witnessPlayerId)} to say they saw it.`
+          : "Sent. Waiting for someone to say they saw it."
+        : `Sent. Waiting on ${nameOf(proposal.counterpartyPlayerId)} to confirm.`
+    );
+    return true;
   }
 
   const handleCompactPlayerViewChange = useCallback((compactView: boolean) => {
@@ -199,6 +251,42 @@ export function GameApp({
           </LazyBoundary>
         }
         guest={guest}
+        guestTabs={peer ? { inboxCount, showSettle: settleAvailable } : undefined}
+        chips={peer ? (
+          <ChipsTab
+            key={chipsDraft?.key ?? 0}
+            me={peer.me}
+            players={activePlayers}
+            summaryByPlayerId={summaryByPlayerId}
+            seats={peer.seats}
+            defaultBuyInCents={state.settings.defaultBuyInCents}
+            ended={peer.ended}
+            notice={notice ?? sessionNotice}
+            initialDraft={chipsDraft?.draft ?? null}
+            onSend={sendProposal}
+            onAskHost={() => setTransactionDrawerOpen(true)}
+          />
+        ) : null}
+        inbox={peer ? (
+          <InboxTab
+            seatPlayerId={peer.me.id}
+            agreements={peer.agreements}
+            notice={peerNotice}
+            error={sessionNotice}
+            onAnswer={peer.onAnswer}
+            onCancel={peer.onCancel}
+            onDismiss={peer.onDismiss}
+            onResend={(agreement) =>
+              openChips({
+                kind: agreement.kind,
+                amountCents: agreement.amountCents,
+                resendOf: agreement.id,
+                ...(agreement.counterpartyPlayerId ? { counterpartyPlayerId: agreement.counterpartyPlayerId } : {}),
+                ...(agreement.witnessPlayerId ? { witnessPlayerId: agreement.witnessPlayerId } : {})
+              })
+            }
+          />
+        ) : null}
         ledgerLabel={ledgerLabel}
         title={title}
         notifications={
@@ -213,7 +301,7 @@ export function GameApp({
         layoutEditing={layoutEditing}
         layoutEditingDisabled={readOnly}
         hideLayoutEditing={compactPlayerView}
-        mode={mode}
+        mode={activeMode}
         onLayoutEditingChange={setLayoutEditing}
         onHome={onHome}
         onModeChange={changeMode}
@@ -249,7 +337,26 @@ export function GameApp({
             />
           </LazyBoundary>
         }
-        play={
+        play={peer ? (
+          <GuestTableTab
+            state={state}
+            me={peer.me}
+            notice={notice ?? sessionNotice}
+            activePlayers={activePlayers}
+            bankSummary={bankSummary}
+            cashedOutPlayerIds={cashOutOverview.completedPlayerIds}
+            imbalanceCents={imbalanceCents}
+            summaryByPlayerId={summaryByPlayerId}
+            settleAvailable={settleAvailable}
+            waitingOnMe={inboxCount}
+            events={sharedActivity?.events ?? []}
+            live={!peer.ended}
+            onOpenChips={(kind) => openChips({ kind })}
+            onOpenInbox={() => changeMode("inbox")}
+            onOpenSettle={() => changeMode("settle")}
+            onOpenAudit={() => setAuditDrawerOpen(true)}
+          />
+        ) : (
           <LazyBoundary key="play" fallback={modeFallback("Play")}>
             <PlayMode
               state={state}
@@ -274,7 +381,7 @@ export function GameApp({
               setTransactionDrawerOpen={setTransactionDrawerOpen}
             />
           </LazyBoundary>
-        }
+        )}
         settle={
           <LazyBoundary key="settle" fallback={modeFallback("Settle")}>
             <SettleMode

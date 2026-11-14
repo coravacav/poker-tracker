@@ -18,6 +18,7 @@ type SeatSlotProps = {
   isSeatDragging: boolean;
   player?: Player;
   hideActions: boolean;
+  isYou?: boolean;
   readOnly: boolean;
   slot: TableSeatSlot;
   summary?: PlayerLedgerSummary;
@@ -35,6 +36,7 @@ export function SeatSlot({
   isSeatDragging,
   player,
   hideActions,
+  isYou = false,
   readOnly,
   slot,
   summary,
@@ -62,6 +64,7 @@ export function SeatSlot({
           layoutEditing={layoutEditing}
           player={player}
           hideActions={hideActions}
+          isYou={isYou}
           readOnly={readOnly}
           summary={summary}
           onBuyIn={onBuyIn}

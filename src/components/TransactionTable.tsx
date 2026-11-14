@@ -185,6 +185,14 @@ export function TransactionTable({
     return players.find((player) => player.id === playerId)?.name ?? "Unknown player";
   }
 
+  /** Who agreed to an entry players confirmed between themselves: "Confirmed by Jon", "Seen by the host". */
+  function confirmedLabel(transaction: Transaction): string | null {
+    if (transaction.agreementId === undefined) return null;
+    const verb = transaction.type === "bank_buy_in" ? "Seen by" : "Confirmed by";
+    if (transaction.confirmedByPlayerId) return `${verb} ${playerName(transaction.confirmedByPlayerId)}`;
+    return transaction.confirmedVia === "host" ? `${verb} the host` : null;
+  }
+
   function fromLabel(transaction: Transaction): string {
     if (transaction.type === "debt_coverage") return playerName(transaction.coveredByPlayerId);
     if (transaction.type === "bank_buy_in") return "Chip Pool";
@@ -481,6 +489,7 @@ export function TransactionTable({
                   {hasPlayerCategory(transaction) ? <span className={`category-pill category-${playerCategory(transaction)}`}>{categoryLabels[playerCategory(transaction)]}</span> : null}
                   {coverageLabel(transaction) ? <span className="category-pill category-poker">{coverageLabel(transaction)}</span> : null}
                   <span>{transaction.voidedAt ? "Voided" : "Active"}</span>
+                  {confirmedLabel(transaction) ? <span>{confirmedLabel(transaction)}</span> : null}
                   {transaction.note || transaction.voidReason ? <span>{transaction.note || transaction.voidReason}</span> : null}
                   {transaction.correctsTransactionId ? <span>Corrects a previous cash-out</span> : null}
                 </div>
@@ -550,7 +559,10 @@ export function TransactionTable({
                       {transaction.correctsTransactionId ? <div>Corrects a previous cash-out</div> : null}
                       {transaction.chipCountBreakdown !== undefined ? <ChipBreakdown lines={transaction.chipCountBreakdown} disclosure /> : null}
                     </td>
-                    <td>{transaction.voidedAt ? "Voided" : "Active"}</td>
+                    <td>
+                      {transaction.voidedAt ? "Voided" : "Active"}
+                      {confirmedLabel(transaction) ? <div className="muted">{confirmedLabel(transaction)}</div> : null}
+                    </td>
                     <td>{renderActions(transaction)}</td>
                   </tr>
                 ))
