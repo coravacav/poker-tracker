@@ -1161,7 +1161,7 @@ describe("realtime sharing UI", () => {
         agreements: { needsMe: [waiting], mine: [], bounced: [], recentDone: [] }
       })));
       expect(await screen.findByText(`Playing as ${me.name}`)).toBeInTheDocument();
-      expect(within(guestModes()).getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(guestModes()).getByRole("button", { name: "Table" })).toHaveAttribute("aria-current", "page");
       expect(within(guestModes()).getByRole("button", { name: "Chips" })).toBeInTheDocument();
       expect(within(guestModes()).getByRole("button", { name: "Inbox, 1 waiting" })).toBeInTheDocument();
       expect(within(guestModes()).queryByRole("button", { name: "Play" })).not.toBeInTheDocument();
@@ -1176,7 +1176,7 @@ describe("realtime sharing UI", () => {
       expect(mySeat).toHaveClass("is-you");
       expect(within(mySeat!).getByText("You")).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: /1 waiting on you/ }));
-      expect(within(guestModes()).getByRole("button", { name: "Inbox, 1 waiting" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(guestModes()).getByRole("button", { name: "Inbox, 1 waiting" })).toHaveAttribute("aria-current", "page");
       expect(screen.getByRole("article", { name: `${other.name} gave you $20 in chips` })).toBeInTheDocument();
 
       // Once the game ends, the settlement is a tab away.
@@ -1192,6 +1192,31 @@ describe("realtime sharing UI", () => {
       expect(within(guestModes()).getByRole("button", { name: "Play" })).toBeInTheDocument();
       expect(within(guestModes()).queryByRole("button", { name: /Inbox/ })).not.toBeInTheDocument();
       expect(await screen.findByRole("button", { name: "Request transaction" })).toBeInTheDocument();
+    });
+
+    it("lists a seated guest's chip moves as facts, without guessing who pays whom", async () => {
+      const remote = createDefaultGameState();
+      const [, me, other, third] = remote.players as [
+        GameState["players"][number],
+        GameState["players"][number],
+        GameState["players"][number],
+        GameState["players"][number]
+      ];
+      const at = new Date(0).toISOString();
+      remote.transactions = [
+        { id: "t1", type: "bank_buy_in", createdAt: at, amountCents: 4000, toPlayerId: me.id },
+        { id: "t2", type: "player_gave", createdAt: at, amountCents: 2000, fromPlayerId: other.id, toPlayerId: me.id },
+        { id: "t3", type: "player_gave", createdAt: at, amountCents: 1000, fromPlayerId: me.id, toPlayerId: third.id }
+      ];
+      const fake = fakeTransport(remote);
+      openAsGuest(fake);
+      act(() => fake.emitGuest(guestRoom(remote)));
+      const you = await screen.findByRole("region", { name: "You" });
+      expect(within(you).getByRole("list", { name: "Your chips" })).toHaveTextContent(
+        `$40 from the bank` + `Bought $20 from ${other.name}` + `Gave $10 to ${third.name}`
+      );
+      expect(within(you).getByText("In for $50")).toBeInTheDocument();
+      expect(within(you).queryByText(/owe/)).not.toBeInTheDocument();
     });
 
     it("sends chips from Chips, lands on Inbox, and answers from Inbox", async () => {
@@ -1216,8 +1241,11 @@ describe("realtime sharing UI", () => {
         amountCents: 2000,
         counterpartyPlayerId: other.id
       });
-      expect(within(guestModes()).getByRole("button", { name: "Inbox" })).toHaveAttribute("aria-pressed", "true");
-      expect(screen.getByRole("status")).toHaveTextContent(`Sent. Waiting on ${other.name} to confirm.`);
+      expect(within(guestModes()).getByRole("button", { name: "Inbox" })).toHaveAttribute("aria-current", "page");
+      // The status region is announced once filled, and takes focus.
+      const status = screen.getByRole("status");
+      await waitFor(() => expect(status).toHaveTextContent(`Sent. Waiting on ${other.name} to confirm.`));
+      expect(status).toHaveFocus();
 
       act(() => fake.emitGuest(guestRoom(remote, {
         agreements: {
@@ -1248,6 +1276,36 @@ describe("realtime sharing UI", () => {
       fireEvent.click(within(guestModes()).getByRole("button", { name: "Chips" }));
       fireEvent.click(screen.getByRole("button", { name: "Something else? Ask the host" }));
       expect(screen.getByRole("dialog", { name: "Request transaction" })).toBeInTheDocument();
+    });
+
+    it("keeps a Chips draft and its request id across tab switches, so a retry can't send twice", async () => {
+      const remote = createDefaultGameState();
+      const other = remote.players[2]!;
+      const fake = fakeTransport(remote);
+      const proposeAgreement = vi
+        .fn(async (_args: Parameters<NonNullable<RoomTransport["proposeAgreement"]>>[0]) => "agreement_new" as never)
+        .mockRejectedValueOnce(new Error("network unavailable"));
+      Object.assign(fake.transport, { proposeAgreement });
+      openAsGuest(fake);
+      act(() => fake.emitGuest(guestRoom(remote)));
+      fireEvent.click(await within(guestModes()).findByRole("button", { name: "Chips" }));
+      fireEvent.click(within(screen.getByRole("group", { name: "Player" })).getByRole("button", { name: new RegExp(other.name) }));
+      fireEvent.change(screen.getByRole("textbox", { name: "Amount" }), { target: { value: "15" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: `Send to ${other.name} to confirm` }));
+      });
+      expect(proposeAgreement).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(within(guestModes()).getByRole("button", { name: "Table" }));
+      fireEvent.click(within(guestModes()).getByRole("button", { name: "Chips" }));
+      expect(screen.getByRole("textbox", { name: "Amount" })).toHaveValue("15");
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: `Send to ${other.name} to confirm` }));
+      });
+      expect(proposeAgreement).toHaveBeenCalledTimes(2);
+      const [first, second] = proposeAgreement.mock.calls.map(([args]) => args.clientRequestId);
+      expect(second).toBe(first);
+      expect(within(guestModes()).getByRole("button", { name: "Inbox" })).toHaveAttribute("aria-current", "page");
     });
 
     it("shows the host what needs them, counts it on the sharing button, and toggles the mode", async () => {
@@ -1303,7 +1361,7 @@ describe("realtime sharing UI", () => {
       const dialog = await screen.findByRole("dialog", { name: "Share game" });
       const needs = within(dialog).getByRole("region", { name: /Needs you/ });
       const seatItem = within(needs).getByRole("article", { name: `${maya.name} gave ${dev.name} $20 in chips` });
-      expect(within(seatItem).getByText(`for ${dev.name} (no phone)`)).toBeInTheDocument();
+      expect(within(seatItem).getByText(`for ${dev.name} (no phone when sent)`)).toBeInTheDocument();
       fireEvent.click(within(seatItem).getByRole("button", { name: "Confirm" }));
       await waitFor(() => expect(hostAnswerAgreement).toHaveBeenCalledWith(expect.objectContaining({
         publicId: "room_public_123456",

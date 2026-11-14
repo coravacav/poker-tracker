@@ -1,7 +1,8 @@
 import { Check, Landmark } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { AgreementResult, AgreementStatus, GuestAgreements, RoomAgreement } from "../../session/types";
+import type { AgreementRequest } from "./agreementText";
 import { useFormatCurrency } from "../CurrencyContext";
 import {
   agreementSentence,
@@ -49,12 +50,28 @@ export function InboxTab({
   const now = useNow(agreements.needsMe.length > 0 || agreements.mine.length > 0);
   const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
   const [resultNotice, setResultNotice] = useState<string | null>(null);
+  // The status region is on the page empty first and filled after, so screen
+  // readers announce "Sent…" when Inbox opens with it; focus moves there too.
+  const [shownNotice, setShownNotice] = useState<string | null>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!notice) {
+      setShownNotice(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setShownNotice(notice), 0);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+  useEffect(() => {
+    if (shownNotice) statusRef.current?.focus();
+  }, [shownNotice]);
   const { needsMe, mine, bounced, recentDone } = agreements;
   const waitingCount = waitingOnMeCount(agreements, now);
 
   async function run(
     agreementId: Id<"roomAgreements">,
     expected: AgreementStatus,
+    kind: AgreementRequest,
     request: () => Promise<AgreementResult | null>
   ) {
     if (busy.has(agreementId)) return;
@@ -66,15 +83,21 @@ export function InboxTab({
       next.delete(agreementId);
       return next;
     });
-    if (result) setResultNotice(closedNotice(result, expected));
+    if (result) setResultNotice(closedNotice(result, expected, kind));
   }
 
   return (
     <div className="guest-tab guest-inbox-tab">
       <div className="guest-tab-column">
-        {notice ? <div className="notice notice-ok" role="status">{notice}</div> : null}
+        <div
+          ref={statusRef}
+          tabIndex={-1}
+          role="status"
+          className={resultNotice ? "notice notice-warning" : shownNotice ? "notice notice-ok" : "guest-status-empty"}
+        >
+          {resultNotice ?? shownNotice}
+        </div>
         {error ? <div className="notice notice-warning">{error}</div> : null}
-        {resultNotice ? <div className="notice notice-warning" role="status">{resultNotice}</div> : null}
 
         <section className="guest-inbox-section" aria-labelledby="inbox-needs-you">
           <div className="guest-inbox-heading">
@@ -87,7 +110,7 @@ export function InboxTab({
             needsMe.map((agreement) => {
               const expired = isExpired(agreement, now);
               const bank = agreement.kind === "bank";
-              const settleLine = agreementSettleLine(agreement, seatPlayerId, format);
+              const settleLine = agreementSettleLine(agreement, seatPlayerId);
               const askedMe = bank && agreement.witnessPlayerId === seatPlayerId;
               return (
                 <article
@@ -122,7 +145,7 @@ export function InboxTab({
                         className={`text-button ${bank ? "" : "guest-not-right"}`}
                         type="button"
                         disabled={busy.has(agreement.id)}
-                        onClick={() => void run(agreement.id, "bounced", () => onAnswer(agreement.id, "not_right"))}
+                        onClick={() => void run(agreement.id, "bounced", "answer", () => onAnswer(agreement.id, "not_right"))}
                       >
                         {bank ? "I didn't see it" : "Not right"}
                       </button>
@@ -130,7 +153,7 @@ export function InboxTab({
                         className="primary-button"
                         type="button"
                         disabled={busy.has(agreement.id)}
-                        onClick={() => void run(agreement.id, "recorded", () => onAnswer(agreement.id, "confirm"))}
+                        onClick={() => void run(agreement.id, "recorded", "answer", () => onAnswer(agreement.id, "confirm"))}
                       >
                         {bank ? "I saw it" : "Confirm"}
                       </button>
@@ -162,7 +185,7 @@ export function InboxTab({
                       className="text-button"
                       type="button"
                       disabled={busy.has(agreement.id)}
-                      onClick={() => void run(agreement.id, "cancelled", () => onCancel(agreement.id))}
+                      onClick={() => void run(agreement.id, "cancelled", "cancel", () => onCancel(agreement.id))}
                     >
                       Cancel
                     </button>
@@ -188,7 +211,7 @@ export function InboxTab({
                     className="text-button"
                     type="button"
                     disabled={busy.has(agreement.id)}
-                    onClick={() => void run(agreement.id, "dismissed", () => onDismiss(agreement.id))}
+                    onClick={() => void run(agreement.id, "dismissed", "dismiss", () => onDismiss(agreement.id))}
                   >
                     Dismiss
                   </button>

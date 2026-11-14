@@ -189,7 +189,7 @@ test("players record chips between themselves when the other player confirms", a
   expect(await scrollsSideways(blair)).toBe(false);
   await blair.getByRole("group", { name: "Player" }).getByRole("button", { name: /Casey/ }).click();
   await blair.getByRole("button", { name: "$20" }).click();
-  await expect(blair.getByText("You give Casey $20 in chips. Casey will owe you $20 at settle-up.")).toBeVisible();
+  await expect(blair.getByText("You give Casey $20 in chips. You'll get that back at settle-up.")).toBeVisible();
   await blair.getByRole("button", { name: "Send to Casey to confirm" }).click();
   await expect(blair.getByText("Sent. Waiting on Casey to confirm.")).toBeVisible();
   await expect(blair.getByText("You gave Casey $20 in chips")).toBeVisible();
@@ -199,7 +199,7 @@ test("players record chips between themselves when the other player confirms", a
   await openGuestTab(casey, "Inbox");
   expect(await scrollsSideways(casey)).toBe(false);
   const card = casey.getByRole("article", { name: "Blair gave you $20 in chips" });
-  await expect(card).toContainText("You'll owe Blair $20 at settle-up.");
+  await expect(card).toContainText("You'll pay for them at settle-up.");
   await card.getByRole("button", { name: "Confirm" }).click();
   await expect(casey.getByText("Nothing waiting on you.")).toBeVisible({ timeout: 30_000 });
   await expect(casey.getByText(/you confirmed ·/)).toBeVisible();
@@ -207,7 +207,7 @@ test("players record chips between themselves when the other player confirms", a
   // The host and Blair see the entry, with who confirmed it.
   await openGuestTab(blair, "Table");
   await expect(blair.getByRole("region", { name: "Recent activity" })).toContainText("Blair · confirmed by Casey", { timeout: 30_000 });
-  await expect(blair.getByRole("region", { name: "You" })).toContainText("Casey will owe you $20 at settle-up.");
+  await expect(blair.getByRole("region", { name: "You" })).toContainText("Gave $20 to Casey");
   await openMode(host, "Play");
   await host.getByRole("button", { name: "Transaction Audit" }).click();
   const audit = host.getByRole("dialog");
@@ -220,7 +220,7 @@ test("players record chips between themselves when the other player confirms", a
   await casey.getByRole("button", { name: "Buy from" }).click();
   await casey.getByRole("group", { name: "Player" }).getByRole("button", { name: /Blair/ }).click();
   await casey.getByRole("button", { name: "$10" }).click();
-  await expect(casey.getByText("You get $10 in chips from Blair. You'll owe Blair $10 at settle-up.")).toBeVisible();
+  await expect(casey.getByText("You get $10 in chips from Blair. You'll pay for them at settle-up.")).toBeVisible();
   await casey.getByRole("button", { name: "Send to Blair to confirm" }).click();
   await expect(casey.getByText("Sent. Waiting on Blair to confirm.")).toBeVisible();
 

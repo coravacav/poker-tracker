@@ -13,7 +13,7 @@ import type { RoomHistoryProjection, SharedActivity } from "../session/types";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
 import type { GuestSeatControls } from "./gameApp/GuestSeatPrompt";
-import { ChipsTab } from "./guestPlay/ChipsTab";
+import { ChipsTab, createChipsRequestIds } from "./guestPlay/ChipsTab";
 import { GuestTableTab } from "./guestPlay/GuestTableTab";
 import { InboxTab, waitingOnMeCount } from "./guestPlay/InboxTab";
 import type { ChipsDraft, PeerGuestControls } from "./guestPlay/types";
@@ -95,7 +95,10 @@ export function GameApp({
   const [layoutEditing, setLayoutEditing] = useState(false);
   const [compactPlayerView, setCompactPlayerView] = useState(false);
   // A seated guest's Chips draft (Edit & resend, or a shortcut from Table) and the note Inbox opens with.
-  const [chipsDraft, setChipsDraft] = useState<{ key: number; draft: ChipsDraft } | null>(null);
+  // The draft and its request ids live here, not in the tab, so a retry after
+  // switching tabs is the same entry with the same id.
+  const [chipsDraft, setChipsDraft] = useState<{ key: number; draft: ChipsDraft; focus?: boolean } | null>(null);
+  const [chipsRequestIds] = useState(createChipsRequestIds);
   const [peerNotice, setPeerNotice] = useState<string | null>(null);
   const {
     activePlayers,
@@ -203,8 +206,9 @@ export function GameApp({
     setLayoutEditing(false);
   }
 
-  function openChips(draft: ChipsDraft) {
-    setChipsDraft((current) => ({ key: (current?.key ?? 0) + 1, draft }));
+  /** Opens Chips on a new draft (Edit & resend, which also moves focus there). */
+  function openChips(draft: ChipsDraft, focus = false) {
+    setChipsDraft((current) => ({ key: (current?.key ?? 0) + 1, draft, focus }));
     changeMode("chips");
   }
 
@@ -266,6 +270,11 @@ export function GameApp({
             ended={peer.ended}
             notice={notice ?? sessionNotice}
             initialDraft={chipsDraft?.draft ?? null}
+            onDraftChange={(draft) =>
+              setChipsDraft((current) => ({ key: current?.key ?? 0, draft }))
+            }
+            requestIds={chipsRequestIds}
+            focusOnOpen={chipsDraft?.focus === true}
             onSend={sendProposal}
             onAskHost={() => setTransactionDrawerOpen(true)}
           />
@@ -280,13 +289,16 @@ export function GameApp({
             onCancel={peer.onCancel}
             onDismiss={peer.onDismiss}
             onResend={(agreement) =>
-              openChips({
-                kind: agreement.kind,
-                amountCents: agreement.amountCents,
-                resendOf: agreement.id,
-                ...(agreement.counterpartyPlayerId ? { counterpartyPlayerId: agreement.counterpartyPlayerId } : {}),
-                ...(agreement.witnessPlayerId ? { witnessPlayerId: agreement.witnessPlayerId } : {})
-              })
+              openChips(
+                {
+                  kind: agreement.kind,
+                  amountCents: agreement.amountCents,
+                  resendOf: agreement.id,
+                  ...(agreement.counterpartyPlayerId ? { counterpartyPlayerId: agreement.counterpartyPlayerId } : {}),
+                  ...(agreement.witnessPlayerId ? { witnessPlayerId: agreement.witnessPlayerId } : {})
+                },
+                true
+              )
             }
           />
         ) : null}
@@ -355,7 +367,12 @@ export function GameApp({
             waitingOnMe={inboxCount}
             events={sharedActivity?.events ?? []}
             live={!peer.ended}
-            onOpenChips={(kind) => openChips({ kind })}
+            onOpenChips={(kind) => {
+              // Keep what was being entered; only switch to the kind asked for.
+              const current = chipsDraft?.draft;
+              const nextKind = kind === "bank" ? "bank" : current && current.kind !== "bank" ? current.kind : "give";
+              openChips({ ...current, kind: nextKind });
+            }}
             onOpenInbox={() => changeMode("inbox")}
             onOpenSettle={() => changeMode("settle")}
             onOpenAudit={() => setAuditDrawerOpen(true)}

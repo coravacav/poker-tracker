@@ -85,7 +85,7 @@ function GuestTabButtons({
             key={option}
             type="button"
             className={mode === option ? "is-active" : ""}
-            aria-pressed={mode === option}
+            aria-current={mode === option ? "page" : undefined}
             aria-label={count > 0 ? `${label}, ${count} waiting` : undefined}
             onClick={() => onModeChange(option)}
           >

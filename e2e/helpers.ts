@@ -23,7 +23,7 @@ export async function openMode(page: Page, mode: "Setup" | "Play" | "Cash Out" |
 export async function openGuestTab(page: Page, tab: "Table" | "Chips" | "Inbox" | "Settle") {
   const button = modes(page).getByRole("button", { name: new RegExp(`^${tab}\\b`) });
   await button.click();
-  await expect(button).toHaveAttribute("aria-pressed", "true");
+  await expect(button).toHaveAttribute("aria-current", "page");
 }
 
 /** Whether the page scrolls sideways (it never should on a phone). */

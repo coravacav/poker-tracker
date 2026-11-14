@@ -28,36 +28,27 @@ export function agreementSentence(agreement: RoomAgreement, viewerId: string | n
 }
 
 /**
- * Who owes whom once the entry is recorded: "You'll owe Jon $20 at settle-up."
- * Null for a bank buy-in, which nobody owes another player for.
+ * What a give or buy means at settle-up, from the viewer's side. Settle-up
+ * pays by everyone's net in as few payments as possible, so this never says
+ * who pays whom, only that chips taken are paid for and chips given come back.
  */
 export function settleUpLine(
-  debtor: { id: string | null; name: string | null },
-  creditor: { id: string | null; name: string | null },
-  amount: string,
+  taker: { id: string | null; name: string | null },
+  giver: { id: string | null; name: string | null },
   viewerId: string | null
 ): string {
-  if (debtor.id !== null && debtor.id === viewerId) {
-    return `You'll owe ${creditor.name ?? "them"} ${amount} at settle-up.`;
-  }
-  if (creditor.id !== null && creditor.id === viewerId) {
-    return `${debtor.name ?? "They"} will owe you ${amount} at settle-up.`;
-  }
-  return `${debtor.name ?? "They"} will owe ${creditor.name ?? "them"} ${amount} at settle-up.`;
+  if (taker.id !== null && taker.id === viewerId) return "You'll pay for them at settle-up.";
+  if (giver.id !== null && giver.id === viewerId) return "You'll get that back at settle-up.";
+  return `${taker.name ?? "They"} pays for them at settle-up.`;
 }
 
-export function agreementSettleLine(
-  agreement: RoomAgreement,
-  viewerId: string | null,
-  format: Format
-): string | null {
+/** The settle-up line for an agreed entry, or null for a bank buy-in (paid to the bank). */
+export function agreementSettleLine(agreement: RoomAgreement, viewerId: string | null): string | null {
   if (agreement.kind === "bank") return null;
   const proposer = { id: agreement.proposerPlayerId, name: agreement.proposerName };
   const other = { id: agreement.counterpartyPlayerId, name: agreement.counterpartyName };
-  // give: the proposer gave chips, so the other player owes them; buy: the other way round.
-  return agreement.kind === "give"
-    ? settleUpLine(other, proposer, format(agreement.amountCents), viewerId)
-    : settleUpLine(proposer, other, format(agreement.amountCents), viewerId);
+  // give: the proposer's chips went to the other player; buy: the other way round.
+  return agreement.kind === "give" ? settleUpLine(other, proposer, viewerId) : settleUpLine(proposer, other, viewerId);
 }
 
 /** Who turned a bounced entry back: "Dev said not right", "The host didn't see it". */
@@ -98,22 +89,32 @@ export function agreementTime(createdAt: number): string {
   return new Date(createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/** What was asked of an entry: answer it, the host settling a bounced one, cancel, or dismiss. */
+export type AgreementRequest = "answer" | "resolve" | "cancel" | "dismiss";
+
 /**
  * A short note when an answer, cancel, or dismiss found the entry already
  * closed (another phone answered first, it expired, the host ended the game),
  * or null when it did what was asked.
  */
-export function closedNotice(result: AgreementResult, expected: AgreementStatus): string | null {
+export function closedNotice(
+  result: AgreementResult,
+  expected: AgreementStatus,
+  request: AgreementRequest = "answer"
+): string | null {
   if (result.status === expected) return null;
   switch (result.status) {
     case "recorded":
-      return "Someone already confirmed that one.";
+      return request === "resolve" ? "That entry was already recorded." : "Someone already confirmed that one.";
     case "bounced":
-      return "Someone already said that one wasn't right.";
+      // For the host, a bounced entry that won't record was dismissed (in another tab, say).
+      return request === "resolve"
+        ? "That entry was already dismissed and sent back to the player."
+        : "Someone already said that one wasn't right.";
     case "expired":
       return "That entry expired before anyone answered.";
     case "dismissed":
-      return "That entry was already cleared.";
+      return request === "resolve" ? "The player already cleared that entry." : "That entry was already cleared.";
     case "open":
       return "That entry is still waiting for an answer.";
     case "cancelled":

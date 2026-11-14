@@ -24,12 +24,14 @@ export type PeerGuestControls = {
   onDismiss: (agreementId: Id<"roomAgreements">) => Promise<AgreementResult | null>;
 };
 
-/** A Chips entry to start from: Edit & resend of a bounced one. */
+/** A Chips entry in progress: kept across tab switches, or started from Edit & resend. */
 export type ChipsDraft = {
   kind: AgreementKind;
   counterpartyPlayerId?: string;
   witnessPlayerId?: string;
   amountCents?: number;
+  /** The amount as typed, kept while the tab is switched away. */
+  amountInput?: string;
   /** The bounced entry this replaces, cleared once the new one is sent. */
   resendOf?: RoomAgreement["id"];
 };

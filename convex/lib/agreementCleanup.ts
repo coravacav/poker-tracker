@@ -83,9 +83,16 @@ export async function cancelRoomAgreements(
 /**
  * Cancels open agreements aimed at a seat (as the other player or the named
  * witness) when that seat loses its phone or its player changes: whoever
- * answers next would not be the person the proposer asked.
+ * answers next would not be the person the proposer asked. With `heldBy`,
+ * only entries that phone was asked to answer (it held the seat when they
+ * were sent); entries sent while the seat had no phone stay with the host.
  */
-export async function cancelSeatAgreements(ctx: MutationCtx, roomId: Id<"rooms">, playerId: string) {
+export async function cancelSeatAgreements(
+  ctx: MutationCtx,
+  roomId: Id<"rooms">,
+  playerId: string,
+  options: { heldBy?: Id<"roomGuests"> } = {}
+) {
   const now = Date.now();
   const aimed = await ctx.db
     .query("roomAgreements")
@@ -99,5 +106,8 @@ export async function cancelSeatAgreements(ctx: MutationCtx, roomId: Id<"rooms">
       index.eq("roomId", roomId).eq("status", "open").eq("witnessPlayerId", playerId)
     )
     .take(MAX_ROOM_AGREEMENTS_PER_STATUS);
-  await cancelRows(ctx, [...aimed, ...witnessed], "counterparty_seat_lost", now);
+  const rows = [...aimed, ...witnessed].filter(
+    (agreement) => options.heldBy === undefined || agreement.seatGuestId === options.heldBy
+  );
+  await cancelRows(ctx, rows, "counterparty_seat_lost", now);
 }

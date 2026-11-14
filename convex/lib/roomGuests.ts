@@ -328,7 +328,10 @@ export async function revokeRoomGuest(
   // Also clears requests a guest revoked before this rule existed left behind.
   await rejectPendingGuestRequests(ctx, { guestId: guest._id }, now);
   await cancelGuestAgreements(ctx, guest._id, "revoked", { includeBounced: true });
-  // Entries aimed at the seat they held were meant for this phone's player.
-  if (guest.playerId !== undefined) await cancelSeatAgreements(ctx, room._id, guest.playerId);
+  // Entries this phone was asked to answer for its seat; ones sent while the
+  // seat had no phone are the host's to answer and stay open.
+  if (guest.playerId !== undefined) {
+    await cancelSeatAgreements(ctx, room._id, guest.playerId, { heldBy: guest._id });
+  }
   return null;
 }

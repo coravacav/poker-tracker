@@ -1,17 +1,15 @@
 import { ArrowUpRight, ChevronRight, Clock, Landmark } from "lucide-react";
 import { useMemo } from "react";
-import { settleLaterBalances } from "../../domain/ledger";
-import { describeSignedMoney } from "../../domain/money";
+import { playerChipMoves } from "../../domain/ledger";
 import type { GameState, Player } from "../../domain/pokerTypes";
 import { playerNameById } from "../../domain/settlement";
 import type { SharedAuditEvent } from "../../session/types";
 import { BankSummaryPanel } from "../BankSummary";
 import { ChipKey } from "../ChipKey";
-import { useCurrencyCode, useFormatCurrency } from "../CurrencyContext";
+import { useFormatCurrency } from "../CurrencyContext";
 import type { LedgerOverview } from "../gameApp/useLedgerOverview";
 import { PokerTable } from "../PokerTable";
 import { SpectatorFeed } from "../spectator/SpectatorFeed";
-import { settleUpLine } from "./agreementText";
 
 type GuestTableTabProps = {
   state: GameState;
@@ -36,7 +34,7 @@ type GuestTableTabProps = {
 const ignoreAction = () => undefined;
 const refuseTransaction = () => false;
 
-/** "You" at the top of Table: what you're in for and who owes whom at settle-up. */
+/** "You" at the top of Table: your chip moves as facts, and your standing once it means something. */
 function YouCard({
   state,
   me,
@@ -49,34 +47,44 @@ function YouCard({
   netCents: number;
   cashedOut: boolean;
 }) {
-  const currencyCode = useCurrencyCode();
   const formatCurrency = useFormatCurrency();
-  const balances = useMemo(() => settleLaterBalances(me.id, state.transactions), [me.id, state.transactions]);
-  const lines = [...balances].map(([otherId, cents]) => {
-    const other = { id: otherId, name: playerNameById(state.players, otherId) };
-    const self = { id: me.id, name: me.name };
-    const amount = formatCurrency(Math.abs(cents), { trimWholeCents: true });
-    return cents > 0 ? settleUpLine(other, self, amount, me.id) : settleUpLine(self, other, amount, me.id);
-  });
-  // Until the final count, a negative net is what the player is in for.
-  const inForCents = !cashedOut && netCents < 0 ? -netCents : 0;
-  const standing = inForCents > 0
-    ? `in for ${formatCurrency(inForCents, { trimWholeCents: true })}`
-    : describeSignedMoney(netCents, currencyCode, { trimWholeCents: true });
+  const format = (cents: number) => formatCurrency(cents, { trimWholeCents: true });
+  const moves = useMemo(() => playerChipMoves(me.id, state.transactions), [me.id, state.transactions]);
+  const name = (playerId: string | undefined) => (playerId ? playerNameById(state.players, playerId) : "another player");
+  const lines = moves.map((move) =>
+    move.kind === "bank"
+      ? `${format(move.amountCents)} from the bank`
+      : move.kind === "covered"
+        ? `${format(move.amountCents)} from the bank, paid by ${name(move.otherPlayerId)}`
+        : move.kind === "got"
+          ? `Bought ${format(move.amountCents)} from ${name(move.otherPlayerId)}`
+          : `Gave ${format(move.amountCents)} to ${name(move.otherPlayerId)}`
+  );
+  // Before the final count the net leaves out the chips you hold, so it is what
+  // you're in for; once counted it is your result.
+  const standing = cashedOut
+    ? netCents > 0
+      ? `Up ${format(netCents)}`
+      : netCents < 0
+        ? `Down ${format(-netCents)}`
+        : "Even"
+    : netCents < 0
+      ? `In for ${format(-netCents)}`
+      : null;
 
   return (
     <section className="panel guest-you-card" aria-label="You">
       <div className="guest-you-heading">
         <span className="guest-you-badge">You</span>
         <h2>{me.name}</h2>
-        <strong>{standing.charAt(0).toUpperCase() + standing.slice(1)}</strong>
+        {standing ? <strong>{standing}</strong> : null}
       </div>
       {lines.length > 0 ? (
-        <ul className="guest-you-balances">
+        <ul className="guest-you-balances" aria-label="Your chips">
           {lines.map((line) => <li key={line}>{line}</li>)}
         </ul>
       ) : (
-        <p className="muted">Nobody owes anybody for chips yet.</p>
+        <p className="muted">No chips in or out yet.</p>
       )}
       {settleAvailable ? (
         <button className="text-button guest-you-settle" type="button" onClick={onOpenSettle}>

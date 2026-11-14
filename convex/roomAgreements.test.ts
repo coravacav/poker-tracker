@@ -733,7 +733,64 @@ describe("peer agreements: released seats", () => {
   });
 });
 
+describe("peer agreements: released seats, older rooms and new players", () => {
+  it("honours a per-phone release from before releases covered the whole room", async () => {
+    const { test, seats } = await createRoom();
+    const jonId = await guestId(test, "Jon");
+    // An older room: the release was stored on Jon's phone, not the room.
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret: secrets.jon, playerId: seats.dev });
+    await test.run(async (ctx) => {
+      await ctx.db.patch(jonId, { hostReleasedPlayerIds: [seats.jon] });
+    });
+    expect((await guestView(test, "jon")).seats.find((seat) => seat.playerId === seats.jon)).toMatchObject({
+      releasedByHost: true
+    });
+    await expect(
+      test.mutation(api.rooms.claimSeat, { publicId, guestSecret: secrets.jon, playerId: seats.jon })
+    ).rejects.toThrow(/host released that seat/);
+    // Other phones were never blocked by it.
+    expect((await guestView(test, "maya")).seats.find((seat) => seat.playerId === seats.jon)?.releasedByHost).toBeUndefined();
+
+    await test.mutation(api.rooms.assignSeat, { publicId, hostSecret, guestId: jonId, playerId: seats.jon });
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret: secrets.jon, playerId: seats.dev });
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret: secrets.jon, playerId: seats.jon });
+    expect((await guestView(test, "jon")).seatPlayerId).toBe(seats.jon);
+  });
+
+  it("lifts a release when its player is renamed, as it is someone new", async () => {
+    const { test, seats } = await createRoom();
+    await test.mutation(api.rooms.releaseSeat, {
+      publicId,
+      hostSecret,
+      guestId: await guestId(test, "Jon"),
+      playerId: seats.jon
+    });
+    await hostAction(test, (await hostView(test)).version, { type: "rename_player", playerId: seats.jon, name: "Jonah" });
+    expect((await hostView(test)).seats.find((seat) => seat.playerId === seats.jon)?.releasedByHost).toBeUndefined();
+    await joinOn(test, "dev", seats.jon);
+    expect((await guestView(test, "dev")).seatPlayerId).toBe(seats.jon);
+  });
+});
+
 describe("peer agreements: entries aimed at a seat that changed", () => {
+  it("keeps an entry the host answers when a phone that claimed the seat later is revoked", async () => {
+    const { test, seats } = await createRoom();
+    // Priya's seat has no phone, so the host answers this one.
+    const hostOnly = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.priya });
+    await joinOn(test, "priya", seats.priya);
+    const toPriyasPhone = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.priya });
+
+    await test.mutation(api.rooms.revokeGuest, { publicId, hostSecret, guestId: await guestId(test, "Priya") });
+    expect(await agreementRow(test, toPriyasPhone)).toMatchObject({
+      status: "cancelled",
+      closedReason: "counterparty_seat_lost"
+    });
+    expect(await agreementRow(test, hostOnly)).toMatchObject({ status: "open" });
+    expect((await hostView(test)).needsHost.answer.map((agreement) => agreement.id)).toEqual([hostOnly]);
+    expect(await hostAnswer(test, hostOnly)).toMatchObject({ status: "recorded" });
+  });
+
+
   it("cancels them when the seat is released, revoked, or its player renamed", async () => {
     const { test, seats } = await createRoom({ seated: ["maya", "jon", "priya"] });
     const toJon = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon });

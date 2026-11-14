@@ -181,38 +181,40 @@ export function calculateLedgerImbalanceCents(
   return playersTotal + bankSummary.balanceCents;
 }
 
-/**
- * What one player and each other player owe each other at settle-up from
- * entries settled later, pair by pair: chips given (player_gave), debts
- * (player_owes), covered buy-ins, and debt coverage. Positive: the other
- * player owes this one; negative: this one owes them. Pairs that net to zero
- * are left out. These are the same entries buildPlayerSummaries counts, split
- * by who is on the other side.
- */
-export function settleLaterBalances(
-  playerId: PlayerId,
-  transactions: Transaction[]
-): Map<PlayerId, number> {
-  const balances = new Map<PlayerId, number>();
-  // `creditor` is owed `amount` by `debtor`.
-  const add = (creditor: PlayerId | undefined, debtor: PlayerId | undefined, amount: number) => {
-    if (!creditor || !debtor || creditor === debtor) return;
-    if (creditor === playerId) balances.set(debtor, (balances.get(debtor) ?? 0) + amount);
-    if (debtor === playerId) balances.set(creditor, (balances.get(creditor) ?? 0) - amount);
-  };
+/** One kind of chip move a player made, totalled per other player. */
+export type PlayerChipMove = {
+  /** bank: bought in from the bank; covered: a bank buy-in someone else paid for; got / gave: chips from or to a player. */
+  kind: "bank" | "covered" | "got" | "gave";
+  amountCents: number;
+  /** The other player (for covered, who paid). */
+  otherPlayerId?: PlayerId;
+};
 
+/**
+ * A player's chip moves as plain facts, totalled per kind and other player in
+ * the order they first happened: bank buy-ins, covered buy-ins, and chips
+ * given to or taken from other players. Voided entries are left out; debts and
+ * cash-outs aren't chip moves between players.
+ */
+export function playerChipMoves(playerId: PlayerId, transactions: Transaction[]): PlayerChipMove[] {
+  const moves = new Map<string, PlayerChipMove>();
+  const add = (kind: PlayerChipMove["kind"], amountCents: number, otherPlayerId?: PlayerId) => {
+    const key = `${kind}:${otherPlayerId ?? ""}`;
+    const move = moves.get(key);
+    if (move) move.amountCents += amountCents;
+    else moves.set(key, { kind, amountCents, ...(otherPlayerId ? { otherPlayerId } : {}) });
+  };
   for (const transaction of getActiveTransactions(transactions)) {
-    if (transaction.type === "player_gave" || transaction.type === "player_transfer") {
-      add(transaction.fromPlayerId, transaction.toPlayerId, transaction.amountCents);
-    } else if (transaction.type === "player_owes") {
-      add(transaction.toPlayerId, transaction.fromPlayerId, transaction.amountCents);
-    } else if (transaction.type === "bank_buy_in" && transaction.coveredByPlayerId) {
-      add(transaction.coveredByPlayerId, transaction.toPlayerId, transaction.amountCents);
-    } else if (transaction.type === "debt_coverage") {
-      add(transaction.coveredByPlayerId, transaction.coveredPlayerId, transaction.amountCents);
+    if (transaction.type === "bank_buy_in" && transaction.toPlayerId === playerId) {
+      const payer = transaction.coveredByPlayerId;
+      if (payer && payer !== playerId) add("covered", transaction.amountCents, payer);
+      else add("bank", transaction.amountCents);
+    } else if (transaction.type === "player_gave" || transaction.type === "player_transfer") {
+      const { fromPlayerId, toPlayerId } = transaction;
+      if (!fromPlayerId || !toPlayerId || fromPlayerId === toPlayerId) continue;
+      if (toPlayerId === playerId) add("got", transaction.amountCents, fromPlayerId);
+      else if (fromPlayerId === playerId) add("gave", transaction.amountCents, toPlayerId);
     }
   }
-
-  for (const [otherId, cents] of balances) if (cents === 0) balances.delete(otherId);
-  return balances;
+  return [...moves.values()];
 }

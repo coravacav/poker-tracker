@@ -3,9 +3,10 @@ import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Id } from "../../convex/_generated/dataModel";
 import { HostAgreementNeeds } from "../components/HostAgreementNeeds";
-import { ChipsTab, chipsQuickAmounts } from "../components/guestPlay/ChipsTab";
+import { ChipsTab, chipsQuickAmounts, createChipsRequestIds } from "../components/guestPlay/ChipsTab";
+import { agreementSettleLine, closedNotice } from "../components/guestPlay/agreementText";
 import { InboxTab } from "../components/guestPlay/InboxTab";
-import { settleLaterBalances } from "../domain/ledger";
+import { playerChipMoves } from "../domain/ledger";
 import type { Player, PlayerLedgerSummary, Transaction } from "../domain/pokerTypes";
 import type { AgreementResult, GuestAgreements, RoomAgreement, SeatOption } from "../session/types";
 
@@ -38,6 +39,7 @@ function renderChips(onSend = sendMock(true), defaultBuyInCents = 2000) {
       notice={null}
       onSend={onSend}
       onAskHost={vi.fn()}
+      requestIds={createChipsRequestIds()}
     />
   );
   return onSend;
@@ -99,7 +101,7 @@ describe("Chips", () => {
 
     fireEvent.click(within(picker).getByRole("button", { name: /Jon/ }));
     fireEvent.click(screen.getByRole("button", { name: "$20" }));
-    expect(screen.getByText("You give Jon $20 in chips. Jon will owe you $20 at settle-up.")).toBeInTheDocument();
+    expect(screen.getByText("You give Jon $20 in chips. You'll get that back at settle-up.")).toBeInTheDocument();
     expect(screen.getByText("Nothing is recorded until Jon confirms.")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Send to Jon to confirm" }));
@@ -113,12 +115,12 @@ describe("Chips", () => {
     });
   });
 
-  it("sends a buy, saying who owes whom, and the host confirms for a seat with no phone", async () => {
+  it("sends a buy, saying who pays for the chips, and the host confirms for a seat with no phone", async () => {
     const onSend = renderChips();
     fireEvent.click(screen.getByRole("button", { name: "Buy from" }));
     fireEvent.click(screen.getByRole("button", { name: /Dev/ }));
     fireEvent.change(screen.getByRole("textbox", { name: "Amount" }), { target: { value: "15" } });
-    expect(screen.getByText("You get $15 in chips from Dev. You'll owe Dev $15 at settle-up.")).toBeInTheDocument();
+    expect(screen.getByText("You get $15 in chips from Dev. You'll pay for them at settle-up.")).toBeInTheDocument();
     expect(screen.getByText(/Dev has no phone here, so nothing is recorded until the host confirms/)).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Send to Dev to confirm" }));
@@ -165,6 +167,74 @@ describe("Chips", () => {
     expect(ids[2]).not.toBe(ids[0]);
   });
 
+  it("asks to pick again when the witness or player picked has left the table", async () => {
+    const onSend = sendMock(true);
+    const { rerender } = render(
+      <ChipsTab
+        me={maya}
+        players={players.filter((player) => player.id !== priya.id)}
+        summaryByPlayerId={new Map()}
+        seats={seats}
+        defaultBuyInCents={2000}
+        ended={false}
+        notice={null}
+        initialDraft={{ kind: "bank", witnessPlayerId: priya.id, amountCents: 4000 }}
+        onSend={onSend}
+        onAskHost={vi.fn()}
+        requestIds={createChipsRequestIds()}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("isn’t at the table any more. Pick who saw it.");
+    // Never quietly "anyone".
+    expect(screen.getByRole("button", { name: "Anyone at the table" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Ask for a witness" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Anyone at the table" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Ask for a witness" }));
+    });
+    expect(onSend.mock.calls[0]![0]).not.toHaveProperty("witnessPlayerId");
+
+    rerender(
+      <ChipsTab
+        key="give"
+        me={maya}
+        players={players.filter((player) => player.id !== jon.id)}
+        summaryByPlayerId={new Map()}
+        seats={seats}
+        defaultBuyInCents={2000}
+        ended={false}
+        notice={null}
+        initialDraft={{ kind: "give", counterpartyPlayerId: jon.id, amountCents: 2000 }}
+        onSend={onSend}
+        onAskHost={vi.fn()}
+        requestIds={createChipsRequestIds()}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("The player you picked isn’t at the table any more. Pick again.");
+    expect(screen.getByRole("button", { name: "Send to confirm" })).toBeDisabled();
+  });
+
+  it("moves focus to the form when opened to resend an entry", () => {
+    render(
+      <ChipsTab
+        me={maya}
+        players={players}
+        summaryByPlayerId={new Map()}
+        seats={seats}
+        defaultBuyInCents={2000}
+        ended={false}
+        notice={null}
+        initialDraft={{ kind: "buy", counterpartyPlayerId: jon.id, amountCents: 1000, resendOf: "agreement_1" as never }}
+        focusOnOpen
+        onSend={sendMock(true)}
+        onAskHost={vi.fn()}
+        requestIds={createChipsRequestIds()}
+      />
+    );
+    expect(screen.getByRole("heading", { name: "Buy from who?" })).toHaveFocus();
+  });
+
   it("starts from a bounced entry being resent", () => {
     render(
       <ChipsTab
@@ -178,11 +248,12 @@ describe("Chips", () => {
         initialDraft={{ kind: "buy", counterpartyPlayerId: jon.id, amountCents: 1000 }}
         onSend={vi.fn(async () => true)}
         onAskHost={vi.fn()}
+        requestIds={createChipsRequestIds()}
       />
     );
     expect(screen.getByRole("button", { name: "Buy from" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("textbox", { name: "Amount" })).toHaveValue("10");
-    expect(screen.getByText("You get $10 in chips from Jon. You'll owe Jon $10 at settle-up.")).toBeInTheDocument();
+    expect(screen.getByText("You get $10 in chips from Jon. You'll pay for them at settle-up.")).toBeInTheDocument();
   });
 });
 
@@ -197,12 +268,12 @@ describe("Inbox", () => {
     const handlers = renderInbox({ needsMe: [agreement({ kind: "buy" })] }, { status: "recorded", reason: null });
     const card = screen.getByRole("article", { name: "Jon bought $20 in chips from you" });
     expect(within(card).getByText("From Jon · Buy from")).toBeInTheDocument();
-    expect(within(card).getByText(/Jon will owe you \$20 at settle-up\./)).toBeInTheDocument();
+    expect(within(card).getByText(/You'll get that back at settle-up\./)).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(card).getByRole("button", { name: "Confirm" }));
     });
     expect(handlers.onAnswer).toHaveBeenCalledWith("agreement_1", "confirm");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
   it("asks a witness about a bank buy-in, and says so when someone else answered first", async () => {
@@ -331,7 +402,7 @@ describe("host Needs you", () => {
     // The expired entry is left out of the list and the count.
     expect(within(section).getByText("4")).toBeInTheDocument();
     const seatItem = within(section).getByRole("article", { name: "Jon gave Dev $20 in chips" });
-    expect(within(seatItem).getByText("for Dev (no phone)")).toBeInTheDocument();
+    expect(within(seatItem).getByText("for Dev (no phone when sent)")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(seatItem).getByRole("button", { name: "Confirm" }));
     });
@@ -362,7 +433,7 @@ describe("host Needs you", () => {
   });
 });
 
-describe("settle-later balances", () => {
+describe("a player's chip moves", () => {
   const tx = (overrides: Partial<Transaction>): Transaction => ({
     id: `t_${Math.random()}`,
     type: "player_gave",
@@ -371,15 +442,48 @@ describe("settle-later balances", () => {
     ...overrides
   });
 
-  it("nets what each other player and you owe each other, leaving out voided entries and even pairs", () => {
-    const balances = settleLaterBalances(maya.id, [
+  it("lists bank buy-ins, covered buy-ins, and chips to and from players as facts, leaving out debts and voids", () => {
+    const moves = playerChipMoves(maya.id, [
+      tx({ type: "bank_buy_in", toPlayerId: maya.id }),
+      tx({ type: "bank_buy_in", toPlayerId: maya.id, amountCents: 2000 }),
+      tx({ type: "bank_buy_in", toPlayerId: maya.id, coveredByPlayerId: priya.id, amountCents: 1000 }),
       tx({ fromPlayerId: jon.id, toPlayerId: maya.id }),
       tx({ fromPlayerId: maya.id, toPlayerId: dev.id, amountCents: 1500 }),
-      tx({ fromPlayerId: maya.id, toPlayerId: priya.id }),
-      tx({ fromPlayerId: priya.id, toPlayerId: maya.id }),
       tx({ fromPlayerId: dev.id, toPlayerId: maya.id, voidedAt: "2026-05-10T00:05:00.000Z" }),
-      tx({ type: "player_owes", fromPlayerId: maya.id, toPlayerId: jon.id, amountCents: 500 })
+      tx({ type: "player_owes", fromPlayerId: maya.id, toPlayerId: jon.id, amountCents: 500 }),
+      tx({ type: "debt_coverage", coveredPlayerId: maya.id, coveredByPlayerId: jon.id, amountCents: 700 }),
+      // Someone else's buy-in Maya paid for isn't a chip move of hers.
+      tx({ type: "bank_buy_in", toPlayerId: jon.id, coveredByPlayerId: maya.id })
     ]);
-    expect(Object.fromEntries(balances)).toEqual({ [jon.id]: -2500, [dev.id]: 1500 });
+    expect(moves).toEqual([
+      { kind: "bank", amountCents: 4000 },
+      { kind: "covered", amountCents: 1000, otherPlayerId: priya.id },
+      { kind: "got", amountCents: 2000, otherPlayerId: jon.id },
+      { kind: "gave", amountCents: 1500, otherPlayerId: dev.id }
+    ]);
+  });
+});
+
+describe("settle-up wording", () => {
+  it("never says who pays whom, only that taken chips are paid for and given ones come back", () => {
+    renderInbox({
+      needsMe: [agreement({ kind: "give" }), agreement({ id: "agreement_buy" as never, kind: "buy" })]
+    });
+    // Jon gave Maya chips: she pays for them. Jon bought from Maya: she gets them back.
+    expect(within(screen.getByRole("article", { name: "Jon gave you $20 in chips" })).getByText(/You'll pay for them at settle-up\./)).toBeInTheDocument();
+    expect(within(screen.getByRole("article", { name: "Jon bought $20 in chips from you" })).getByText(/You'll get that back at settle-up\./)).toBeInTheDocument();
+    expect(screen.queryByText(/owe/)).not.toBeInTheDocument();
+    // Someone else (the host) reads who pays for the chips, not whom they pay.
+    expect(agreementSettleLine(agreement({ kind: "give" }), null)).toBe("Maya pays for them at settle-up.");
+    expect(agreementSettleLine(agreement({ kind: "buy" }), null)).toBe("Jon pays for them at settle-up.");
+  });
+
+  it("tells the host a Record anyway found the entry already dismissed", () => {
+    expect(closedNotice({ status: "bounced", reason: null }, "recorded", "resolve")).toBe(
+      "That entry was already dismissed and sent back to the player."
+    );
+    expect(closedNotice({ status: "bounced", reason: null }, "recorded", "answer")).toBe(
+      "Someone already said that one wasn't right."
+    );
   });
 });

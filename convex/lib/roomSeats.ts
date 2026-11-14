@@ -26,6 +26,14 @@ function hostReleasedSeats(room: Pick<Doc<"rooms">, "releasedSeatPlayerIds">): s
   return room.releasedSeatPlayerIds ?? [];
 }
 
+/**
+ * Seats the host released this one phone from under the older per-phone rule
+ * (roomGuests.hostReleasedPlayerIds), still honoured for rooms that have them.
+ */
+function legacyReleasedSeats(guest: Pick<Doc<"roomGuests">, "hostReleasedPlayerIds"> | undefined): string[] {
+  return guest?.hostReleasedPlayerIds ?? [];
+}
+
 /** The room's active players in seat order: the seats a phone can claim. */
 export function activeSeatPlayers(room: Pick<Doc<"rooms">, "state">): Player[] {
   const players = (room.state as GameState | undefined)?.players ?? [];
@@ -80,7 +88,9 @@ const releasedClaim = {
  */
 export async function cancelClaimAgreements(ctx: MutationCtx, guest: Doc<"roomGuests">) {
   await cancelGuestAgreements(ctx, guest._id, "seat_lost");
-  if (guest.playerId !== undefined) await cancelSeatAgreements(ctx, guest.roomId, guest.playerId);
+  if (guest.playerId !== undefined) {
+    await cancelSeatAgreements(ctx, guest.roomId, guest.playerId, { heldBy: guest._id });
+  }
 }
 
 /** Takes a guest off their seat, closing the agreements that claim stood behind. */
@@ -115,8 +125,16 @@ export async function releaseChangedSeats(
   room: Doc<"rooms">,
   before: GameState,
   after: GameState
-): Promise<string | undefined> {
+): Promise<{ hostPlayerId: string | undefined; releasedSeatPlayerIds: string[] | undefined }> {
   const afterById = new Map(after.players.map((player) => [player.id, player]));
+  // A renamed, relinked, or removed player is a new person, so the host's
+  // release of their seat no longer applies.
+  const released = room.releasedSeatPlayerIds?.filter((playerId) => {
+    const was = before.players.find((player) => player.id === playerId);
+    const next = afterById.get(playerId);
+    return was !== undefined && next !== undefined &&
+      next.name === was.name && (next.personId ?? null) === (was.personId ?? null);
+  });
   for (const player of before.players) {
     const next = afterById.get(player.id);
     const isActive = next?.isActive === true;
@@ -135,8 +153,9 @@ export async function releaseChangedSeats(
     // Entries aimed at this seat were meant for the player as they were.
     await cancelSeatAgreements(ctx, room._id, player.id);
   }
-  if (room.hostPlayerId !== undefined && !afterById.get(room.hostPlayerId)?.isActive) return undefined;
-  return room.hostPlayerId;
+  const hostPlayerId =
+    room.hostPlayerId !== undefined && afterById.get(room.hostPlayerId)?.isActive ? room.hostPlayerId : undefined;
+  return { hostPlayerId, releasedSeatPlayerIds: released };
 }
 
 /** Live claims of the room's good-standing guests, keyed by seat. */
@@ -168,14 +187,18 @@ export async function seatOptions(
   const claims = await seatClaims(ctx, room);
   const hostPlayerId = liveHostPlayerId(room);
   const released = new Set(hostReleasedSeats(room));
+  const releasedFromViewer = new Set(legacyReleasedSeats(viewer));
   return activeSeatPlayers(room).map((player) => {
     const holder = claims.get(player.id);
+    const blocked =
+      (released.has(player.id) && holder === undefined) ||
+      (releasedFromViewer.has(player.id) && holder?._id !== viewer?._id);
     return {
       playerId: player.id,
       name: player.name,
       claimed: holder !== undefined && holder._id !== viewer?._id,
       isHost: player.id === hostPlayerId,
-      ...(released.has(player.id) && holder === undefined ? { releasedByHost: true } : {})
+      ...(blocked ? { releasedByHost: true } : {})
     };
   });
 }
@@ -253,7 +276,12 @@ export async function claimSeatForGuest(
     fail("INVALID_ARGUMENT", "This guest no longer has access to the room.");
   }
   const released = hostReleasedSeats(room);
-  if (!byHost && released.includes(playerId) && liveSeatOf(room, guest) !== playerId) {
+  const legacyReleased = legacyReleasedSeats(guest);
+  if (
+    !byHost &&
+    (released.includes(playerId) || legacyReleased.includes(playerId)) &&
+    liveSeatOf(room, guest) !== playerId
+  ) {
     fail("SEAT_TAKEN", "The host released that seat. Ask the host to move you there.");
   }
   const player = await requireOpenSeat(ctx, room, playerId, guest._id);
@@ -269,7 +297,11 @@ export async function claimSeatForGuest(
     claimedName: player.name,
     claimedPersonId: player.personId,
     displayName: seatDisplayName(player),
-    seatLost: undefined
+    seatLost: undefined,
+    // The host's Move lifts an older per-phone release too.
+    ...(byHost && legacyReleased.includes(playerId)
+      ? { hostReleasedPlayerIds: legacyReleased.filter((id) => id !== playerId) }
+      : {})
   });
   return seatDisplayName(player);
 }

@@ -7,7 +7,8 @@ import {
   agreementTime,
   bouncedByLine,
   closedNotice,
-  isExpired
+  isExpired,
+  type AgreementRequest
 } from "./guestPlay/agreementText";
 import { useNow } from "./guestPlay/useNow";
 
@@ -47,6 +48,7 @@ export function HostAgreementNeeds({
   async function run(
     agreementId: Id<"roomAgreements">,
     expected: AgreementStatus,
+    kind: AgreementRequest,
     request: () => Promise<AgreementResult | null>
   ) {
     if (busy.has(agreementId)) return;
@@ -58,7 +60,7 @@ export function HostAgreementNeeds({
       next.delete(agreementId);
       return next;
     });
-    if (result) setNotice(closedNotice(result, expected));
+    if (result) setNotice(closedNotice(result, expected, kind));
   }
 
   return (
@@ -71,7 +73,7 @@ export function HostAgreementNeeds({
       {answer.map((agreement) => {
         const bank = agreement.kind === "bank";
         const label = agreement.answerAs === "seat"
-          ? `for ${agreement.counterpartyName ?? "a player"} (no phone)`
+          ? `for ${agreement.counterpartyName ?? "a player"} (no phone when sent)`
           : answerLabels[agreement.answerAs];
         const viewer = agreement.answerAs === "self" ? hostPlayerId : null;
         return (
@@ -86,7 +88,7 @@ export function HostAgreementNeeds({
                 className="text-button"
                 type="button"
                 disabled={busy.has(agreement.id)}
-                onClick={() => void run(agreement.id, "bounced", () => onAnswer(agreement.id, "not_right"))}
+                onClick={() => void run(agreement.id, "bounced", "answer", () => onAnswer(agreement.id, "not_right"))}
               >
                 {bank ? "I didn't see it" : "Not right"}
               </button>
@@ -94,7 +96,7 @@ export function HostAgreementNeeds({
                 className="primary-button"
                 type="button"
                 disabled={busy.has(agreement.id)}
-                onClick={() => void run(agreement.id, "recorded", () => onAnswer(agreement.id, "confirm"))}
+                onClick={() => void run(agreement.id, "recorded", "answer", () => onAnswer(agreement.id, "confirm"))}
               >
                 {bank ? "I saw it" : "Confirm"}
               </button>
@@ -114,7 +116,7 @@ export function HostAgreementNeeds({
               className="text-button"
               type="button"
               disabled={busy.has(agreement.id)}
-              onClick={() => void run(agreement.id, "bounced", () => onResolve(agreement.id, "dismiss"))}
+              onClick={() => void run(agreement.id, "bounced", "resolve", () => onResolve(agreement.id, "dismiss"))}
             >
               Dismiss
             </button>
@@ -122,7 +124,7 @@ export function HostAgreementNeeds({
               className="primary-button"
               type="button"
               disabled={busy.has(agreement.id)}
-              onClick={() => void run(agreement.id, "recorded", () => onResolve(agreement.id, "record"))}
+              onClick={() => void run(agreement.id, "recorded", "resolve", () => onResolve(agreement.id, "record"))}
             >
               Record anyway
             </button>
