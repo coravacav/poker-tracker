@@ -13,6 +13,7 @@ import type { GameState, Player } from "../../src/domain/pokerTypes";
 import { MAX_ROOM_GUEST_RECORDS, MAX_ROOM_GUESTS } from "../../src/session/roomProtocol";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { cancelGuestAgreements } from "./agreementCleanup";
 import { requireGuest, requireHost } from "./roomAccess";
 import { fail } from "./roomErrors";
 
@@ -68,6 +69,19 @@ const releasedClaim = {
   claimedPersonId: undefined
 };
 
+/**
+ * Takes a guest off their seat. Their open proposals were made from that seat,
+ * so they are cancelled with it.
+ */
+async function releaseClaim(
+  ctx: MutationCtx,
+  guestId: Id<"roomGuests">,
+  extra: Partial<Doc<"roomGuests">>
+) {
+  await ctx.db.patch(guestId, { ...releasedClaim, ...extra });
+  await cancelGuestAgreements(ctx, guestId, "seat_lost");
+}
+
 /** Good-standing guests with a claim (live or not) on a seat. */
 async function claimsOn(ctx: QueryCtx | MutationCtx, room: Doc<"rooms">, playerId: string) {
   return (await ctx.db
@@ -105,7 +119,7 @@ export async function releaseChangedSeats(
       (next.personId ?? null) === (player.personId ?? null);
     if (unchanged) continue;
     for (const guest of await claimsOn(ctx, room, player.id)) {
-      await ctx.db.patch(guest._id, { ...releasedClaim, seatLost: "changed" });
+      await releaseClaim(ctx, guest._id, { seatLost: "changed" });
     }
   }
   if (room.hostPlayerId !== undefined && !afterById.get(room.hostPlayerId)?.isActive) return undefined;
@@ -201,7 +215,7 @@ async function requireOpenSeat(
   for (const guest of await claimsOn(ctx, room, playerId)) {
     if (guest._id === guestId) continue;
     if (samePerson(player, guest)) fail("SEAT_TAKEN", "Someone else just took that seat. Pick another.");
-    await ctx.db.patch(guest._id, { ...releasedClaim, seatLost: "changed" });
+    await releaseClaim(ctx, guest._id, { seatLost: "changed" });
   }
   return player;
 }
@@ -228,6 +242,10 @@ export async function claimSeatForGuest(
   }
   const player = await requireOpenSeat(ctx, room, playerId, guest._id);
   const keepClaimedAt = liveSeatOf(room, guest) === playerId;
+  // Moving seats: proposals made from the old seat no longer stand.
+  if (!keepClaimedAt && guest.playerId !== undefined) {
+    await cancelGuestAgreements(ctx, guest._id, "seat_lost");
+  }
   await ctx.db.patch(guest._id, {
     playerId,
     claimedAt: keepClaimedAt ? guest.claimedAt : Date.now(),
@@ -274,8 +292,7 @@ export async function releaseRoomSeat(
     fail("INVALID_ARGUMENT", "That phone is no longer in that seat.");
   }
   const released = (guest.hostReleasedPlayerIds ?? []).filter((id) => id !== args.playerId);
-  await ctx.db.patch(guest._id, {
-    ...releasedClaim,
+  await releaseClaim(ctx, guest._id, {
     seatLost: "released",
     hostReleasedPlayerIds: [...released, args.playerId].slice(-MAX_HOST_RELEASED_SEATS)
   });
@@ -308,7 +325,7 @@ export async function setRoomHostPlayer(
       if (samePerson(player, guest)) {
         fail("SEAT_TAKEN", `${seatDisplayName(player)}'s phone holds that seat. Release it first.`);
       }
-      await ctx.db.patch(guest._id, { ...releasedClaim, seatLost: "changed" });
+      await releaseClaim(ctx, guest._id, { seatLost: "changed" });
     }
   }
   await ctx.db.patch(room._id, {

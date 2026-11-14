@@ -5,6 +5,7 @@ import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { publicHostProfile } from "./friendDiscovery";
 import { requireGuest, requireHost } from "./roomAccess";
+import { guestAgreements, hostAgreements } from "./roomAgreementViews";
 import { activityForRecipient, HOST_RECIPIENT_KEY } from "./roomNotifications";
 import { onlineWatchers, presence, watchLinkId } from "./roomPresence";
 import { guestShownName, hostSeats, liveHostPlayerId, liveSeatOf, seatOptions } from "./roomSeats";
@@ -93,7 +94,9 @@ export async function guestRoomView(
       seatPlayerId: liveSeatOf(room, guest),
       seatLost: guest.seatLost ?? null,
       seats: await seatOptions(ctx, room, guest),
-      guestRequests: await guestRequestsForGuest(ctx, guest)
+      guestRequests: await guestRequestsForGuest(ctx, guest),
+      peerConfirm: room.peerConfirm === true,
+      agreements: await guestAgreements(ctx, room, guest)
     }
   );
 }
@@ -153,6 +156,8 @@ export async function hostRoomView(
     hostNotPlaying: room.hostNotPlaying === true,
     seats: await hostSeats(ctx, room, onlineGuestIds),
     guestRequests: await pendingGuestRequests(ctx, room),
+    peerConfirm: room.peerConfirm === true,
+    needsHost: await hostAgreements(ctx, room),
     controllerStatus:
       room.hostControllerId === args.controllerId
         ? ("active" as const)

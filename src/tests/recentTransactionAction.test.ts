@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Transaction } from "../domain/pokerTypes";
 import {
   getLatestTransactionAction,
+  getUndoableTransactionAction,
   isRecentTransactionAction
 } from "../domain/recentTransactionAction";
 
@@ -120,5 +121,23 @@ describe("recent transaction actions", () => {
     expect(isRecentTransactionAction(action, occurredAtMs + 29_999)).toBe(true);
     expect(isRecentTransactionAction(action, occurredAtMs + 30_000)).toBe(false);
     expect(isRecentTransactionAction(action, occurredAtMs - 1)).toBe(false);
+  });
+
+  it("never offers Undo for an entry players agreed on, but still for its void", () => {
+    const agreed = buyIn({
+      id: "agreed",
+      proposedByPlayerId: "player",
+      confirmedByPlayerId: "other",
+      agreementId: "agreement_1",
+      confirmedVia: "peer"
+    });
+    expect(getUndoableTransactionAction([agreed])).toBeNull();
+    const voided = { ...agreed, voidedAt: "2026-05-10T00:00:05.000Z", voidReason: "Wrong" };
+    expect(getUndoableTransactionAction([voided])).toEqual({
+      kind: "void",
+      transactionId: "agreed",
+      occurredAt: "2026-05-10T00:00:05.000Z"
+    });
+    expect(getUndoableTransactionAction([buyIn({ id: "plain" })])).toMatchObject({ kind: "create" });
   });
 });

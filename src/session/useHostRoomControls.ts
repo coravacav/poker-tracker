@@ -5,7 +5,7 @@ import { createCapability, createInviteUrl } from "./capabilities";
 import { roomErrorMessage } from "./convexRoomTransport";
 import { getHostControllerId, loadHostRecovery, saveHostRecovery } from "./sessionPersistence";
 import type { HostState, SessionState } from "./sessionState";
-import type { HostRecovery, RoomTransport } from "./types";
+import type { AgreementResult, HostRecovery, RoomTransport } from "./types";
 
 type HostingState = HostState & { mode: "hosting"; recovery: HostRecovery };
 
@@ -157,8 +157,61 @@ export function useHostRoomControls(
     await runHostAction(publicId, () => setSeat({ publicId, hostSecret, playerId }));
   }, [runHostAction, transport]);
 
+  /** Turns "Players confirm each other" on or off (off cancels open proposals). */
+  const setPeerConfirm = useCallback(async (on: boolean) => {
+    const current = sessionRef.current;
+    const send = transport.setPeerConfirm;
+    if (current.mode !== "hosting" || !current.recovery || !send) return;
+    const { publicId, hostSecret } = current.recovery;
+    await runHostAction(publicId, () => send({ publicId, hostSecret, on }));
+  }, [runHostAction, transport]);
+
+  /**
+   * Runs one agreement request as the controlling host tab; resolves to its
+   * result, or null after showing why it failed.
+   */
+  const runAgreementRequest = useCallback(async (
+    request: (host: { publicId: string; hostSecret: string; controllerId: string }) => Promise<AgreementResult>
+  ): Promise<AgreementResult | null> => {
+    const current = sessionRef.current;
+    if (current.mode !== "hosting" || !current.recovery) return null;
+    const { publicId, hostSecret } = current.recovery;
+    let value: AgreementResult | null = null;
+    await runHostAction(publicId, async () => {
+      value = await request({
+        publicId,
+        hostSecret,
+        controllerId: getHostControllerId(() => createCapability(18))
+      });
+    });
+    return value;
+  }, [runHostAction]);
+
+  /** Answers for the host's seat, a seat with no phone, or a bank buy-in. */
+  const answerAgreement = useCallback(async (
+    agreementId: Id<"roomAgreements">,
+    answer: "confirm" | "not_right"
+  ) => {
+    const send = transport.hostAnswerAgreement;
+    if (!send) return null;
+    return await runAgreementRequest((host) => send({ ...host, agreementId, answer }));
+  }, [runAgreementRequest, transport]);
+
+  /** Dismiss a bounced entry, or Record anyway. */
+  const resolveBouncedAgreement = useCallback(async (
+    agreementId: Id<"roomAgreements">,
+    decision: "dismiss" | "record"
+  ) => {
+    const send = transport.hostResolveBounced;
+    if (!send) return null;
+    return await runAgreementRequest((host) => send({ ...host, agreementId, decision }));
+  }, [runAgreementRequest, transport]);
+
   return {
     claimHost,
+    setPeerConfirm,
+    answerAgreement,
+    resolveBouncedAgreement,
     releaseSeat,
     assignSeat,
     setHostPlayer,

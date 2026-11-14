@@ -5,6 +5,7 @@ import {
 import type { GameState, Transaction } from "../../domain/pokerTypes";
 import {
   getLatestTransactionAction,
+  isAgreedTransaction,
   isRecentTransactionAction
 } from "../../domain/recentTransactionAction";
 import type { RecentTransactionAction } from "../../domain/recentTransactionAction";
@@ -189,6 +190,11 @@ export function reduceTransactionAction(state: GameState, action: TransactionAct
         (transaction) => transaction.id === action.action.transactionId
       );
       if (!target) {
+        return state;
+      }
+
+      // Another player confirmed an agreed entry; the host voids it instead.
+      if (action.action.kind === "create" && isAgreedTransaction(target)) {
         return state;
       }
 

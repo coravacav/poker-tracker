@@ -70,7 +70,68 @@ export const guestRoomValidator = publicRoomValidator.extend({
   seatLost: v.union(v.literal("released"), v.literal("changed"), v.null()),
   seats: v.array(seatOptionValidator)
 });
+export const agreementStatusValidator = v.union(
+  v.literal("open"),
+  v.literal("bounced"),
+  v.literal("cancelled"),
+  v.literal("expired"),
+  v.literal("dismissed"),
+  v.literal("recorded")
+);
+export const agreementClosedReasonValidator = v.union(
+  v.literal("proposer"),
+  v.literal("seat_lost"),
+  v.literal("revoked"),
+  v.literal("ended"),
+  v.literal("peer_confirm_off"),
+  v.literal("invalid")
+);
+/** What an answer, cancel, or dismiss did to an agreement. */
+export const agreementResultValidator = v.object({
+  status: agreementStatusValidator,
+  reason: v.union(agreementClosedReasonValidator, v.null())
+});
+/** One agreed (or proposed) entry, with player names from the room's game. */
+export const agreementViewValidator = v.object({
+  id: v.id("roomAgreements"),
+  kind: v.union(v.literal("give"), v.literal("buy"), v.literal("bank")),
+  amountCents: v.number(),
+  note: v.union(v.string(), v.null()),
+  proposerPlayerId: v.string(),
+  proposerName: v.string(),
+  counterpartyPlayerId: v.union(v.string(), v.null()),
+  counterpartyName: v.union(v.string(), v.null()),
+  witnessPlayerId: v.union(v.string(), v.null()),
+  witnessName: v.union(v.string(), v.null()),
+  status: agreementStatusValidator,
+  closedReason: v.union(agreementClosedReasonValidator, v.null()),
+  bounceReason: v.union(v.string(), v.null()),
+  /** Bounced by the host (not a player), so it isn't in the host's Needs you. */
+  bouncedByHost: v.boolean(),
+  createdAt: v.number(),
+  /** Open entries expire then; the server flips them to "expired" shortly after. */
+  expiresAt: v.number(),
+  decidedAt: v.union(v.number(), v.null()),
+  confirmedByPlayerId: v.union(v.string(), v.null()),
+  confirmedByName: v.union(v.string(), v.null()),
+  confirmedVia: v.union(v.literal("peer"), v.literal("host"), v.null()),
+  transactionId: v.union(v.string(), v.null()),
+  /** The recorded entry was voided by the host since. */
+  voided: v.boolean()
+});
 export const guestViewValidator = guestRoomValidator.extend({
+  /** "Players confirm each other" is on: Chips entries go to other players, not the host. */
+  peerConfirm: v.boolean(),
+  agreements: v.object({
+    /** Open entries this guest can confirm (or say they saw), oldest first. */
+    needsMe: v.array(agreementViewValidator),
+    /** This guest's open proposals, newest first. */
+    mine: v.array(agreementViewValidator),
+    /** This guest's proposals someone said weren't right, until dismissed. */
+    bounced: v.array(agreementViewValidator),
+    /** The latest recorded entries this guest proposed, confirmed, or was the other player in. */
+    recentDone: v.array(agreementViewValidator)
+  }),
   guestRequests: v.array(v.object({
     id: v.id("roomGuestRequests"),
     transaction: v.any(),
@@ -139,6 +200,19 @@ export const hostRoomValidator = publicRoomValidator.extend({
       v.object({ id: v.id("roomGuests"), displayName: v.string(), connected: v.boolean() })
     )
   })),
+  peerConfirm: v.boolean(),
+  /** Agreements the host answers or settles. */
+  needsHost: v.object({
+    /**
+     * Open entries the host may answer: "self" for the host's own seat,
+     * "seat" for a seat with no phone, "bank" for any bank buy-in.
+     */
+    answer: v.array(agreementViewValidator.extend({
+      answerAs: v.union(v.literal("self"), v.literal("seat"), v.literal("bank"))
+    })),
+    /** Entries a player said weren't right: Dismiss or Record anyway. */
+    bounced: v.array(agreementViewValidator)
+  }),
   guestRequests: v.array(v.object({
     id: v.id("roomGuestRequests"),
     displayName: v.string(),

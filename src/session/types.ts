@@ -85,6 +85,81 @@ export type HostRoomProjection = RoomProjection & {
   hostNotPlaying?: boolean;
   /** Every active seat in seat order, with the phone holding it. */
   seats?: HostSeat[];
+  /** "Players confirm each other" is on; absent from older backends. */
+  peerConfirm?: boolean;
+  /** Agreements the host answers or settles; absent from older backends. */
+  needsHost?: HostAgreementNeeds;
+};
+
+export type AgreementKind = "give" | "buy" | "bank";
+export type AgreementStatus = "open" | "bounced" | "cancelled" | "expired" | "dismissed" | "recorded";
+export type AgreementClosedReason =
+  | "proposer"
+  | "seat_lost"
+  | "revoked"
+  | "ended"
+  | "peer_confirm_off"
+  | "invalid";
+
+/**
+ * An entry one seated player proposed and another confirms. give: the
+ * proposer gave the other player chips; buy: the proposer bought chips from
+ * them; bank: the proposer bought in from the bank, seen by another player.
+ */
+export type RoomAgreement = {
+  id: Id<"roomAgreements">;
+  kind: AgreementKind;
+  amountCents: number;
+  note: string | null;
+  proposerPlayerId: string;
+  proposerName: string;
+  counterpartyPlayerId: string | null;
+  counterpartyName: string | null;
+  /** bank only: the one player asked to see it, if the proposer named one. */
+  witnessPlayerId: string | null;
+  witnessName: string | null;
+  status: AgreementStatus;
+  closedReason: AgreementClosedReason | null;
+  bounceReason: string | null;
+  /** Turned back by the host rather than a player. */
+  bouncedByHost: boolean;
+  createdAt: number;
+  /** Open entries stop being answerable at this time. */
+  expiresAt: number;
+  decidedAt: number | null;
+  confirmedByPlayerId: string | null;
+  confirmedByName: string | null;
+  confirmedVia: "peer" | "host" | null;
+  transactionId: string | null;
+  /** The recorded entry was voided by the host since. */
+  voided: boolean;
+};
+
+/** A guest's Inbox buckets. */
+export type GuestAgreements = {
+  needsMe: RoomAgreement[];
+  mine: RoomAgreement[];
+  bounced: RoomAgreement[];
+  recentDone: RoomAgreement[];
+};
+
+export type HostAgreementNeeds = {
+  /** "self": the host's own seat; "seat": a seat with no phone; "bank": any bank buy-in. */
+  answer: (RoomAgreement & { answerAs: "self" | "seat" | "bank" })[];
+  /** Bounced by a player: Dismiss or Record anyway. */
+  bounced: RoomAgreement[];
+};
+
+export type AgreementResult = { status: AgreementStatus; reason: AgreementClosedReason | null };
+
+export type AgreementProposal = {
+  kind: AgreementKind;
+  amountCents: number;
+  /** give/buy: the other player's seat. */
+  counterpartyPlayerId?: string;
+  /** bank: optionally, the one player asked to see it. */
+  witnessPlayerId?: string;
+  note?: string;
 };
 
 /** A seat someone with the invitation can pick; `claimed` means another phone holds it. */
@@ -128,6 +203,9 @@ export type GuestRoomProjection = RoomProjection & {
   seatLost?: "released" | "changed" | null;
   seats?: SeatOption[];
   guestRequests?: GuestTransactionRequest[];
+  /** "Players confirm each other" is on; absent from older backends. */
+  peerConfirm?: boolean;
+  agreements?: GuestAgreements;
 };
 
 export type GuestTransactionRequest = {
@@ -193,6 +271,7 @@ export type RoomTransport = {
     friendCode?: string;
     profileOwnerSecret?: string;
     visibleToFriends?: boolean;
+    peerConfirm?: boolean;
   }) => Promise<RoomProjection>;
   getInvitePreview: (
     publicId: string,
@@ -284,6 +363,44 @@ export type RoomTransport = {
     hostSecret: string;
     spectatorSecret: string | null;
   }) => Promise<void>;
+  proposeAgreement?: (args: AgreementProposal & {
+    publicId: string;
+    guestSecret: string;
+    clientRequestId: string;
+  }) => Promise<Id<"roomAgreements">>;
+  /** Confirm / I saw it ("confirm"), or Not right / I didn't see it ("not_right"). */
+  answerAgreement?: (args: {
+    publicId: string;
+    guestSecret: string;
+    agreementId: Id<"roomAgreements">;
+    answer: "confirm" | "not_right";
+    reason?: string;
+  }) => Promise<AgreementResult>;
+  cancelAgreement?: (args: {
+    publicId: string;
+    guestSecret: string;
+    agreementId: Id<"roomAgreements">;
+  }) => Promise<AgreementResult>;
+  dismissAgreement?: (args: {
+    publicId: string;
+    guestSecret: string;
+    agreementId: Id<"roomAgreements">;
+  }) => Promise<AgreementResult>;
+  setPeerConfirm?: (args: { publicId: string; hostSecret: string; on: boolean }) => Promise<void>;
+  hostAnswerAgreement?: (args: {
+    publicId: string;
+    hostSecret: string;
+    controllerId: string;
+    agreementId: Id<"roomAgreements">;
+    answer: "confirm" | "not_right";
+  }) => Promise<AgreementResult>;
+  hostResolveBounced?: (args: {
+    publicId: string;
+    hostSecret: string;
+    controllerId: string;
+    agreementId: Id<"roomAgreements">;
+    decision: "dismiss" | "record";
+  }) => Promise<AgreementResult>;
   submitGuestTransaction: (args: {
     publicId: string;
     guestSecret: string;

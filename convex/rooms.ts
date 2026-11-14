@@ -17,6 +17,16 @@ import {
 } from "./lib/roomGuests";
 import { claimRoomHost, createRoom, endRoom, setRoomFriendVisibility } from "./lib/roomHosting";
 import {
+  answerRoomAgreement,
+  cancelOwnRoomAgreement,
+  dismissOwnRoomAgreement,
+  expireRoomAgreement,
+  hostAnswerRoomAgreement,
+  hostResolveBouncedRoomAgreement,
+  proposeRoomAgreement,
+  setRoomPeerConfirm
+} from "./lib/roomAgreements";
+import {
   assignRoomSeat,
   claimRoomSeat,
   releaseRoomSeat,
@@ -34,6 +44,7 @@ import {
   acknowledgeHostNotificationsForRoom
 } from "./lib/roomNotifications";
 import {
+  agreementResultValidator,
   endResultValidator,
   guestRoomValidator,
   guestViewValidator,
@@ -56,7 +67,9 @@ export const create = mutation({
     controllerId: v.string(),
     friendCode: v.optional(v.string()),
     profileOwnerSecret: v.optional(v.string()),
-    visibleToFriends: v.optional(v.boolean())
+    visibleToFriends: v.optional(v.boolean()),
+    // "Players confirm each other"; absent (older clients) leaves it off.
+    peerConfirm: v.optional(v.boolean())
   },
   returns: publicRoomValidator,
   handler: createRoom
@@ -123,6 +136,60 @@ export const claimSeat = mutation({
   args: { publicId: v.string(), guestSecret: v.string(), playerId: v.string() },
   returns: v.null(),
   handler: claimRoomSeat
+});
+
+/**
+ * A seated guest proposes an entry another player confirms ("Players confirm
+ * each other" rooms only): give (I gave them chips), buy (I bought chips from
+ * them), or bank (I bought in; any other seated player, or the named witness,
+ * or the host says "I saw it"). Idempotent on clientRequestId.
+ */
+export const proposeAgreement = mutation({
+  args: {
+    publicId: v.string(),
+    guestSecret: v.string(),
+    kind: v.union(v.literal("give"), v.literal("buy"), v.literal("bank")),
+    amountCents: v.number(),
+    counterpartyPlayerId: v.optional(v.string()),
+    witnessPlayerId: v.optional(v.string()),
+    clientRequestId: v.string(),
+    note: v.optional(v.string())
+  },
+  returns: v.id("roomAgreements"),
+  handler: proposeRoomAgreement
+});
+
+/** The other player confirms (or, for bank, says "I saw it"); the entry is recorded at once. */
+export const confirmAgreement = mutation({
+  args: { publicId: v.string(), guestSecret: v.string(), agreementId: v.id("roomAgreements") },
+  returns: agreementResultValidator,
+  handler: (ctx, args) => answerRoomAgreement(ctx, { ...args, answer: "confirm" })
+});
+
+/** "Not right" / "I didn't see it": back to the proposer and into the host's Needs you. */
+export const bounceAgreement = mutation({
+  args: {
+    publicId: v.string(),
+    guestSecret: v.string(),
+    agreementId: v.id("roomAgreements"),
+    reason: v.optional(v.string())
+  },
+  returns: agreementResultValidator,
+  handler: (ctx, args) => answerRoomAgreement(ctx, { ...args, answer: "not_right" })
+});
+
+/** The proposer takes back an open proposal. */
+export const cancelAgreement = mutation({
+  args: { publicId: v.string(), guestSecret: v.string(), agreementId: v.id("roomAgreements") },
+  returns: agreementResultValidator,
+  handler: cancelOwnRoomAgreement
+});
+
+/** The proposer clears a bounced proposal from their Inbox. */
+export const dismissAgreement = mutation({
+  args: { publicId: v.string(), guestSecret: v.string(), agreementId: v.id("roomAgreements") },
+  returns: agreementResultValidator,
+  handler: dismissOwnRoomAgreement
 });
 
 export const heartbeat = mutation({
@@ -241,6 +308,49 @@ export const setHostPlayer = mutation({
   },
   returns: v.null(),
   handler: setRoomHostPlayer
+});
+
+/** Host: turns "Players confirm each other" on or off (off cancels open proposals). */
+export const setPeerConfirm = mutation({
+  args: { publicId: v.string(), hostSecret: v.string(), on: v.boolean() },
+  returns: v.null(),
+  handler: setRoomPeerConfirm
+});
+
+/**
+ * Host: answers an open agreement for the host's own seat, a seat no phone
+ * holds, or any bank buy-in. "not_right" sends it back to the proposer.
+ */
+export const hostConfirmAgreement = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    controllerId: v.string(),
+    agreementId: v.id("roomAgreements"),
+    answer: v.union(v.literal("confirm"), v.literal("not_right"))
+  },
+  returns: agreementResultValidator,
+  handler: hostAnswerRoomAgreement
+});
+
+/** Host: Dismiss a bounced entry, or Record anyway. */
+export const hostResolveBounced = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    controllerId: v.string(),
+    agreementId: v.id("roomAgreements"),
+    decision: v.union(v.literal("dismiss"), v.literal("record"))
+  },
+  returns: agreementResultValidator,
+  handler: hostResolveBouncedRoomAgreement
+});
+
+/** Expires an agreement nobody answered (scheduled when it is proposed). */
+export const expireAgreement = internalMutation({
+  args: { agreementId: v.id("roomAgreements") },
+  returns: v.null(),
+  handler: expireRoomAgreement
 });
 
 export const decideGuestTransaction = mutation({

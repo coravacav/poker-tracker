@@ -120,6 +120,28 @@ export function getLatestTransactionAction(
     : null;
 }
 
+/** An entry players agreed on in a shared room; the host voids it rather than undoing it. */
+export function isAgreedTransaction(transaction: Transaction | undefined): boolean {
+  return transaction?.agreementId !== undefined;
+}
+
+/**
+ * The latest action Undo may reverse: never the creation of an agreed entry,
+ * which another player confirmed and the host can only void.
+ */
+export function getUndoableTransactionAction(
+  transactions: Transaction[]
+): RecentTransactionAction | null {
+  const latest = getLatestTransactionAction(transactions);
+  if (
+    latest?.kind === "create" &&
+    isAgreedTransaction(transactions.find((transaction) => transaction.id === latest.transactionId))
+  ) {
+    return null;
+  }
+  return latest;
+}
+
 export function isRecentTransactionAction(
   action: RecentTransactionAction,
   nowMs: number

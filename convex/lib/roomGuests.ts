@@ -11,6 +11,7 @@ import {
 } from "../../src/session/roomProtocol";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { cancelGuestAgreements } from "./agreementCleanup";
 import { hashSecret, sameHash, validIdentifier, validSecret } from "./capabilities";
 import { isDiscoverable, profileByFriendCode, publicHostProfile } from "./friendDiscovery";
 import { requireGuest, requireHost, roomByPublicId } from "./roomAccess";
@@ -326,5 +327,6 @@ export async function revokeRoomGuest(
   }
   // Also clears requests a guest revoked before this rule existed left behind.
   await rejectPendingGuestRequests(ctx, { guestId: guest._id }, now);
+  await cancelGuestAgreements(ctx, guest._id, "revoked", { includeBounced: true });
   return null;
 }

@@ -8,6 +8,7 @@ import {
 import { normalizeGameState, roomStateError } from "../../src/session/roomProtocol";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { cancelRoomAgreements } from "./agreementCleanup";
 import { hashSecret, validIdentifier, validSecret } from "./capabilities";
 import {
   creationLimiter,
@@ -39,6 +40,7 @@ export async function createRoom(
     friendCode?: string;
     profileOwnerSecret?: string;
     visibleToFriends?: boolean;
+    peerConfirm?: boolean;
   }
 ) {
   if (
@@ -125,6 +127,8 @@ export async function createRoom(
     joiningOpen: true,
     hostControllerId: args.controllerId,
     countedActive: true,
+    // Clients from before "Players confirm each other" leave it off.
+    ...(args.peerConfirm === true ? { peerConfirm: true } : {}),
     ...(hostProfile ? {
       hostProfileId: hostProfile._id,
       visibleToFriends: args.visibleToFriends ?? true
@@ -229,6 +233,7 @@ export async function endRoom(
   const endedAt = Date.now();
   await ctx.db.patch(room._id, { status: "ended", endedAt, lastActivityAt: endedAt });
   await rejectPendingGuestRequests(ctx, { roomId: room._id }, endedAt);
+  await cancelRoomAgreements(ctx, room._id, "ended", { includeBounced: true });
   await releaseActiveRoomSlot(ctx, room);
   if (room.hostProfileId) {
     await syncFriendRoomListing(ctx, { ...room, status: "ended" });

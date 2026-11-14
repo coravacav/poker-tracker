@@ -29,6 +29,10 @@ export default defineSchema({
     // The host said they aren't playing, so the share dialog stops asking
     // which seat is theirs. Cleared when they pick a seat.
     hostNotPlaying: v.optional(v.boolean()),
+    // "Players confirm each other": seated guests record give/buy/bank entries
+    // by agreeing between themselves (roomAgreements). Rooms the current
+    // client creates start with it on; absent means off (host approves).
+    peerConfirm: v.optional(v.boolean()),
     joiningOpen: v.optional(v.boolean()),
     hostControllerId: v.string(),
     hostProfileId: v.optional(v.id("friendProfiles")),
@@ -170,6 +174,63 @@ export default defineSchema({
     .index("by_room_id_and_status", ["roomId", "status"])
     .index("by_guest_id", ["guestId"])
     .index("by_guest_id_and_status", ["guestId", "status"]),
+
+  // An entry one seated guest proposed and another player confirms: "give"
+  // and "buy" are player_gave entries with the counterparty seat, "bank" is a
+  // bank_buy_in for the proposer that any other seated player (or the named
+  // witness, or the host) saw. Recorded by the server once confirmed; the
+  // host only steps in for seats with no phone and for bounced entries.
+  roomAgreements: defineTable({
+    roomId: v.id("rooms"),
+    kind: v.union(v.literal("give"), v.literal("buy"), v.literal("bank")),
+    amountCents: v.number(),
+    note: v.optional(v.string()),
+    proposerGuestId: v.id("roomGuests"),
+    proposerPlayerId: v.string(),
+    // give/buy: the other player's seat.
+    counterpartyPlayerId: v.optional(v.string()),
+    // bank: the one seat whose phone may say "I saw it" (the host can too).
+    witnessPlayerId: v.optional(v.string()),
+    status: v.union(
+      v.literal("open"),
+      v.literal("bounced"),
+      v.literal("cancelled"),
+      v.literal("expired"),
+      v.literal("dismissed"),
+      v.literal("recorded")
+    ),
+    // Why a cancelled entry was closed.
+    closedReason: v.optional(v.union(
+      v.literal("proposer"),
+      v.literal("seat_lost"),
+      v.literal("revoked"),
+      v.literal("ended"),
+      v.literal("peer_confirm_off"),
+      v.literal("invalid")
+    )),
+    bounceReason: v.optional(v.string()),
+    clientRequestId: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    // The guest who confirmed or bounced it, or the host.
+    decidedByGuestId: v.optional(v.id("roomGuests")),
+    decidedByHost: v.optional(v.boolean()),
+    confirmedByPlayerId: v.optional(v.string()),
+    confirmedVia: v.optional(v.union(v.literal("peer"), v.literal("host"))),
+    // The host dismissed a bounced entry; it stays bounced for the proposer.
+    hostDismissedAt: v.optional(v.number()),
+    appliedTransactionId: v.optional(v.string())
+  })
+    .index("by_room_id_and_status_and_kind", ["roomId", "status", "kind"])
+    .index("by_room_id_and_status_and_counterparty_player_id", [
+      "roomId",
+      "status",
+      "counterpartyPlayerId"
+    ])
+    .index("by_proposer_guest_id_and_status", ["proposerGuestId", "status"])
+    .index("by_proposer_guest_id_and_client_request_id", ["proposerGuestId", "clientRequestId"])
+    .index("by_decided_by_guest_id_and_status", ["decidedByGuestId", "status"]),
 
   // Browser errors reported by the app (see convex/clientErrors.ts), one row
   // per distinct error per build, counting repeats. No game data is stored.

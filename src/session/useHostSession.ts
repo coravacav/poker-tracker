@@ -227,6 +227,8 @@ export function useHostSession({
         hostSecret,
         inviteSecret,
         controllerId,
+        // New rooms let players confirm each other's chips.
+        peerConfirm: true,
         ...(friendProfile
           ? {
               friendCode: friendProfile.friendCode,

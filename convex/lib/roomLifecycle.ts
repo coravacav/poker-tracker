@@ -5,8 +5,9 @@
 //    profile pointer cleared, active-room slot released).
 // 2. Rooms ended or expired over 30 days ago have their details pruned
 //    (processed actions, audit events, notification cursors) and their guest
-//    records pruned (every guest request and revoked guest session; guests in
-//    good standing are kept so they can still review the room). Each room is
+//    records pruned (every guest request and agreement, and every revoked
+//    guest session; guests in good standing are kept so they can still review
+//    the room). Each room is
 //    marked with `detailsPrunedAt` / `guestRecordsPrunedAt` once drained, and
 //    its watch link is turned off, with the link's watcher presence removed by
 //    a scheduled batch job (internal.rooms.removeWatcherPresence).
@@ -266,6 +267,15 @@ async function pruneGuestRecords(ctx: MutationCtx, state: BatchState, roomId: Id
       ctx.db
         .query("roomGuestRequests")
         .withIndex("by_room_id_and_status", (index) => index.eq("roomId", roomId)),
+      "deletedRequests"
+    )) &&
+    (await deleteRows(
+      ctx,
+      state,
+      "roomAgreements",
+      ctx.db
+        .query("roomAgreements")
+        .withIndex("by_room_id_and_status_and_kind", (index) => index.eq("roomId", roomId)),
       "deletedRequests"
     )) &&
     // The index range excludes good-standing guests (revokedAt undefined sorts

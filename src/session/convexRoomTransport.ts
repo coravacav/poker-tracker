@@ -195,6 +195,40 @@ export const convexRoomTransport: RoomTransport = {
     const { client: convex, api } = await loadClient();
     await convex.mutation(api.rooms.rotateSpectatorLink, args);
   },
+  async proposeAgreement(args) {
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.proposeAgreement, request);
+  },
+  async answerAgreement({ answer, ...args }) {
+    const request = clean(args);
+    const { client: convex, api } = await loadClient();
+    if (answer === "confirm") {
+      const { reason: _reason, ...confirm } = request;
+      return await convex.mutation(api.rooms.confirmAgreement, confirm);
+    }
+    return await convex.mutation(api.rooms.bounceAgreement, request);
+  },
+  async cancelAgreement(args) {
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.cancelAgreement, args);
+  },
+  async dismissAgreement(args) {
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.dismissAgreement, args);
+  },
+  async setPeerConfirm(args) {
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.setPeerConfirm, args);
+  },
+  async hostAnswerAgreement(args) {
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.hostConfirmAgreement, args);
+  },
+  async hostResolveBounced(args) {
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.hostResolveBounced, args);
+  },
   async submitGuestTransaction(args) {
     const request = clean(args);
     const { client: convex, api } = await loadClient();

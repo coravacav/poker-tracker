@@ -8,7 +8,7 @@ import {
 } from "../../domain/ledger";
 import type { GameState } from "../../domain/pokerTypes";
 import { latestRepeatableTransaction } from "../../domain/quickEntry";
-import { getLatestTransactionAction } from "../../domain/recentTransactionAction";
+import { getUndoableTransactionAction } from "../../domain/recentTransactionAction";
 import { filterSettlementSummariesForDisplay } from "../../domain/settlement";
 
 /** Ledger figures derived from the game state for every app mode. */
@@ -59,7 +59,8 @@ export function useLedgerOverview(state: GameState) {
   );
 
   const recentTransactionAction = useMemo(
-    () => getLatestTransactionAction(state.transactions),
+    // Agreed entries are voided, never undone, so Undo doesn't offer them.
+    () => getUndoableTransactionAction(state.transactions),
     [state.transactions]
   );
   const repeatableTransaction = useMemo(
