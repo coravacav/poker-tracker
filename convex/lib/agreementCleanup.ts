@@ -9,12 +9,23 @@ import type { MutationCtx } from "../_generated/server";
 
 /** Open proposals one guest may have waiting at a time. */
 export const MAX_OPEN_AGREEMENTS_PER_GUEST = 10;
-/** Bounced proposals one guest may leave undismissed before proposing again. */
+/**
+ * Bounced proposals one guest may leave undismissed before proposing again.
+ * Each bounce comes from an open proposal, so a guest never has more than
+ * this plus MAX_OPEN_AGREEMENTS_PER_GUEST bounced at once.
+ */
 export const MAX_BOUNCED_AGREEMENTS_PER_GUEST = 10;
 /** Open (or bounced) agreements a room can hold across all of its guests. */
 export const MAX_ROOM_AGREEMENTS_PER_STATUS = MAX_ROOM_GUESTS * MAX_OPEN_AGREEMENTS_PER_GUEST;
 
 type ClosedReason = NonNullable<Doc<"roomAgreements">["closedReason"]>;
+
+/** Open, plus (with includeBounced) bounced and returned entries. */
+function statusesFor(options: { includeBounced?: boolean }) {
+  return options.includeBounced
+    ? (["open", "bounced", "returned"] as const)
+    : (["open"] as const);
+}
 
 async function cancelRows(
   ctx: MutationCtx,
@@ -39,16 +50,13 @@ export async function cancelGuestAgreements(
   options: { includeBounced?: boolean } = {}
 ) {
   const now = Date.now();
-  const statuses = options.includeBounced ? (["open", "bounced"] as const) : (["open"] as const);
-  for (const status of statuses) {
+  for (const status of statusesFor(options)) {
     const rows = await ctx.db
       .query("roomAgreements")
       .withIndex("by_proposer_guest_id_and_status", (index) =>
         index.eq("proposerGuestId", guestId).eq("status", status)
       )
-      .take(
-        status === "open" ? MAX_OPEN_AGREEMENTS_PER_GUEST * 2 : MAX_BOUNCED_AGREEMENTS_PER_GUEST * 2
-      );
+      .take(MAX_OPEN_AGREEMENTS_PER_GUEST + MAX_BOUNCED_AGREEMENTS_PER_GUEST);
     await cancelRows(ctx, rows, reason, now);
   }
 }
@@ -61,8 +69,7 @@ export async function cancelRoomAgreements(
   options: { includeBounced?: boolean } = {}
 ) {
   const now = Date.now();
-  const statuses = options.includeBounced ? (["open", "bounced"] as const) : (["open"] as const);
-  for (const status of statuses) {
+  for (const status of statusesFor(options)) {
     const rows = await ctx.db
       .query("roomAgreements")
       .withIndex("by_room_id_and_status_and_kind", (index) =>
@@ -71,4 +78,26 @@ export async function cancelRoomAgreements(
       .take(MAX_ROOM_AGREEMENTS_PER_STATUS * 2);
     await cancelRows(ctx, rows, reason, now);
   }
+}
+
+/**
+ * Cancels open agreements aimed at a seat (as the other player or the named
+ * witness) when that seat loses its phone or its player changes: whoever
+ * answers next would not be the person the proposer asked.
+ */
+export async function cancelSeatAgreements(ctx: MutationCtx, roomId: Id<"rooms">, playerId: string) {
+  const now = Date.now();
+  const aimed = await ctx.db
+    .query("roomAgreements")
+    .withIndex("by_room_id_and_status_and_counterparty_player_id", (index) =>
+      index.eq("roomId", roomId).eq("status", "open").eq("counterpartyPlayerId", playerId)
+    )
+    .take(MAX_ROOM_AGREEMENTS_PER_STATUS);
+  const witnessed = await ctx.db
+    .query("roomAgreements")
+    .withIndex("by_room_id_and_status_and_witness_player_id", (index) =>
+      index.eq("roomId", roomId).eq("status", "open").eq("witnessPlayerId", playerId)
+    )
+    .take(MAX_ROOM_AGREEMENTS_PER_STATUS);
+  await cancelRows(ctx, [...aimed, ...witnessed], "counterparty_seat_lost", now);
 }

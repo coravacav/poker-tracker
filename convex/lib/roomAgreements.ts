@@ -27,10 +27,16 @@ import {
   MAX_OPEN_AGREEMENTS_PER_GUEST
 } from "./agreementCleanup";
 import { validIdentifier } from "./capabilities";
+import { creationLimiter } from "./creationLimits";
 import { requireGuest, requireHost } from "./roomAccess";
 import { commitRoomAction } from "./roomActions";
 import { fail } from "./roomErrors";
-import { agreementPlayerName, hostAnswerRole, isActiveSeat } from "./roomAgreementViews";
+import {
+  agreementPlayerName,
+  guestAnswerBlock,
+  hostAnswerRole,
+  isActiveSeat
+} from "./roomAgreementViews";
 import { liveHostPlayerId, liveSeatOf, seatClaims } from "./roomSeats";
 
 /** How long a proposal waits for an answer before it expires. */
@@ -45,11 +51,20 @@ export type AgreementKind = Doc<"roomAgreements">["kind"];
 type Agreement = Doc<"roomAgreements">;
 type ClosedReason = NonNullable<Agreement["closedReason"]>;
 
-/** What a guest or host answer did: the entry's status afterwards, and why it closed. */
-export type AgreementResult = { status: Agreement["status"]; reason: ClosedReason | null };
+/**
+ * What a guest or host answer did: the entry's status afterwards, and why it
+ * closed. "returned" reads as "bounced", as it does in the views.
+ */
+export type AgreementResult = {
+  status: Exclude<Agreement["status"], "returned">;
+  reason: ClosedReason | null;
+};
 
 function result(agreement: Pick<Agreement, "status" | "closedReason">): AgreementResult {
-  return { status: agreement.status, reason: agreement.closedReason ?? null };
+  return {
+    status: agreement.status === "returned" ? "bounced" : agreement.status,
+    reason: agreement.closedReason ?? null
+  };
 }
 
 function requireActiveRoom(room: Doc<"rooms">) {
@@ -283,13 +298,16 @@ export async function proposeRoomAgreement(
   if (open.length >= MAX_OPEN_AGREEMENTS_PER_GUEST) {
     fail("ROOM_LIMIT_REACHED", "Wait for answers to your open entries first.");
   }
-  const bounced = await ctx.db
-    .query("roomAgreements")
-    .withIndex("by_proposer_guest_id_and_status", (index) =>
-      index.eq("proposerGuestId", guest._id).eq("status", "bounced")
-    )
-    .take(MAX_BOUNCED_AGREEMENTS_PER_GUEST);
-  if (bounced.length >= MAX_BOUNCED_AGREEMENTS_PER_GUEST) {
+  let bouncedCount = 0;
+  for (const status of ["bounced", "returned"] as const) {
+    bouncedCount += (await ctx.db
+      .query("roomAgreements")
+      .withIndex("by_proposer_guest_id_and_status", (index) =>
+        index.eq("proposerGuestId", guest._id).eq("status", status)
+      )
+      .take(MAX_BOUNCED_AGREEMENTS_PER_GUEST)).length;
+  }
+  if (bouncedCount >= MAX_BOUNCED_AGREEMENTS_PER_GUEST) {
     fail("ROOM_LIMIT_REACHED", "Clear your bounced entries first.");
   }
 
@@ -301,6 +319,16 @@ export async function proposeRoomAgreement(
   );
   if (checkError !== null) fail("INVALID_ARGUMENT", checkError);
 
+  // A propose/cancel loop can't flood the room with rows and expiry jobs. A
+  // retry with the same request id returned above without using a token.
+  const limit = await creationLimiter.limit(ctx, "agreementProposal", { key: guest._id });
+  if (!limit.ok) fail("ROOM_LIMIT_REACHED", "You're sending entries quickly. Try again in a few minutes.");
+
+  // Who may answer is fixed now: the phone on the counterparty (or named
+  // witness) seat at this moment, on this claim, or the host if none.
+  const answerSeat = counterpartyPlayerId ?? witnessPlayerId;
+  const holder = answerSeat === undefined ? undefined : (await seatClaims(ctx, room)).get(answerSeat);
+
   const now = Date.now();
   const agreementId = await ctx.db.insert("roomAgreements", {
     roomId: room._id,
@@ -311,6 +339,7 @@ export async function proposeRoomAgreement(
     proposerPlayerId,
     ...(counterpartyPlayerId !== undefined ? { counterpartyPlayerId } : {}),
     ...(witnessPlayerId !== undefined ? { witnessPlayerId } : {}),
+    ...(holder ? { seatGuestId: holder._id, seatClaimedAt: holder.claimedAt } : {}),
     status: "open",
     clientRequestId: args.clientRequestId,
     createdAt: now,
@@ -320,30 +349,32 @@ export async function proposeRoomAgreement(
   return agreementId;
 }
 
-/**
- * Why this guest can't answer (Confirm / I saw it, or Not right) an open
- * agreement, or null when they can: they hold the counterparty seat (give,
- * buy), or any other seat (bank, unless a different witness was named). The
- * proposer's own phone can never answer.
- */
+/** Why this guest can't answer an open agreement (see guestAnswerBlock), or null. */
 function guestAnswerError(
   state: GameState,
   agreement: Agreement,
   guest: Doc<"roomGuests">,
   seat: string | null
 ): string | null {
-  if (agreement.proposerGuestId === guest._id) return "You can't confirm your own entry.";
-  if (seat === null) return "Pick your seat first.";
-  if (agreement.kind !== "bank") {
-    return agreement.counterpartyPlayerId === seat
-      ? null
-      : `Only ${agreementPlayerName(state, agreement.counterpartyPlayerId)} can confirm this.`;
+  const name = (playerId: string | undefined) => agreementPlayerName(state, playerId);
+  switch (guestAnswerBlock(agreement, guest, seat)) {
+    case null:
+      return null;
+    case "own":
+      return "You can't confirm your own entry.";
+    case "no_seat":
+      return "Pick your seat first.";
+    case "not_counterparty":
+      return `Only ${name(agreement.counterpartyPlayerId)} can confirm this.`;
+    case "own_buy_in":
+      return "You can't confirm your own buy-in.";
+    case "not_witness":
+      return `${name(agreement.proposerPlayerId)} asked ${name(agreement.witnessPlayerId)} to see this.`;
+    case "host_answers":
+      return "No phone was in this seat when it was sent, so the host answers for it.";
+    case "claimed_later":
+      return "You took your seat after this was sent, so the host answers for it.";
   }
-  if (seat === agreement.proposerPlayerId) return "You can't confirm your own buy-in.";
-  if (agreement.witnessPlayerId !== undefined && agreement.witnessPlayerId !== seat) {
-    return `${agreementPlayerName(state, agreement.proposerPlayerId)} asked ${agreementPlayerName(state, agreement.witnessPlayerId)} to see this.`;
-  }
-  return null;
 }
 
 /** A guest's answer: "confirm" (Confirm / I saw it) or "not_right" (Not right / I didn't see it). */
@@ -410,7 +441,7 @@ export async function dismissOwnRoomAgreement(
   const { room, guest } = await requireGuest(ctx, args.publicId, args.guestSecret);
   const agreement = await requireAgreement(ctx, room, args.agreementId);
   if (agreement.proposerGuestId !== guest._id) fail("INVALID_ARGUMENT", "Only the player who sent this can dismiss it.");
-  if (agreement.status !== "bounced") return result(agreement);
+  if (agreement.status !== "bounced" && agreement.status !== "returned") return result(agreement);
   await ctx.db.patch(agreement._id, { status: "dismissed" });
   return { status: "dismissed", reason: null };
 }
@@ -443,8 +474,7 @@ export async function hostAnswerRoomAgreement(
   const agreement = await requireAgreement(ctx, room, args.agreementId);
   if (agreement.status !== "open") return result(agreement);
   const state = room.state as GameState;
-  const claims = await seatClaims(ctx, room);
-  const role = hostAnswerRole(room, agreement, new Set(claims.keys()));
+  const role = hostAnswerRole(room, agreement);
   if (role === null) {
     fail(
       "INVALID_ARGUMENT",
@@ -458,7 +488,7 @@ export async function hostAnswerRoomAgreement(
 
   if (args.answer === "not_right") {
     // The host already decided, so it goes back to the proposer only.
-    await ctx.db.patch(agreement._id, { status: "bounced", decidedAt: Date.now(), decidedByHost: true });
+    await ctx.db.patch(agreement._id, { status: "returned", decidedAt: Date.now(), decidedByHost: true });
     return { status: "bounced", reason: null };
   }
   const hostSeat = liveHostPlayerId(room);
@@ -473,7 +503,12 @@ export async function hostAnswerRoomAgreement(
   );
 }
 
-/** The host settles a bounced entry: dismiss it, or record it anyway. */
+/**
+ * The host settles a bounced entry: dismiss it (back to the proposer only),
+ * or record it anyway. Both stay available after "Players confirm each
+ * other" is turned off: they are the host's own decision, like approving a
+ * guest request.
+ */
 export async function hostResolveBouncedRoomAgreement(
   ctx: MutationCtx,
   args: {
@@ -488,11 +523,10 @@ export async function hostResolveBouncedRoomAgreement(
   const agreement = await requireAgreement(ctx, room, args.agreementId);
   if (agreement.status !== "bounced") return result(agreement);
   if (args.decision === "dismiss") {
-    // It stays bounced for the proposer, who can resend or dismiss it.
-    if (agreement.hostDismissedAt === undefined) {
-      await ctx.db.patch(agreement._id, { hostDismissedAt: Date.now() });
-    }
-    return result(agreement);
+    // It leaves the host's list and stays bounced for the proposer, who can
+    // resend or dismiss it.
+    await ctx.db.patch(agreement._id, { status: "returned", hostDismissedAt: Date.now() });
+    return { status: "bounced", reason: null };
   }
   const state = room.state as GameState;
   return await recordAgreement(
@@ -508,10 +542,9 @@ export async function hostResolveBouncedRoomAgreement(
 /** Host: turns "Players confirm each other" on or off; off cancels open proposals. */
 export async function setRoomPeerConfirm(
   ctx: MutationCtx,
-  args: { publicId: string; hostSecret: string; on: boolean }
+  args: { publicId: string; hostSecret: string; controllerId: string; on: boolean }
 ) {
-  const room = await requireHost(ctx, args.publicId, args.hostSecret);
-  requireActiveRoom(room);
+  const room = await requireHostController(ctx, args);
   await ctx.db.patch(room._id, { peerConfirm: args.on, lastActivityAt: Date.now() });
   if (!args.on) await cancelRoomAgreements(ctx, room._id, "peer_confirm_off");
   return null;
@@ -530,5 +563,13 @@ export async function expireRoomAgreement(
     return null;
   }
   await ctx.db.patch(agreement._id, { status: "expired", decidedAt: Date.now() });
+  return null;
+}
+
+/** Closes a room's open and bounced agreements once it is no longer active (lifecycle expiry). */
+export async function closeInactiveRoomAgreements(ctx: MutationCtx, args: { roomId: Id<"rooms"> }) {
+  const room = await ctx.db.get("rooms", args.roomId);
+  if (!room || room.status === "active") return null;
+  await cancelRoomAgreements(ctx, room._id, "ended", { includeBounced: true });
   return null;
 }

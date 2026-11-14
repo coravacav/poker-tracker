@@ -96,6 +96,8 @@ export type AgreementStatus = "open" | "bounced" | "cancelled" | "expired" | "di
 export type AgreementClosedReason =
   | "proposer"
   | "seat_lost"
+  /** The other player's (or named witness's) seat lost its phone or changed. */
+  | "counterparty_seat_lost"
   | "revoked"
   | "ended"
   | "peer_confirm_off"
@@ -144,7 +146,7 @@ export type GuestAgreements = {
 };
 
 export type HostAgreementNeeds = {
-  /** "self": the host's own seat; "seat": a seat with no phone; "bank": any bank buy-in. */
+  /** "self": the host's own seat; "seat": a seat with no phone when it was sent; "bank": any bank buy-in. */
   answer: (RoomAgreement & { answerAs: "self" | "seat" | "bank" })[];
   /** Bounced by a player: Dismiss or Record anyway. */
   bounced: RoomAgreement[];
@@ -168,7 +170,7 @@ export type SeatOption = {
   name: string;
   claimed: boolean;
   isHost: boolean;
-  /** The host released this guest from this seat; only the host can move them back. */
+  /** The host released this seat; only the host can put a phone there. */
   releasedByHost?: boolean;
 };
 
@@ -386,7 +388,12 @@ export type RoomTransport = {
     guestSecret: string;
     agreementId: Id<"roomAgreements">;
   }) => Promise<AgreementResult>;
-  setPeerConfirm?: (args: { publicId: string; hostSecret: string; on: boolean }) => Promise<void>;
+  setPeerConfirm?: (args: {
+    publicId: string;
+    hostSecret: string;
+    controllerId: string;
+    on: boolean;
+  }) => Promise<void>;
   hostAnswerAgreement?: (args: {
     publicId: string;
     hostSecret: string;

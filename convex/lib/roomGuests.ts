@@ -11,7 +11,7 @@ import {
 } from "../../src/session/roomProtocol";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { cancelGuestAgreements } from "./agreementCleanup";
+import { cancelGuestAgreements, cancelSeatAgreements } from "./agreementCleanup";
 import { hashSecret, sameHash, validIdentifier, validSecret } from "./capabilities";
 import { isDiscoverable, profileByFriendCode, publicHostProfile } from "./friendDiscovery";
 import { requireGuest, requireHost, roomByPublicId } from "./roomAccess";
@@ -328,5 +328,7 @@ export async function revokeRoomGuest(
   // Also clears requests a guest revoked before this rule existed left behind.
   await rejectPendingGuestRequests(ctx, { guestId: guest._id }, now);
   await cancelGuestAgreements(ctx, guest._id, "revoked", { includeBounced: true });
+  // Entries aimed at the seat they held were meant for this phone's player.
+  if (guest.playerId !== undefined) await cancelSeatAgreements(ctx, room._id, guest.playerId);
   return null;
 }

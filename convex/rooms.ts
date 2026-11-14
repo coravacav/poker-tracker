@@ -19,6 +19,7 @@ import { claimRoomHost, createRoom, endRoom, setRoomFriendVisibility } from "./l
 import {
   answerRoomAgreement,
   cancelOwnRoomAgreement,
+  closeInactiveRoomAgreements,
   dismissOwnRoomAgreement,
   expireRoomAgreement,
   hostAnswerRoomAgreement,
@@ -312,7 +313,7 @@ export const setHostPlayer = mutation({
 
 /** Host: turns "Players confirm each other" on or off (off cancels open proposals). */
 export const setPeerConfirm = mutation({
-  args: { publicId: v.string(), hostSecret: v.string(), on: v.boolean() },
+  args: { publicId: v.string(), hostSecret: v.string(), controllerId: v.string(), on: v.boolean() },
   returns: v.null(),
   handler: setRoomPeerConfirm
 });
@@ -344,6 +345,13 @@ export const hostResolveBounced = mutation({
   },
   returns: agreementResultValidator,
   handler: hostResolveBouncedRoomAgreement
+});
+
+/** Closes an expired room's open and bounced agreements (scheduled by the lifecycle job). */
+export const closeRoomAgreements = internalMutation({
+  args: { roomId: v.id("rooms") },
+  returns: v.null(),
+  handler: closeInactiveRoomAgreements
 });
 
 /** Expires an agreement nobody answered (scheduled when it is proposed). */

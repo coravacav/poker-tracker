@@ -13,13 +13,18 @@ import type { GameState, Player } from "../../src/domain/pokerTypes";
 import { MAX_ROOM_GUEST_RECORDS, MAX_ROOM_GUESTS } from "../../src/session/roomProtocol";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { cancelGuestAgreements } from "./agreementCleanup";
+import { cancelGuestAgreements, cancelSeatAgreements } from "./agreementCleanup";
 import { requireGuest, requireHost } from "./roomAccess";
 import { fail } from "./roomErrors";
 
 const MAX_PLAYER_ID_LENGTH = 200;
-/** Seats remembered as "released by the host" per phone. */
+/** Seats a room remembers as "released by the host". */
 const MAX_HOST_RELEASED_SEATS = 50;
+
+/** Seats the host released; no phone may claim them on its own. */
+function hostReleasedSeats(room: Pick<Doc<"rooms">, "releasedSeatPlayerIds">): string[] {
+  return room.releasedSeatPlayerIds ?? [];
+}
 
 /** The room's active players in seat order: the seats a phone can claim. */
 export function activeSeatPlayers(room: Pick<Doc<"rooms">, "state">): Player[] {
@@ -70,16 +75,22 @@ const releasedClaim = {
 };
 
 /**
- * Takes a guest off their seat. Their open proposals were made from that seat,
- * so they are cancelled with it.
+ * Closes the agreements a guest's seat claim stood behind: their own open
+ * proposals (made from that seat) and open entries aimed at the seat.
  */
+export async function cancelClaimAgreements(ctx: MutationCtx, guest: Doc<"roomGuests">) {
+  await cancelGuestAgreements(ctx, guest._id, "seat_lost");
+  if (guest.playerId !== undefined) await cancelSeatAgreements(ctx, guest.roomId, guest.playerId);
+}
+
+/** Takes a guest off their seat, closing the agreements that claim stood behind. */
 async function releaseClaim(
   ctx: MutationCtx,
-  guestId: Id<"roomGuests">,
+  guest: Doc<"roomGuests">,
   extra: Partial<Doc<"roomGuests">>
 ) {
-  await ctx.db.patch(guestId, { ...releasedClaim, ...extra });
-  await cancelGuestAgreements(ctx, guestId, "seat_lost");
+  await ctx.db.patch(guest._id, { ...releasedClaim, ...extra });
+  await cancelClaimAgreements(ctx, guest);
 }
 
 /** Good-standing guests with a claim (live or not) on a seat. */
@@ -119,8 +130,10 @@ export async function releaseChangedSeats(
       (next.personId ?? null) === (player.personId ?? null);
     if (unchanged) continue;
     for (const guest of await claimsOn(ctx, room, player.id)) {
-      await releaseClaim(ctx, guest._id, { seatLost: "changed" });
+      await releaseClaim(ctx, guest, { seatLost: "changed" });
     }
+    // Entries aimed at this seat were meant for the player as they were.
+    await cancelSeatAgreements(ctx, room._id, player.id);
   }
   if (room.hostPlayerId !== undefined && !afterById.get(room.hostPlayerId)?.isActive) return undefined;
   return room.hostPlayerId;
@@ -145,7 +158,7 @@ export async function seatClaims(ctx: QueryCtx | MutationCtx, room: Doc<"rooms">
 /**
  * The seats a guest (or someone holding the invitation) chooses from. `claimed`
  * means another phone holds it, so it never names or identifies other guests.
- * For a guest, `releasedByHost` marks seats the host released them from.
+ * `releasedByHost` marks seats the host released, which only the host can fill.
  */
 export async function seatOptions(
   ctx: QueryCtx | MutationCtx,
@@ -154,7 +167,7 @@ export async function seatOptions(
 ) {
   const claims = await seatClaims(ctx, room);
   const hostPlayerId = liveHostPlayerId(room);
-  const released = new Set(viewer?.hostReleasedPlayerIds ?? []);
+  const released = new Set(hostReleasedSeats(room));
   return activeSeatPlayers(room).map((player) => {
     const holder = claims.get(player.id);
     return {
@@ -162,7 +175,7 @@ export async function seatOptions(
       name: player.name,
       claimed: holder !== undefined && holder._id !== viewer?._id,
       isHost: player.id === hostPlayerId,
-      ...(released.has(player.id) && holder?._id !== viewer?._id ? { releasedByHost: true } : {})
+      ...(released.has(player.id) && holder === undefined ? { releasedByHost: true } : {})
     };
   });
 }
@@ -215,16 +228,16 @@ async function requireOpenSeat(
   for (const guest of await claimsOn(ctx, room, playerId)) {
     if (guest._id === guestId) continue;
     if (samePerson(player, guest)) fail("SEAT_TAKEN", "Someone else just took that seat. Pick another.");
-    await releaseClaim(ctx, guest._id, { seatLost: "changed" });
+    await releaseClaim(ctx, guest, { seatLost: "changed" });
   }
   return player;
 }
 
 /**
  * Gives a guest a seat (moving any seat they held), recording who the seat's
- * player is, and makes that player's name their display name. A guest can't
- * take back on their own a seat the host released them from; `byHost` moves
- * them there anyway and forgets that release.
+ * player is, and makes that player's name their display name. No phone can
+ * take a seat the host released on its own; `byHost` (the host's Move) puts
+ * the phone there anyway and lifts the block.
  */
 export async function claimSeatForGuest(
   ctx: MutationCtx,
@@ -236,15 +249,16 @@ export async function claimSeatForGuest(
   if (guest.revokedAt !== undefined) {
     fail("INVALID_ARGUMENT", "This guest no longer has access to the room.");
   }
-  const released = guest.hostReleasedPlayerIds ?? [];
+  const released = hostReleasedSeats(room);
   if (!byHost && released.includes(playerId) && liveSeatOf(room, guest) !== playerId) {
-    fail("SEAT_TAKEN", "The host released you from that seat. Ask the host to move you back.");
+    fail("SEAT_TAKEN", "The host released that seat. Ask the host to move you there.");
   }
   const player = await requireOpenSeat(ctx, room, playerId, guest._id);
   const keepClaimedAt = liveSeatOf(room, guest) === playerId;
-  // Moving seats: proposals made from the old seat no longer stand.
-  if (!keepClaimedAt && guest.playerId !== undefined) {
-    await cancelGuestAgreements(ctx, guest._id, "seat_lost");
+  // Moving seats: what the old claim stood behind no longer stands.
+  if (!keepClaimedAt && guest.playerId !== undefined) await cancelClaimAgreements(ctx, guest);
+  if (byHost && released.includes(playerId)) {
+    await ctx.db.patch(room._id, { releasedSeatPlayerIds: released.filter((id) => id !== playerId) });
   }
   await ctx.db.patch(guest._id, {
     playerId,
@@ -252,10 +266,7 @@ export async function claimSeatForGuest(
     claimedName: player.name,
     claimedPersonId: player.personId,
     displayName: seatDisplayName(player),
-    seatLost: undefined,
-    hostReleasedPlayerIds: byHost && released.includes(playerId)
-      ? released.filter((id) => id !== playerId)
-      : guest.hostReleasedPlayerIds
+    seatLost: undefined
   });
   return seatDisplayName(player);
 }
@@ -278,8 +289,9 @@ async function requireRoomGuest(ctx: MutationCtx, room: Doc<"rooms">, guestId: I
 
 /**
  * Host: frees the seat a guest's phone holds; the guest stays in the room
- * without one and can't take that seat back on their own. `playerId` is the
- * seat the host saw, so a phone that has since moved isn't released.
+ * without one. No phone can then claim that seat on its own (a fresh join
+ * included) until the host moves one there. `playerId` is the seat the host
+ * saw, so a phone that has since moved isn't released.
  */
 export async function releaseRoomSeat(
   ctx: MutationCtx,
@@ -291,10 +303,10 @@ export async function releaseRoomSeat(
   if (liveSeatOf(room, guest) !== args.playerId) {
     fail("INVALID_ARGUMENT", "That phone is no longer in that seat.");
   }
-  const released = (guest.hostReleasedPlayerIds ?? []).filter((id) => id !== args.playerId);
-  await releaseClaim(ctx, guest._id, {
-    seatLost: "released",
-    hostReleasedPlayerIds: [...released, args.playerId].slice(-MAX_HOST_RELEASED_SEATS)
+  await releaseClaim(ctx, guest, { seatLost: "released" });
+  const released = hostReleasedSeats(room).filter((id) => id !== args.playerId);
+  await ctx.db.patch(room._id, {
+    releasedSeatPlayerIds: [...released, args.playerId].slice(-MAX_HOST_RELEASED_SEATS)
   });
   return null;
 }
@@ -325,10 +337,15 @@ export async function setRoomHostPlayer(
       if (samePerson(player, guest)) {
         fail("SEAT_TAKEN", `${seatDisplayName(player)}'s phone holds that seat. Release it first.`);
       }
-      await releaseClaim(ctx, guest._id, { seatLost: "changed" });
+      await releaseClaim(ctx, guest, { seatLost: "changed" });
     }
   }
+  const released = hostReleasedSeats(room);
   await ctx.db.patch(room._id, {
+    // The host taking a released seat fills it.
+    ...(args.playerId !== null && released.includes(args.playerId)
+      ? { releasedSeatPlayerIds: released.filter((id) => id !== args.playerId) }
+      : {}),
     hostPlayerId: args.playerId ?? undefined,
     hostNotPlaying: args.playerId === null ? true : undefined,
     lastActivityAt: Date.now()

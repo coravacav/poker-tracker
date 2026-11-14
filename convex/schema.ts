@@ -29,6 +29,10 @@ export default defineSchema({
     // The host said they aren't playing, so the share dialog stops asking
     // which seat is theirs. Cleared when they pick a seat.
     hostNotPlaying: v.optional(v.boolean()),
+    // Seats the host released a phone from. No phone may claim one on its
+    // own (whatever guest record it uses); the host's assign/Move fills it
+    // and lifts the block.
+    releasedSeatPlayerIds: v.optional(v.array(v.string())),
     // "Players confirm each other": seated guests record give/buy/bank entries
     // by agreeing between themselves (roomAgreements). Rooms the current
     // client creates start with it on; absent means off (host approves).
@@ -115,8 +119,8 @@ export default defineSchema({
     claimedPersonId: v.optional(v.string()),
     // Why this phone last lost its seat, shown on its "Pick your seat" prompt.
     seatLost: v.optional(v.union(v.literal("released"), v.literal("changed"))),
-    // Seats the host released this phone from; it can't take them back on
-    // its own (the host can still move it there).
+    // Deprecated: per-phone release blocks, superseded by
+    // rooms.releasedSeatPlayerIds. No longer written or read.
     hostReleasedPlayerIds: v.optional(v.array(v.string()))
   })
     .index("by_room_id", ["roomId"])
@@ -191,9 +195,18 @@ export default defineSchema({
     counterpartyPlayerId: v.optional(v.string()),
     // bank: the one seat whose phone may say "I saw it" (the host can too).
     witnessPlayerId: v.optional(v.string()),
+    // The phone holding the counterparty (or named witness) seat when this
+    // was proposed, and when it claimed the seat. Only that same claim may
+    // answer; absent means the seat had no phone then, so only the host can.
+    seatGuestId: v.optional(v.id("roomGuests")),
+    seatClaimedAt: v.optional(v.number()),
+    // "bounced": a player said it wasn't right and it waits on the host.
+    // "returned": the host said Not right or dismissed it, so it is back
+    // with the proposer only. Both show as bounced to the proposer.
     status: v.union(
       v.literal("open"),
       v.literal("bounced"),
+      v.literal("returned"),
       v.literal("cancelled"),
       v.literal("expired"),
       v.literal("dismissed"),
@@ -203,6 +216,8 @@ export default defineSchema({
     closedReason: v.optional(v.union(
       v.literal("proposer"),
       v.literal("seat_lost"),
+      // The counterparty or named witness seat lost its phone or changed.
+      v.literal("counterparty_seat_lost"),
       v.literal("revoked"),
       v.literal("ended"),
       v.literal("peer_confirm_off"),
@@ -218,11 +233,17 @@ export default defineSchema({
     decidedByHost: v.optional(v.boolean()),
     confirmedByPlayerId: v.optional(v.string()),
     confirmedVia: v.optional(v.union(v.literal("peer"), v.literal("host"))),
-    // The host dismissed a bounced entry; it stays bounced for the proposer.
+    // The host dismissed a bounced entry (now "returned").
     hostDismissedAt: v.optional(v.number()),
     appliedTransactionId: v.optional(v.string())
   })
     .index("by_room_id_and_status_and_kind", ["roomId", "status", "kind"])
+    .index("by_room_id_and_status_and_decided_at", ["roomId", "status", "decidedAt"])
+    .index("by_room_id_and_status_and_witness_player_id", [
+      "roomId",
+      "status",
+      "witnessPlayerId"
+    ])
     .index("by_room_id_and_status_and_counterparty_player_id", [
       "roomId",
       "status",

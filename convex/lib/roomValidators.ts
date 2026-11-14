@@ -54,7 +54,7 @@ export const seatOptionValidator = v.object({
   name: v.string(),
   claimed: v.boolean(),
   isHost: v.boolean(),
-  /** Guest view only: the host released this guest from this seat. */
+  /** The host released this seat; only the host can put a phone there. */
   releasedByHost: v.optional(v.boolean())
 });
 export const guestRoomValidator = publicRoomValidator.extend({
@@ -81,6 +81,7 @@ export const agreementStatusValidator = v.union(
 export const agreementClosedReasonValidator = v.union(
   v.literal("proposer"),
   v.literal("seat_lost"),
+  v.literal("counterparty_seat_lost"),
   v.literal("revoked"),
   v.literal("ended"),
   v.literal("peer_confirm_off"),
@@ -205,7 +206,8 @@ export const hostRoomValidator = publicRoomValidator.extend({
   needsHost: v.object({
     /**
      * Open entries the host may answer: "self" for the host's own seat,
-     * "seat" for a seat with no phone, "bank" for any bank buy-in.
+     * "seat" for a seat that had no phone when it was sent, "bank" for any
+     * bank buy-in.
      */
     answer: v.array(agreementViewValidator.extend({
       answerAs: v.union(v.literal("self"), v.literal("seat"), v.literal("bank"))

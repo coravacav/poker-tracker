@@ -163,7 +163,8 @@ export function useHostRoomControls(
     const send = transport.setPeerConfirm;
     if (current.mode !== "hosting" || !current.recovery || !send) return;
     const { publicId, hostSecret } = current.recovery;
-    await runHostAction(publicId, () => send({ publicId, hostSecret, on }));
+    const controllerId = getHostControllerId(() => createCapability(18));
+    await runHostAction(publicId, () => send({ publicId, hostSecret, controllerId, on }));
   }, [runHostAction, transport]);
 
   /**

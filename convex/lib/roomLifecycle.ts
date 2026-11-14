@@ -40,6 +40,7 @@
 // writes are part of each batch's transaction, so two chains can never both
 // pass the check.
 import { v } from "convex/values";
+import { internal } from "../_generated/api";
 import type { Doc, Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { decrementActiveRoomCounter } from "./creationLimits";
@@ -218,6 +219,9 @@ async function expireRoom(ctx: MutationCtx, state: BatchState, room: Doc<"rooms"
     ...(releasesSlot ? { countedActive: false } : {})
   });
   if (releasesSlot) await decrementActiveRoomCounter(ctx);
+  // Its agreements can't be answered any more; close them in their own
+  // transaction so this batch's budget stays as computed above.
+  await ctx.scheduler.runAfter(0, internal.rooms.closeRoomAgreements, { roomId: room._id });
   if (room.hostProfileId) {
     await syncFriendRoomListing(ctx, { ...room, status: "expired" });
     await clearLegacyActiveRoom(ctx, room, now);

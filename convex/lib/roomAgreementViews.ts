@@ -5,7 +5,7 @@ import type { GameState } from "../../src/domain/pokerTypes";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { MAX_ROOM_AGREEMENTS_PER_STATUS } from "./agreementCleanup";
-import { activeSeatPlayers, liveHostPlayerId, liveSeatOf, seatClaims } from "./roomSeats";
+import { activeSeatPlayers, liveHostPlayerId, liveSeatOf } from "./roomSeats";
 
 /** Recorded entries a guest's Done list shows. */
 const RECENT_DONE_AGREEMENTS = 10;
@@ -27,21 +27,62 @@ export function agreementPlayerName(state: GameState, playerId: string | undefin
 /**
  * How the host may answer an open agreement, or null: "self" as the host's
  * own seat (the counterparty, or for bank the host's seat as witness), "seat"
- * for a counterparty seat no phone holds, or "bank" for any bank buy-in when
- * the host has no seat of their own.
+ * for a counterparty seat that had no phone when it was proposed (even if a
+ * phone has claimed it since), or "bank" for any bank buy-in when the host
+ * has no seat of their own.
  */
-export function hostAnswerRole(
-  room: Doc<"rooms">,
-  agreement: Agreement,
-  claimedSeats: ReadonlySet<string>
-): "self" | "seat" | "bank" | null {
+export function hostAnswerRole(room: Doc<"rooms">, agreement: Agreement): "self" | "seat" | "bank" | null {
   const hostSeat = liveHostPlayerId(room);
   if (agreement.kind === "bank") {
     return hostSeat !== null && hostSeat !== agreement.proposerPlayerId ? "self" : "bank";
   }
   if (!isActiveSeat(room, agreement.counterpartyPlayerId)) return null;
   if (agreement.counterpartyPlayerId === hostSeat) return "self";
-  return claimedSeats.has(agreement.counterpartyPlayerId!) ? null : "seat";
+  return agreement.seatGuestId === undefined ? "seat" : null;
+}
+
+/** The same claim that held a seat when the agreement was proposed. */
+function heldSinceProposal(agreement: Agreement, guest: Doc<"roomGuests">) {
+  return agreement.seatGuestId === guest._id && guest.claimedAt === agreement.seatClaimedAt;
+}
+
+export type GuestAnswerBlock =
+  | "own"
+  | "no_seat"
+  | "not_counterparty"
+  | "own_buy_in"
+  | "not_witness"
+  | "host_answers"
+  | "claimed_later";
+
+/**
+ * Why this guest can't answer (Confirm / I saw it, or Not right) an open
+ * agreement, or null when they can. Give/buy: the phone that held the
+ * counterparty seat when it was proposed, on that same claim. Bank: the
+ * named witness's phone on the same terms, or with no named witness any
+ * other seated phone whose claim predates the proposal. The proposer's own
+ * phone never can, and a seat that had no phone at proposal is the host's.
+ */
+export function guestAnswerBlock(
+  agreement: Agreement,
+  guest: Doc<"roomGuests">,
+  seat: string | null
+): GuestAnswerBlock | null {
+  if (agreement.proposerGuestId === guest._id) return "own";
+  if (seat === null) return "no_seat";
+  if (agreement.kind !== "bank") {
+    if (agreement.counterpartyPlayerId !== seat) return "not_counterparty";
+  } else {
+    if (seat === agreement.proposerPlayerId) return "own_buy_in";
+    if (agreement.witnessPlayerId === undefined) {
+      return guest.claimedAt !== undefined && guest.claimedAt <= agreement.createdAt
+        ? null
+        : "claimed_later";
+    }
+    if (agreement.witnessPlayerId !== seat) return "not_witness";
+  }
+  if (agreement.seatGuestId === undefined) return "host_answers";
+  return heldSinceProposal(agreement, guest) ? null : "claimed_later";
 }
 
 export function agreementView(state: GameState, agreement: Agreement) {
@@ -61,10 +102,11 @@ export function agreementView(state: GameState, agreement: Agreement) {
     counterpartyName: name(agreement.counterpartyPlayerId),
     witnessPlayerId: agreement.witnessPlayerId ?? null,
     witnessName: name(agreement.witnessPlayerId),
-    status: agreement.status,
+    // Returned entries read as bounced: back with the proposer either way.
+    status: agreement.status === "returned" ? ("bounced" as const) : agreement.status,
     closedReason: agreement.closedReason ?? null,
     bounceReason: agreement.bounceReason ?? null,
-    bouncedByHost: agreement.status === "bounced" && agreement.decidedByHost === true,
+    bouncedByHost: agreement.status === "returned" && agreement.decidedByHost === true,
     createdAt: agreement.createdAt,
     expiresAt: agreement.expiresAt,
     decidedAt: agreement.decidedAt ?? null,
@@ -110,16 +152,10 @@ export async function guestAgreements(ctx: Ctx, room: Doc<"rooms">, guest: Doc<"
       )
       .take(MAX_ROOM_AGREEMENTS_PER_STATUS);
     needsMe.push(
-      ...toMySeat.filter((agreement) => agreement.proposerGuestId !== guest._id),
-      ...bank.filter(
-        (agreement) =>
-          agreement.proposerGuestId !== guest._id &&
-          agreement.proposerPlayerId !== seat &&
-          (agreement.witnessPlayerId === undefined || agreement.witnessPlayerId === seat)
-      )
+      ...[...toMySeat, ...bank].filter((agreement) => guestAnswerBlock(agreement, guest, seat) === null)
     );
   }
-  const mine = (status: "open" | "bounced" | "recorded", limit: number) =>
+  const mine = (status: "open" | "bounced" | "returned" | "recorded", limit: number) =>
     ctx.db
       .query("roomAgreements")
       .withIndex("by_proposer_guest_id_and_status", (index) =>
@@ -128,7 +164,10 @@ export async function guestAgreements(ctx: Ctx, room: Doc<"rooms">, guest: Doc<"
       .order("desc")
       .take(limit);
   const open = await mine("open", MAX_ROOM_AGREEMENTS_PER_STATUS);
-  const bounced = await mine("bounced", MAX_ROOM_AGREEMENTS_PER_STATUS);
+  const bounced = [
+    ...(await mine("bounced", MAX_ROOM_AGREEMENTS_PER_STATUS)),
+    ...(await mine("returned", MAX_ROOM_AGREEMENTS_PER_STATUS))
+  ].sort(newestFirst);
   const done = new Map<string, Agreement>();
   const recordedSources = [
     await mine("recorded", RECENT_DONE_AGREEMENTS),
@@ -160,32 +199,34 @@ export async function guestAgreements(ctx: Ctx, room: Doc<"rooms">, guest: Doc<"
 }
 
 /**
- * The host's Needs you: open entries the host may answer (with how), and
- * bounced entries a guest said weren't right, awaiting Dismiss or Record
- * anyway. Entries the host itself turned back are left to their proposer.
+ * The host's Needs you: open entries the host may answer (with how), oldest
+ * first, and the newest entries a player said weren't right, awaiting Dismiss
+ * or Record anyway. Entries the host turned back or dismissed are "returned"
+ * and stay with their proposer only.
  */
 export async function hostAgreements(ctx: Ctx, room: Doc<"rooms">) {
   const state = room.state as GameState;
-  const claimed = new Set((await seatClaims(ctx, room)).keys());
-  const byStatus = (status: "open" | "bounced") =>
-    ctx.db
-      .query("roomAgreements")
-      .withIndex("by_room_id_and_status_and_kind", (index) =>
-        index.eq("roomId", room._id).eq("status", status)
-      )
-      .take(MAX_ROOM_AGREEMENTS_PER_STATUS);
-  const answer = (await byStatus("open"))
+  const open = await ctx.db
+    .query("roomAgreements")
+    .withIndex("by_room_id_and_status_and_decided_at", (index) =>
+      index.eq("roomId", room._id).eq("status", "open")
+    )
+    .take(MAX_ROOM_AGREEMENTS_PER_STATUS);
+  const answer = open
     .flatMap((agreement) => {
-      const answerAs = hostAnswerRole(room, agreement, claimed);
+      const answerAs = hostAnswerRole(room, agreement);
       return answerAs === null ? [] : [{ agreement, answerAs }];
     })
     .sort((left, right) => oldestFirst(left.agreement, right.agreement))
     .slice(0, HOST_NEEDS_LIMIT)
     .map(({ agreement, answerAs }) => ({ ...agreementView(state, agreement), answerAs }));
-  const bounced = (await byStatus("bounced"))
-    .filter((agreement) => agreement.decidedByHost !== true && agreement.hostDismissedAt === undefined)
-    .sort(newestFirst)
-    .slice(0, HOST_NEEDS_LIMIT)
+  const bounced = (await ctx.db
+    .query("roomAgreements")
+    .withIndex("by_room_id_and_status_and_decided_at", (index) =>
+      index.eq("roomId", room._id).eq("status", "bounced")
+    )
+    .order("desc")
+    .take(HOST_NEEDS_LIMIT))
     .map((agreement) => agreementView(state, agreement));
   return { answer, bounced };
 }

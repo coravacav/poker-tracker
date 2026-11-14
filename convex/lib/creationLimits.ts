@@ -24,7 +24,11 @@ export const creationLimiter = new RateLimiter(components.rateLimiter, {
   // New watcher ids per room (keyed by room). A watch link shared to a crowd
   // admits 100 at once, then 60/hour, bounding the presence rows a client
   // inventing ids can create before the link is rotated or the room pruned.
-  newRoomWatcher: { kind: "token bucket", rate: 60, period: HOUR, capacity: 100 }
+  newRoomWatcher: { kind: "token bucket", rate: 60, period: HOUR, capacity: 100 },
+  // Agreement proposals per guest (keyed by guest). A busy night is a few an
+  // hour; 10 at once, then 60/hour, bounds the rows and expiry jobs a
+  // propose-and-cancel loop can create.
+  agreementProposal: { kind: "token bucket", rate: 60, period: HOUR, capacity: 10 }
 });
 
 /**

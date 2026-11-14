@@ -12,7 +12,7 @@ import { createDefaultGameState } from "../src/state/seedGame";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { AGREEMENT_TTL_MS } from "./lib/roomAgreements";
-import { ENDED_DETAIL_RETENTION_MS } from "./lib/roomLifecycle";
+import { ACTIVE_ROOM_IDLE_MS, ENDED_DETAIL_RETENTION_MS } from "./lib/roomLifecycle";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/!(*.*.*)*.*s");
@@ -468,15 +468,15 @@ describe("peer agreements: who may answer", () => {
     expect((await hostView(test)).peerConfirm).toBe(false);
     await expect(propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon })).rejects.toThrow(/Send the host a request/);
 
-    await test.mutation(api.rooms.setPeerConfirm, { publicId, hostSecret, on: true });
+    await test.mutation(api.rooms.setPeerConfirm, { publicId, hostSecret, controllerId, on: true });
     expect((await guestView(test, "maya")).peerConfirm).toBe(true);
     const agreementId = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon });
 
-    await test.mutation(api.rooms.setPeerConfirm, { publicId, hostSecret, on: false });
+    await test.mutation(api.rooms.setPeerConfirm, { publicId, hostSecret, controllerId, on: false });
     expect(await agreementRow(test, agreementId)).toMatchObject({ status: "cancelled", closedReason: "peer_confirm_off" });
     await expect(confirm(test, "jon", agreementId)).rejects.toThrow(/Send the host a request/);
     await expect(
-      test.mutation(api.rooms.setPeerConfirm, { publicId, hostSecret: hostSecret.replace("host_a", "host_b"), on: true })
+      test.mutation(api.rooms.setPeerConfirm, { publicId, hostSecret: hostSecret.replace("host_a", "host_b"), controllerId, on: true })
     ).rejects.toThrow(/Host capability/);
   });
 });
@@ -667,5 +667,179 @@ describe("peer agreements: the host", () => {
     expect(
       (await guestView(test, "jon")).agreements.recentDone.find((agreement) => agreement.id === second)
     ).toMatchObject({ voided: true });
+  });
+});
+
+async function joinOn(test: Test, guest: keyof typeof secrets, playerId: string) {
+  return await test.mutation(api.rooms.join, { publicId, inviteSecret, guestSecret: secrets[guest], playerId });
+}
+
+describe("peer agreements: who answers is fixed when it is sent", () => {
+  it("keeps a seat that had no phone host-only, even after a phone claims it", async () => {
+    const { test, seats } = await createRoom({ seated: ["maya"] });
+    const agreementId = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon, amountCents: 50_000 });
+    // Maya opens a second browser and takes absent Jon's seat.
+    await joinOn(test, "dev", seats.jon);
+    expect((await guestView(test, "dev")).agreements.needsMe).toEqual([]);
+    await expect(confirm(test, "dev", agreementId)).rejects.toThrow(/host answers for it/);
+    await expect(bounce(test, "dev", agreementId)).rejects.toThrow(/host answers for it/);
+    expect((await hostView(test)).needsHost.answer).toEqual([
+      expect.objectContaining({ id: agreementId, answerAs: "seat" })
+    ]);
+    expect(await hostAnswer(test, agreementId)).toEqual({ status: "recorded", reason: null });
+  });
+
+  it("does the same for a named bank witness", async () => {
+    const { test, seats } = await createRoom({ seated: ["maya", "jon"] });
+    const agreementId = await propose(test, "maya", { kind: "bank", witnessPlayerId: seats.priya });
+    await joinOn(test, "dev", seats.priya);
+    await expect(confirm(test, "dev", agreementId)).rejects.toThrow(/host answers for it/);
+    await expect(confirm(test, "jon", agreementId)).rejects.toThrow(/asked Priya/);
+    expect(await hostAnswer(test, agreementId)).toMatchObject({ status: "recorded" });
+  });
+
+  it("lets only phones seated before an unnamed bank buy-in witness it", async () => {
+    vi.useFakeTimers();
+    const { test, seats } = await createRoom({ seated: ["maya", "jon"] });
+    const agreementId = await propose(test, "maya", { kind: "bank" });
+    vi.advanceTimersByTime(1000);
+    await joinOn(test, "dev", seats.priya);
+    expect((await guestView(test, "dev")).agreements.needsMe).toEqual([]);
+    await expect(confirm(test, "dev", agreementId)).rejects.toThrow(/took your seat after/);
+    expect((await guestView(test, "jon")).agreements.needsMe.map((agreement) => agreement.id)).toEqual([agreementId]);
+    expect(await confirm(test, "jon", agreementId)).toMatchObject({ status: "recorded" });
+  });
+});
+
+describe("peer agreements: released seats", () => {
+  it("keeps a released seat closed to every phone until the host moves one there", async () => {
+    const { test, seats } = await createRoom();
+    const jonId = await guestId(test, "Jon");
+    await test.mutation(api.rooms.releaseSeat, { publicId, hostSecret, guestId: jonId, playerId: seats.jon });
+    // The released phone, rejoining with a fresh secret, can't take it back.
+    await expect(joinOn(test, "dev", seats.jon)).rejects.toThrow(/host released that seat/);
+    await expect(
+      test.mutation(api.rooms.claimSeat, { publicId, guestSecret: secrets.jon, playerId: seats.jon })
+    ).rejects.toThrow(/host released that seat/);
+    const preview = await test.query(api.rooms.invitePreview, { publicId, inviteSecret });
+    expect("seats" in preview && preview.seats?.find((seat) => seat.playerId === seats.jon)).toMatchObject({
+      releasedByHost: true
+    });
+
+    await test.mutation(api.rooms.assignSeat, { publicId, hostSecret, guestId: jonId, playerId: seats.jon });
+    expect((await guestView(test, "jon")).seatPlayerId).toBe(seats.jon);
+    const after = await test.query(api.rooms.invitePreview, { publicId, inviteSecret });
+    expect("seats" in after && after.seats?.find((seat) => seat.playerId === seats.jon)?.releasedByHost).toBeUndefined();
+  });
+});
+
+describe("peer agreements: entries aimed at a seat that changed", () => {
+  it("cancels them when the seat is released, revoked, or its player renamed", async () => {
+    const { test, seats } = await createRoom({ seated: ["maya", "jon", "priya"] });
+    const toJon = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon });
+    const seenByJon = await propose(test, "maya", { kind: "bank", witnessPlayerId: seats.jon });
+    const toPriya = await propose(test, "maya", { kind: "buy", counterpartyPlayerId: seats.priya });
+    const toDev = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.dev });
+    const unrelated = await propose(test, "jon", { kind: "give", counterpartyPlayerId: seats.maya });
+
+    await test.mutation(api.rooms.releaseSeat, {
+      publicId,
+      hostSecret,
+      guestId: await guestId(test, "Jon"),
+      playerId: seats.jon
+    });
+    await test.mutation(api.rooms.revokeGuest, { publicId, hostSecret, guestId: await guestId(test, "Priya") });
+    // Dev's seat had no phone; renaming the player still changes who it is.
+    await hostAction(test, (await hostView(test)).version, { type: "rename_player", playerId: seats.dev, name: "Devon" });
+
+    for (const agreementId of [toJon, seenByJon, toPriya, toDev]) {
+      expect(await agreementRow(test, agreementId)).toMatchObject({
+        status: "cancelled",
+        closedReason: "counterparty_seat_lost"
+      });
+    }
+    // Jon's own proposal was cancelled for losing his seat.
+    expect(await agreementRow(test, unrelated)).toMatchObject({ status: "cancelled", closedReason: "seat_lost" });
+  });
+});
+
+describe("peer agreements: bounded lists and rates", () => {
+  it("lists bounced entries newest first, and dismissed ones leave the host's list", async () => {
+    vi.useFakeTimers();
+    const { test, seats } = await createRoom();
+    const ids = [];
+    for (let index = 0; index < 3; index += 1) {
+      const agreementId = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon });
+      vi.advanceTimersByTime(1000);
+      await bounce(test, "jon", agreementId);
+      ids.push(agreementId);
+    }
+    expect((await hostView(test)).needsHost.bounced.map((agreement) => agreement.id)).toEqual([...ids].reverse());
+    expect(await hostResolve(test, ids[1]!, "dismiss")).toEqual({ status: "bounced", reason: null });
+    expect((await hostView(test)).needsHost.bounced.map((agreement) => agreement.id)).toEqual([ids[2], ids[0]]);
+    // Record anyway is only for entries still waiting on the host.
+    expect(await hostResolve(test, ids[1]!, "record")).toEqual({ status: "bounced", reason: null });
+    expect(agreedEntries((await hostView(test)).state as GameState)).toEqual([]);
+    const mine = (await guestView(test, "maya")).agreements.bounced;
+    expect(mine.map((agreement) => agreement.id).sort()).toEqual([...ids].sort());
+    expect(mine.every((agreement) => agreement.status === "bounced")).toBe(true);
+    // Bounced (and host-dismissed) entries count toward the proposer's cap.
+    for (let index = 0; index < 7; index += 1) {
+      await bounce(test, "jon", await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon }));
+    }
+    await expect(propose(test, "maya", { kind: "bank" })).rejects.toThrow(/Clear your bounced/);
+  });
+
+  it("rate-limits proposals per guest, but not retries", async () => {
+    const { test, seats } = await createRoom();
+    let last: Id<"roomAgreements"> | null = null;
+    const clientRequestId = requestId();
+    for (let index = 0; index < 10; index += 1) {
+      last = await propose(test, "maya", {
+        kind: "give",
+        counterpartyPlayerId: seats.jon,
+        ...(index === 9 ? { clientRequestId } : {})
+      });
+      await test.mutation(api.rooms.cancelAgreement, { publicId, guestSecret: secrets.maya, agreementId: last });
+    }
+    await expect(propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon })).rejects.toThrow(/sending entries quickly/);
+    expect(await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon, clientRequestId })).toBe(last);
+    await propose(test, "jon", { kind: "give", counterpartyPlayerId: seats.maya });
+  });
+});
+
+describe("peer agreements: host controls", () => {
+  it("closes an idle room's agreements when the lifecycle job expires it", async () => {
+    vi.useFakeTimers();
+    const { test, seats } = await createRoom();
+    const open = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon });
+    const bounced = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon });
+    await bounce(test, "jon", bounced);
+    await test.run(async (ctx) => {
+      const room = await ctx.db.query("rooms").first();
+      await ctx.db.patch(room!._id, { lastActivityAt: Date.now() - ACTIVE_ROOM_IDLE_MS - 1000 });
+    });
+    await test.mutation(internal.rooms.runRoomLifecycle, {});
+    await test.finishAllScheduledFunctions(vi.runAllTimers);
+    expect((await hostView(test)).status).toBe("expired");
+    expect(await agreementRow(test, open)).toMatchObject({ status: "cancelled", closedReason: "ended" });
+    expect(await agreementRow(test, bounced)).toMatchObject({ status: "cancelled", closedReason: "ended" });
+  });
+
+  it("needs the controlling tab to toggle, and keeps Record anyway after the mode is off", async () => {
+    const { test, seats } = await createRoom();
+    await expect(
+      test.mutation(api.rooms.setPeerConfirm, {
+        publicId,
+        hostSecret,
+        controllerId: "controller_someoneelse00",
+        on: false
+      })
+    ).rejects.toThrow(/Another tab/);
+    const agreementId = await propose(test, "maya", { kind: "give", counterpartyPlayerId: seats.jon });
+    await bounce(test, "jon", agreementId);
+    await test.mutation(api.rooms.setPeerConfirm, { publicId, hostSecret, controllerId, on: false });
+    expect((await hostView(test)).needsHost.bounced.map((agreement) => agreement.id)).toEqual([agreementId]);
+    expect(await hostResolve(test, agreementId, "record")).toEqual({ status: "recorded", reason: null });
   });
 });
