@@ -45,7 +45,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
   localStateRef.current = localState;
   localEntryRef.current = localEntry;
 
-  const { roomHistory, refreshRoomHistory } = useRoomHistory(transport);
+  const { roomHistory, refreshRoomHistory, turnOffWatchLink } = useRoomHistory(transport);
   const friends = useFriendDiscovery({
     transport,
     sessionRef,
@@ -200,6 +200,7 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     removeFriend: friends.removeFriend,
     joinFriendRoom: friends.joinFriendRoom,
     roomHistory,
-    refreshRoomHistory
+    refreshRoomHistory,
+    turnOffWatchLink
   };
 }

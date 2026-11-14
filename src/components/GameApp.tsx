@@ -61,6 +61,8 @@ type GameAppProps = {
   onMarkNotificationsRead: () => void;
   onSubmitGuestTransaction: (transaction: Transaction) => void;
   roomHistory: RoomHistoryProjection[];
+  /** Turns off a hosted room's watch link from Player History's Shared rooms. */
+  onTurnOffWatchLink?: (publicId: string) => Promise<void>;
   initialMode: AppMode;
   onHome?: () => void;
 };
@@ -77,6 +79,7 @@ export function GameApp({
   onMarkNotificationsRead,
   onSubmitGuestTransaction,
   roomHistory,
+  onTurnOffWatchLink,
   sessionControls,
   sessionNotice,
   sharedActivity,
@@ -334,6 +337,7 @@ export function GameApp({
               setReadOnly={setManualReadOnly}
               activePlayers={activePlayers}
               roomHistory={roomHistory}
+              onTurnOffWatchLink={onTurnOffWatchLink}
             />
           </LazyBoundary>
         }

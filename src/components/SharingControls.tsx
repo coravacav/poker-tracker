@@ -393,7 +393,11 @@ export function HostSharingControls({
                           />
                         ) : null}
                         {(room.guests?.length ?? 0) > 0 ? (
-                          <div className="guest-management-list">
+                          <section className="guest-management-list" aria-labelledby="host-phones-title">
+                            <div className="host-seat-heading">
+                              <h3 id="host-phones-title">Phones</h3>
+                              <span className="muted">Revoke removes a phone from the game</span>
+                            </div>
                             {room.guests?.map((guest) => (
                               <div className="guest-management-item" key={guest.id}>
                                 <span className={guest.connected ? "positive" : "muted"}>
@@ -406,7 +410,7 @@ export function HostSharingControls({
                                 ) : null}
                               </div>
                             ))}
-                          </div>
+                          </section>
                         ) : null}
                         {(room.guestRequests?.length ?? 0) > 0 ? (
                           <div className="guest-request-list">

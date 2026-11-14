@@ -102,6 +102,8 @@ export function agreementView(state: GameState, agreement: Agreement) {
     counterpartyName: name(agreement.counterpartyPlayerId),
     witnessPlayerId: agreement.witnessPlayerId ?? null,
     witnessName: name(agreement.witnessPlayerId),
+    // The other seat had no phone when it was sent (or is the host's), so the host answers.
+    hostAnswers: agreement.kind !== "bank" && agreement.seatGuestId === undefined,
     // Returned entries read as bounced: back with the proposer either way.
     status: agreement.status === "returned" ? ("bounced" as const) : agreement.status,
     closedReason: agreement.closedReason ?? null,

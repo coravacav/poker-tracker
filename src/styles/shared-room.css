@@ -16,11 +16,29 @@
 
 .shared-room-history summary {
   display: grid;
-  grid-template-columns: minmax(140px, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 10px;
   align-items: center;
   cursor: pointer;
   text-transform: capitalize;
+}
+
+/* On a phone the room's name takes its own line, so the row never runs off the side. */
+@media (max-width: 600px) {
+  .shared-room-history summary {
+    grid-template-columns: repeat(3, auto) minmax(0, 1fr);
+    gap: 2px 10px;
+  }
+
+  .shared-room-history summary strong {
+    grid-column: 1 / -1;
+  }
+
+  .shared-room-history summary span,
+  .shared-room-history summary time {
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
 }
 
 .shared-room-results {

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionHistoryPanel } from "../components/SessionHistoryPanel";
 import { GuestSessionControls } from "../components/SharingControls";
 import type { GameState } from "../domain/pokerTypes";
@@ -157,6 +157,28 @@ describe("saving a shared game as a guest", () => {
     );
     await screen.findAllByText("Friday");
     expect(screen.queryByRole("button", { name: "Save to Player History" })).not.toBeInTheDocument();
+  });
+
+  it("lets the host turn off an ended room's watch link, only while it is on", async () => {
+    const hosted = (publicId: string, watchLinkOn: boolean, status: RoomHistoryProjection["status"] = "ended") => ({
+      ...guestRoom(hostGame(), status),
+      publicId,
+      role: "host" as const,
+      displayName: null,
+      watchLinkOn
+    });
+    const turnOff = vi.fn(async () => {});
+    render(
+      <SessionHistoryPanel
+        sharedRooms={[hosted("room_on_abcdefghijklmno", true), hosted("room_off_abcdefghijklmn", false), hosted("room_live_abcdefghijklm", true, "active")]}
+        onTurnOffWatchLink={turnOff}
+      />
+    );
+    await screen.findAllByText("Friday");
+    const buttons = screen.getAllByRole("button", { name: "Turn off watch link", hidden: true });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    expect(turnOff).toHaveBeenCalledWith("room_on_abcdefghijklmno");
   });
 
   it("offers the guest bar's save only for the latest room of a game this device joined", () => {

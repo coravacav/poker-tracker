@@ -240,7 +240,10 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       peerGuest={peerGuest}
       ledgerLabel={
         gameSession.isGuest
-          ? "Shared read-only ledger"
+          ? peerGuest
+            // A seated player records chips with the others, so it isn't read-only to them.
+            ? "Shared game"
+            : "Shared read-only ledger"
           : session.mode === "local"
             ? "Local ledger"
             : "Shared host ledger"
@@ -255,6 +258,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         void gameSession.submitGuestTransaction(transaction)
       }
       roomHistory={gameSession.roomHistory}
+      onTurnOffWatchLink={gameSession.turnOffWatchLink}
       state={gameSession.state}
       initialMode={gameSession.localEntryDestination}
       onHome={session.mode === "local" ? gameSession.openHome : undefined}

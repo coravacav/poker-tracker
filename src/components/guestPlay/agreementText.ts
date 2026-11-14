@@ -71,11 +71,12 @@ export function bouncedByLine(agreement: RoomAgreement, viewerId: string | null)
   return `${name} said not right`;
 }
 
-/** Who an open entry is waiting on: "waiting on Sam", "waiting for a witness". */
+/** Who an open entry is waiting on: "waiting on Sam", "waiting for a witness", "waiting on the host". */
 export function waitingOnLine(agreement: RoomAgreement): string {
   if (agreement.kind === "bank") {
     return agreement.witnessName ? `waiting on ${agreement.witnessName}` : "waiting for a witness";
   }
+  if (agreement.hostAnswers) return "waiting on the host";
   return `waiting on ${agreement.counterpartyName ?? "the other player"}`;
 }
 

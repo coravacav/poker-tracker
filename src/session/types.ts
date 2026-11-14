@@ -120,6 +120,8 @@ export type RoomAgreement = {
   /** bank only: the one player asked to see it, if the proposer named one. */
   witnessPlayerId: string | null;
   witnessName: string | null;
+  /** give/buy: the host answers, as the other seat had no phone when it was sent. */
+  hostAnswers?: boolean;
   status: AgreementStatus;
   closedReason: AgreementClosedReason | null;
   bounceReason: string | null;
@@ -181,6 +183,8 @@ export type HostSeat = {
   name: string;
   isHost: boolean;
   guest: { id: Id<"roomGuests">; displayName: string; connected: boolean } | null;
+  /** The host released it and no phone holds it, so only the host can fill it. */
+  releasedByHost?: boolean;
 };
 
 /** What the watch link shows: the sanitized table and the latest events, newest first. */
@@ -257,6 +261,8 @@ export type RoomHistoryProjection = RoomProjection & {
   role: "host" | "guest";
   createdAt: number;
   displayName: string | null;
+  /** Host rooms only: the watch link still works. */
+  watchLinkOn?: boolean;
 };
 
 export type RoomTransport = {

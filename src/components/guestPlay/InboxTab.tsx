@@ -103,7 +103,7 @@ export function InboxTab({
                       <span className="guest-inbox-eyebrow">
                         {bank
                           ? askedMe ? `${agreement.proposerName} asked you · From bank` : "Witness needed · From bank"
-                          : `From ${agreement.proposerName} · ${agreement.kind === "give" ? "Give" : "Buy"}`}
+                          : `From ${agreement.proposerName} · ${agreement.kind === "give" ? "Give to" : "Buy from"}`}
                       </span>
                       <h3>{agreementSentence(agreement, seatPlayerId, format)}</h3>
                       {agreement.note ? <p className="guest-inbox-note">“{agreement.note}”</p> : null}

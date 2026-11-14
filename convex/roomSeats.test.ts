@@ -374,6 +374,11 @@ describe("seat claims", () => {
       claimed: false,
       releasedByHost: true
     });
+    // The host's seat list says so too, so it doesn't read as an open seat.
+    expect((await hostView(test)).seats.find((seat) => seat.playerId === players.second)).toMatchObject({
+      guest: null,
+      releasedByHost: true
+    });
     await expect(
       test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.second })
     ).rejects.toThrow(/Ask the host/);
@@ -385,6 +390,7 @@ describe("seat claims", () => {
 
     await test.mutation(api.rooms.assignSeat, { publicId, hostSecret, guestId: maya, playerId: players.second });
     expect((await guestView(test)).seatPlayerId).toBe(players.second);
+    expect((await hostView(test)).seats.find((seat) => seat.playerId === players.second)?.releasedByHost).toBeUndefined();
     // The host's move clears that release: the guest may come back to it later.
     await test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.third });
     await test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.second });

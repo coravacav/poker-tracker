@@ -78,8 +78,6 @@
 .guest-management-list {
   display: grid;
   gap: 6px;
-  max-height: 160px;
-  overflow: auto;
 }
 
 .guest-management-item {

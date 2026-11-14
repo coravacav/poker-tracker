@@ -74,7 +74,40 @@ function mergeSource(stat: PlayerHistoryStat): MergeSource {
 
 const SAVE_FAILED = "Could not save the change on this device.";
 
-export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHistoryProjection[] }) {
+/**
+ * An ended hosted room's watch link keeps working until the room is pruned;
+ * this turns it off from Player History, where the host lands after ending.
+ */
+function TurnOffWatchLink({ onTurnOff }: { onTurnOff: () => Promise<void> }) {
+  const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  async function turnOff() {
+    setState("busy");
+    try {
+      await onTurnOff();
+    } catch {
+      setState("failed");
+    }
+  }
+  return (
+    <div className="shared-room-save">
+      <span className="muted">The watch link still shows this game.</span>
+      <button className="text-button" type="button" disabled={state === "busy"} onClick={() => void turnOff()}>
+        {state === "busy" ? "Turning off…" : "Turn off watch link"}
+      </button>
+      <span className="save-shared-game-status" role="status">
+        {state === "failed" ? "Could not turn it off. Try again when you’re online." : ""}
+      </span>
+    </div>
+  );
+}
+
+export function SessionHistoryPanel({
+  sharedRooms = [],
+  onTurnOffWatchLink
+}: {
+  sharedRooms?: RoomHistoryProjection[];
+  onTurnOffWatchLink?: (publicId: string) => Promise<void>;
+}) {
   const games = useArchivedGames();
   const directory = usePeopleDirectory();
   const [range, setRange] = useState<HistoryRange>("all");
@@ -493,6 +526,9 @@ export function SessionHistoryPanel({ sharedRooms = [] }: { sharedRooms?: RoomHi
                     <span className="muted">This game continued in a later room; save it from there.</span>
                   )}
                 </div>
+              ) : null}
+              {room.role === "host" && room.status !== "active" && room.watchLinkOn && onTurnOffWatchLink ? (
+                <TurnOffWatchLink onTurnOff={() => onTurnOffWatchLink(room.publicId)} />
               ) : null}
             </details>
           );

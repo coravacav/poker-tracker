@@ -14,6 +14,7 @@ type SetupModeProps = {
   setReadOnly: (readOnly: boolean) => void;
   activePlayers: Player[];
   roomHistory: RoomHistoryProjection[];
+  onTurnOffWatchLink?: (publicId: string) => Promise<void>;
 };
 
 /** Setup mode: table settings, players, chip denominations, and Player History. */
@@ -23,7 +24,8 @@ export function SetupMode({
   readOnly,
   setReadOnly,
   activePlayers,
-  roomHistory
+  roomHistory,
+  onTurnOffWatchLink
 }: SetupModeProps) {
   return (
     <div className="setup-mode">
@@ -47,7 +49,7 @@ export function SetupMode({
         dispatch={dispatch}
         readOnly={readOnly}
       />
-      <SessionHistoryPanel sharedRooms={roomHistory} />
+      <SessionHistoryPanel sharedRooms={roomHistory} onTurnOffWatchLink={onTurnOffWatchLink} />
     </div>
   );
 }

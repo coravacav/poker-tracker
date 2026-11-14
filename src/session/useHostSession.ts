@@ -72,6 +72,8 @@ export function useHostSession({
         localDispatch({ type: "replace_state_from_import", state: room.state });
         clearHostRecovery();
         setSession({ mode: "local", notice: "Sharing ended. The final room state is saved locally." });
+        // Shared rooms then shows the room as ended, with its watch link if still on.
+        void refreshRoomHistory();
       } else {
         setSession({
           mode: "recovery_required",
@@ -84,7 +86,7 @@ export function useHostSession({
         });
       }
     },
-    [deploymentUrl, transport]
+    [deploymentUrl, refreshRoomHistory, transport]
   );
 
   useEffect(() => {

@@ -104,6 +104,8 @@ export const agreementViewValidator = v.object({
   counterpartyName: v.union(v.string(), v.null()),
   witnessPlayerId: v.union(v.string(), v.null()),
   witnessName: v.union(v.string(), v.null()),
+  /** give/buy: the host answers, as the other seat had no phone when it was sent. */
+  hostAnswers: v.boolean(),
   status: agreementStatusValidator,
   closedReason: v.union(agreementClosedReasonValidator, v.null()),
   bounceReason: v.union(v.string(), v.null()),
@@ -160,7 +162,9 @@ export const spectatorViewValidator = publicRoomValidator.extend({
 export const historyViewValidator = publicRoomValidator.extend({
   role: v.union(v.literal("host"), v.literal("guest")),
   createdAt: v.number(),
-  displayName: v.union(v.string(), v.null())
+  displayName: v.union(v.string(), v.null()),
+  /** Host only: the watch link still works, so the host can turn it off from history. */
+  watchLinkOn: v.optional(v.boolean())
 });
 export const hostActionResultValidator = publicRoomValidator.extend({
   activity: activityValidator,
@@ -199,7 +203,9 @@ export const hostRoomValidator = publicRoomValidator.extend({
     guest: v.union(
       v.null(),
       v.object({ id: v.id("roomGuests"), displayName: v.string(), connected: v.boolean() })
-    )
+    ),
+    /** The host released it and no phone holds it: only the host's Move can fill it. */
+    releasedByHost: v.optional(v.boolean())
   })),
   peerConfirm: v.boolean(),
   /** Agreements the host answers or settles. */

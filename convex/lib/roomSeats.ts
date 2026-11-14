@@ -188,12 +188,15 @@ export async function hostSeats(
 ) {
   const claims = await seatClaims(ctx, room);
   const hostPlayerId = liveHostPlayerId(room);
+  const released = new Set(hostReleasedSeats(room));
   return activeSeatPlayers(room).map((player) => {
     const holder = claims.get(player.id);
+    const isHost = player.id === hostPlayerId;
     return {
       playerId: player.id,
       name: player.name,
-      isHost: player.id === hostPlayerId,
+      isHost,
+      ...(released.has(player.id) && holder === undefined && !isHost ? { releasedByHost: true } : {}),
       guest: holder
         ? {
             id: holder._id,

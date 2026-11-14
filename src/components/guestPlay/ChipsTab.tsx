@@ -101,7 +101,7 @@ export function ChipsTab({
   const hint = kind === "bank"
     ? witness
       ? `Nothing is recorded until ${witness.name} says they saw it.`
-      : "Shows up in everyone's Inbox until someone taps I saw it."
+      : "Shows up in everyone’s Inbox until someone taps “I saw it”."
     : !counterparty
       ? "Nothing is recorded until they confirm."
       : hostConfirms

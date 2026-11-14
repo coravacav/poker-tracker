@@ -266,9 +266,13 @@ describe("watch link", () => {
     await endRoom(test, 0);
     expect(await watch(test)).toMatchObject({ status: "ended" });
 
+    // The host's room history says the link still works, so it can be turned off from there.
+    const history = () => test.query(api.rooms.historyView, { publicId, role: "host", secret: hostSecret });
+    expect(await history()).toMatchObject({ status: "ended", watchLinkOn: true });
     await turnOnWatchLink(test, null);
     await expect(watch(test)).rejects.toThrow(/invalid or turned off/);
     expect((await roomDoc(test)).spectatorSecretHash).toBeUndefined();
+    expect(await history()).toMatchObject({ watchLinkOn: false });
   });
 
   it("caps watchers online and the rate of new watcher ids, never a known watcher", async () => {

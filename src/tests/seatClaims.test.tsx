@@ -182,6 +182,18 @@ describe("host seat list", () => {
     expect(handlers.onAssignSeat).toHaveBeenCalledWith(maya, "player_dev");
   });
 
+  it("marks a seat the host released, which the host's Move can still fill", () => {
+    const handlers = hostList(
+      hostSeats.map((seat) => (seat.playerId === "player_dev" ? { ...seat, releasedByHost: true } : seat)),
+      "player_alex"
+    );
+    const list = screen.getByRole("region", { name: "Seats" });
+    expect(within(list).getByText("Released · only you can assign it")).toBeInTheDocument();
+    expect(within(list).queryByText("No phone yet")).not.toBeInTheDocument();
+    fireEvent.change(within(list).getByRole("combobox", { name: "Move Maya’s phone" }), { target: { value: "player_dev" } });
+    expect(handlers.onAssignSeat).toHaveBeenCalledWith(maya, "player_dev");
+  });
+
   it("asks which seat is the host's until one is picked", () => {
     const handlers = hostList(hostSeats.map((seat) => ({ ...seat, isHost: false })), null);
     expect(screen.getByText("Which seat is yours?")).toBeInTheDocument();

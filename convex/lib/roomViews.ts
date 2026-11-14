@@ -111,7 +111,8 @@ export async function roomHistoryView(
       ...publicRoom(room, room.state as GameState),
       role: "host" as const,
       createdAt: room.createdAt,
-      displayName: null
+      displayName: null,
+      watchLinkOn: room.spectatorSecretHash !== undefined
     };
   }
   const { room, guest } = await requireGuest(ctx, args.publicId, args.secret);

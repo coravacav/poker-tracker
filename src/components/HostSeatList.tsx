@@ -121,6 +121,11 @@ export function HostSeatList({
                     </button>
                   </span>
                 </>
+              ) : seat.releasedByHost ? (
+                <span className="host-seat-phone">
+                  <span className="host-seat-dot" aria-hidden="true" />
+                  Released · only you can assign it
+                </span>
               ) : (
                 <span className="host-seat-phone">
                   <span className="host-seat-dot" aria-hidden="true" />

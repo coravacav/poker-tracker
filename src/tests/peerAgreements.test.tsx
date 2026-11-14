@@ -196,7 +196,7 @@ describe("Inbox", () => {
   it("confirms or turns back an entry waiting on you, saying what it means", async () => {
     const handlers = renderInbox({ needsMe: [agreement({ kind: "buy" })] }, { status: "recorded", reason: null });
     const card = screen.getByRole("article", { name: "Jon bought $20 in chips from you" });
-    expect(within(card).getByText("From Jon · Buy")).toBeInTheDocument();
+    expect(within(card).getByText("From Jon · Buy from")).toBeInTheDocument();
     expect(within(card).getByText(/Jon will owe you \$20 at settle-up\./)).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(within(card).getByRole("button", { name: "Confirm" }));
@@ -227,6 +227,19 @@ describe("Inbox", () => {
     expect(within(card).queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("heading", { name: "Needs you" }).parentElement!).queryByText("1")).not.toBeInTheDocument();
+  });
+
+  it("says the host answers an entry for a seat that had no phone", () => {
+    const mine = agreement({
+      id: "agreement_mine" as never,
+      proposerPlayerId: maya.id,
+      proposerName: "Maya",
+      counterpartyPlayerId: dev.id,
+      counterpartyName: "Dev",
+      hostAnswers: true
+    });
+    renderInbox({ mine: [mine] });
+    expect(screen.getByText(/waiting on the host/)).toBeInTheDocument();
   });
 
   it("cancels your own open entry, and dismisses or resends a bounced one", async () => {

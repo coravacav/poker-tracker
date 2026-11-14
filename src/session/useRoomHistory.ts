@@ -20,7 +20,21 @@ export function useRoomHistory(transport: RoomTransport) {
     void refreshRoomHistory();
   }, [refreshRoomHistory]);
 
-  return { roomHistory, refreshRoomHistory };
+  /** Turns off a hosted room's watch link (it keeps working after the game ends until then). */
+  const turnOffWatchLink = useCallback(async (publicId: string) => {
+    const credential = loadRoomHistoryCredentials().find(
+      (entry) => entry.role === "host" && entry.publicId === publicId
+    );
+    if (!credential || !transport.rotateSpectatorLink) {
+      throw new Error("This device can no longer change that room.");
+    }
+    await transport.rotateSpectatorLink({ publicId, hostSecret: credential.secret, spectatorSecret: null });
+    setRoomHistory((rooms) =>
+      rooms.map((room) => (room.role === "host" && room.publicId === publicId ? { ...room, watchLinkOn: false } : room))
+    );
+  }, [transport]);
+
+  return { roomHistory, refreshRoomHistory, turnOffWatchLink };
 }
 
 /** Remembers each hosted or joined room so it appears in room history. */
