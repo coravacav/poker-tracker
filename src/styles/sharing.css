@@ -106,13 +106,17 @@
 
 .guest-join-page {
   display: grid;
+  height: 100%;
   min-height: 100dvh;
+  overflow-y: auto;
   place-items: center;
   padding: 20px;
 }
 
 .guest-join-card {
   width: min(460px, 100%);
+  /* Centered while it fits; a long seat list starts at the top and scrolls. */
+  margin-block: auto;
   padding: 24px;
   text-align: center;
 }
@@ -156,4 +160,276 @@
 .watch-link-panel > .primary-button {
   justify-self: start;
   min-height: 44px;
+}
+
+/* "Who are you?": the seat picker on the join screen and on Play. */
+.seat-join-form {
+  display: grid;
+  gap: 12px;
+  text-align: left;
+}
+
+.seat-join-form h1,
+.seat-join-form p {
+  margin: 0;
+}
+
+.seat-join-title {
+  margin: 4px 0 0;
+  font-size: 1rem;
+}
+
+.seat-join-hint {
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.seat-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.seat-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 8px 14px;
+  color: var(--ink);
+  background: var(--surface);
+  text-align: left;
+}
+
+.seat-option:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.seat-option.is-host {
+  border-color: var(--line);
+}
+
+/* Held by another phone: shown, but clearly not available. */
+.seat-option.is-claimed {
+  border-style: dashed;
+  color: var(--muted);
+  background: var(--bg);
+}
+
+.seat-option.is-selected {
+  border: 2px solid var(--green);
+  padding: 7px 13px;
+  background: var(--green-soft);
+  box-shadow: 0 0 0 3px rgba(20, 108, 67, 0.14);
+}
+
+.seat-option-avatar {
+  display: grid;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-alt);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.seat-option.is-selected .seat-option-avatar {
+  color: #fff;
+  background: var(--green);
+}
+
+.seat-option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.94rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seat-option-badge {
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--surface-alt);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.seat-option-status {
+  display: inline-flex;
+  flex: none;
+  gap: 5px;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.seat-option-check {
+  display: grid;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 2px solid var(--line-strong);
+  border-radius: 999px;
+}
+
+.seat-option.is-selected .seat-option-check {
+  width: 26px;
+  height: 26px;
+  border-color: var(--green);
+  color: #fff;
+  background: var(--green);
+}
+
+.seat-dialog {
+  display: grid;
+  gap: 12px;
+}
+
+.guest-seat-prompt {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.guest-seat-prompt .text-button {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* The host's Seats list: which phone holds each seat. */
+.host-seat-list {
+  display: grid;
+  gap: 6px;
+}
+
+.host-seat-heading {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.host-seat-heading h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.host-seat-heading span {
+  font-size: 0.75rem;
+}
+
+.host-seat-list ul {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0;
+  background: var(--surface);
+  list-style: none;
+}
+
+.host-seat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  padding: 2px 4px 2px 12px;
+}
+
+.host-seat-row:last-child {
+  border-bottom: 0;
+}
+
+.host-seat-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.host-seat-badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--green);
+  background: var(--green-soft);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.host-seat-phone {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.host-seat-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+}
+
+.host-seat-dot.is-online {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.host-seat-dot.is-away {
+  border-color: var(--amber);
+  background: var(--amber);
+}
+
+.host-seat-action {
+  min-height: 44px;
+  border: 0;
+  padding: 0 8px;
+  color: var(--ink);
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.host-seat-action.danger {
+  color: var(--red);
+}
+
+/* Move and Release stay together, wrapping to their own line on narrow screens. */
+.host-seat-actions {
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+}
+
+select.host-seat-move {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+}
+
+.host-seat-prompt {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.host-seat-prompt select {
+  flex: 1;
+  width: auto;
+  min-width: 0;
 }

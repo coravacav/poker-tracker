@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { Transaction } from "../domain/pokerTypes";
 import { createCapability, guestRoomHash } from "./capabilities";
-import { roomErrorMessage, SHARING_UNAVAILABLE_MESSAGE } from "./convexRoomTransport";
+import { roomErrorCode, roomErrorMessage, SHARING_UNAVAILABLE_MESSAGE } from "./convexRoomTransport";
 import { clearGuestSession, saveGuestSession, saveRoomHistoryCredential } from "./sessionPersistence";
 import { normalizeRoomState, type LocalEntryDestination, type SessionState } from "./sessionState";
 import type { GuestSession, RoomTransport } from "./types";
@@ -40,7 +40,11 @@ export function useInvitePreview(
               : preview.status === "ended" || preview.status === "expired"
                 ? "ended"
                 : "invalid";
-          return { ...current, preview: { status, name: preview.name }, error: null };
+          return {
+            ...current,
+            preview: { status, name: preview.name, seats: preview.seats },
+            error: null
+          };
         });
       })
       .catch((error) => {
@@ -138,8 +142,9 @@ export function useGuestSession({
     };
   }, [session.mode, session.mode === "guest" ? session.credentials : null, transport]);
 
+  /** Joins on a seat (taking its player's name), or under a typed name when no seat is free. */
   const joinGame = useCallback(
-    async (displayName: string) => {
+    async (choice: { playerId: string } | { displayName: string }) => {
       const current = sessionRef.current;
       if (current.mode !== "joining" || current.preview.status !== "active") return;
       setSession({ ...current, joining: true, error: null });
@@ -149,7 +154,7 @@ export function useGuestSession({
           publicId: current.route.publicId,
           inviteSecret: current.route.inviteSecret,
           guestSecret,
-          displayName
+          ...choice
         });
         const normalizedState = normalizeRoomState(room.state);
         if (!normalizedState) {
@@ -187,10 +192,42 @@ export function useGuestSession({
         setSession((next) =>
           next.mode === "joining" ? { ...next, joining: false, error: roomErrorMessage(error) } : next
         );
+        // Someone took the seat first: refresh the seats so it shows as taken.
+        if (roomErrorCode(error) === "SEAT_TAKEN") {
+          const { publicId, inviteSecret } = current.route;
+          void transport.getInvitePreview(publicId, inviteSecret).then((preview) => {
+            setSession((next) =>
+              next.mode === "joining" && next.route.publicId === publicId && preview.seats
+                ? { ...next, preview: { ...next.preview, seats: preview.seats } }
+                : next
+            );
+          }).catch(() => undefined);
+        }
       }
     },
     [refreshRoomHistory, transport]
   );
+
+  /** Takes an open seat for a guest already in the room; resolves to whether it worked. */
+  const claimSeat = useCallback(async (playerId: string) => {
+    const current = sessionRef.current;
+    const claim = transport.claimSeat;
+    if (current.mode !== "guest" || !current.room || !claim) return false;
+    try {
+      await claim({
+        publicId: current.credentials.publicId,
+        guestSecret: current.credentials.guestSecret,
+        playerId
+      });
+      setSession((next) => (next.mode === "guest" ? { ...next, error: null } : next));
+      return true;
+    } catch (error) {
+      setSession((next) =>
+        next.mode === "guest" ? { ...next, error: roomErrorMessage(error) } : next
+      );
+      return false;
+    }
+  }, [transport]);
 
   const submitGuestTransaction = useCallback(async (transaction: Transaction) => {
     const current = sessionRef.current;
@@ -226,5 +263,5 @@ export function useGuestSession({
     setSession({ mode: "local", notice: null });
   }, []);
 
-  return { joinGame, submitGuestTransaction, leaveGuest, dismissInvite };
+  return { joinGame, claimSeat, submitGuestTransaction, leaveGuest, dismissInvite };
 }

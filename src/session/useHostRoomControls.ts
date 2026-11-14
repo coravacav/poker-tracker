@@ -13,7 +13,7 @@ function isHostingRoom(session: SessionState, publicId: string): session is Host
   return session.mode === "hosting" && session.recovery?.publicId === publicId;
 }
 
-/** Host-only room controls: controller takeover, guest requests, invitations, the watch link, and guest access. */
+/** Host-only room controls: controller takeover, guest requests, invitations, the watch link, guest access, and seats. */
 export function useHostRoomControls(
   transport: RoomTransport,
   sessionRef: RefObject<SessionState>,
@@ -132,8 +132,36 @@ export function useHostRoomControls(
     await runHostAction(publicId, () => transport.revokeGuest({ publicId, hostSecret, guestId }));
   }, [runHostAction, transport]);
 
+  const releaseSeat = useCallback(async (guestId: Id<"roomGuests">) => {
+    const current = sessionRef.current;
+    const release = transport.releaseSeat;
+    if (current.mode !== "hosting" || !current.recovery || !release) return;
+    const { publicId, hostSecret } = current.recovery;
+    await runHostAction(publicId, () => release({ publicId, hostSecret, guestId }));
+  }, [runHostAction, transport]);
+
+  const assignSeat = useCallback(async (guestId: Id<"roomGuests">, playerId: string) => {
+    const current = sessionRef.current;
+    const assign = transport.assignSeat;
+    if (current.mode !== "hosting" || !current.recovery || !assign) return;
+    const { publicId, hostSecret } = current.recovery;
+    await runHostAction(publicId, () => assign({ publicId, hostSecret, guestId, playerId }));
+  }, [runHostAction, transport]);
+
+  /** Marks the host's own seat ("This is me"), or clears it with null. */
+  const setHostPlayer = useCallback(async (playerId: string | null) => {
+    const current = sessionRef.current;
+    const setSeat = transport.setHostPlayer;
+    if (current.mode !== "hosting" || !current.recovery || !setSeat) return;
+    const { publicId, hostSecret } = current.recovery;
+    await runHostAction(publicId, () => setSeat({ publicId, hostSecret, playerId }));
+  }, [runHostAction, transport]);
+
   return {
     claimHost,
+    releaseSeat,
+    assignSeat,
+    setHostPlayer,
     decideGuestTransaction,
     setJoiningOpen,
     setFriendVisibility,

@@ -16,6 +16,12 @@ import {
   submitGuestTransactionRequest
 } from "./lib/roomGuests";
 import { claimRoomHost, createRoom, endRoom, setRoomFriendVisibility } from "./lib/roomHosting";
+import {
+  assignRoomSeat,
+  claimRoomSeat,
+  releaseRoomSeat,
+  setRoomHostPlayer
+} from "./lib/roomSeats";
 import { lifecycleBatchResultValidator, runLifecycleBatch } from "./lib/roomLifecycle";
 import {
   recordSpectatorHeartbeat,
@@ -61,12 +67,14 @@ export const invitePreview = query({
   handler: previewInvite
 });
 
+/** Joins with a seat (taking its player's name) or, without one, with a display name. */
 export const join = mutation({
   args: {
     publicId: v.string(),
     inviteSecret: v.string(),
     guestSecret: v.string(),
-    displayName: v.string()
+    displayName: v.optional(v.string()),
+    playerId: v.optional(v.string())
   },
   returns: guestRoomValidator,
   handler: joinWithInvite
@@ -107,6 +115,13 @@ export const submitGuestTransaction = mutation({
   },
   returns: v.id("roomGuestRequests"),
   handler: submitGuestTransactionRequest
+});
+
+/** A guest takes an open seat, moving off any seat they held. */
+export const claimSeat = mutation({
+  args: { publicId: v.string(), guestSecret: v.string(), playerId: v.string() },
+  returns: v.null(),
+  handler: claimRoomSeat
 });
 
 export const heartbeat = mutation({
@@ -182,6 +197,36 @@ export const revokeGuest = mutation({
   },
   returns: v.null(),
   handler: revokeRoomGuest
+});
+
+/** Host: frees the seat a guest's phone holds. */
+export const releaseSeat = mutation({
+  args: { publicId: v.string(), hostSecret: v.string(), guestId: v.id("roomGuests") },
+  returns: v.null(),
+  handler: releaseRoomSeat
+});
+
+/** Host: moves a guest's phone to an open seat. */
+export const assignSeat = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    guestId: v.id("roomGuests"),
+    playerId: v.string()
+  },
+  returns: v.null(),
+  handler: assignRoomSeat
+});
+
+/** Host: marks the host's own seat, or clears it with null. */
+export const setHostPlayer = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    playerId: v.union(v.string(), v.null())
+  },
+  returns: v.null(),
+  handler: setRoomHostPlayer
 });
 
 export const decideGuestTransaction = mutation({

@@ -12,6 +12,7 @@ import { validateTransaction } from "../domain/validation";
 import type { RoomHistoryProjection, SharedActivity } from "../session/types";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
+import type { GuestSeatControls } from "./gameApp/GuestSeatPrompt";
 import { TransactionDrawer } from "./gameApp/TransactionDrawer";
 import { useLedgerOverview } from "./gameApp/useLedgerOverview";
 
@@ -43,6 +44,8 @@ type GameAppProps = {
   dispatch: Dispatch<GameAction>;
   forcedReadOnly: boolean;
   guest: boolean;
+  /** A guest's own seat and the seats they could take (shared rooms that have seats). */
+  guestSeat?: GuestSeatControls;
   ledgerLabel: string;
   title?: string;
   sessionControls?: ReactNode;
@@ -60,6 +63,7 @@ export function GameApp({
   dispatch,
   forcedReadOnly,
   guest,
+  guestSeat,
   ledgerLabel,
   title,
   onMarkNotificationsRead,
@@ -251,6 +255,7 @@ export function GameApp({
               state={state}
               dispatch={dispatch}
               guest={guest}
+              guestSeat={guestSeat}
               readOnly={readOnly}
               notice={notice}
               sessionNotice={sessionNotice}
@@ -301,6 +306,7 @@ export function GameApp({
           addTransaction={addTransaction}
           onSubmitGuestTransaction={onSubmitGuestTransaction}
           setTransactionDrawerOpen={setTransactionDrawerOpen}
+          defaultPlayerId={guest ? (guestSeat?.seatPlayerId ?? undefined) : undefined}
         />
       ) : null}
 

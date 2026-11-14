@@ -45,13 +45,26 @@ export const activityValidator = v.object({
   })),
   unreadNotificationCount: v.number()
 });
+/**
+ * A seat someone with the invitation can pick. `claimed` means another phone
+ * holds it; other guests' names and ids are never included.
+ */
+export const seatOptionValidator = v.object({
+  playerId: v.string(),
+  name: v.string(),
+  claimed: v.boolean(),
+  isHost: v.boolean()
+});
 export const guestRoomValidator = publicRoomValidator.extend({
   displayName: v.string(),
   hostProfile: v.union(
     v.null(),
     v.object({ friendCode: v.string(), displayName: v.string() })
   ),
-  activity: activityValidator
+  activity: activityValidator,
+  /** The seat this guest holds, or null. */
+  seatPlayerId: v.union(v.string(), v.null()),
+  seats: v.array(seatOptionValidator)
 });
 export const guestViewValidator = guestRoomValidator.extend({
   guestRequests: v.array(v.object({
@@ -70,7 +83,9 @@ export const invitePreviewValidator = v.union(
   v.object({ status: v.literal("invalid") }),
   v.object({
     status: v.union(roomStatusValidator, v.literal("closed")),
-    name: v.string()
+    name: v.string(),
+    // Only while the room is active and accepting guests.
+    seats: v.optional(v.array(seatOptionValidator))
   })
 );
 export const spectatorViewValidator = publicRoomValidator.extend({
@@ -105,6 +120,18 @@ export const hostRoomValidator = publicRoomValidator.extend({
     joinedAt: v.number(),
     connected: v.boolean(),
     revoked: v.boolean()
+  })),
+  /** The host's own seat ("This is me"), or null while unset. */
+  hostPlayerId: v.union(v.string(), v.null()),
+  /** Every active seat in seat order, with the phone holding it. */
+  seats: v.array(v.object({
+    playerId: v.string(),
+    name: v.string(),
+    isHost: v.boolean(),
+    guest: v.union(
+      v.null(),
+      v.object({ id: v.id("roomGuests"), displayName: v.string(), connected: v.boolean() })
+    )
   })),
   guestRequests: v.array(v.object({
     id: v.id("roomGuestRequests"),

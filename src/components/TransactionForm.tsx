@@ -27,6 +27,8 @@ type TransactionFormProps = {
   chipDenominations?: ChipDenomination[];
   /** The submit button's label; a guest's entry is a request for the host. */
   submitLabel?: string;
+  /** The player picked to start with (a seated guest's own seat); the first player otherwise. */
+  defaultPlayerId?: string;
 };
 
 type TransactionEntryType =
@@ -53,13 +55,19 @@ export function TransactionForm({
   summaryByPlayerId,
   allowFinalCashOut = false,
   chipDenominations = [],
-  submitLabel = "Add transaction"
+  submitLabel = "Add transaction",
+  defaultPlayerId
 }: TransactionFormProps) {
   const formatCurrency = useFormatCurrency();
+  const ownPlayerId = players.some((player) => player.id === defaultPlayerId) ? defaultPlayerId : undefined;
+  const firstPlayerId = ownPlayerId ?? players[0]?.id ?? "";
   const [type, setType] = useState<TransactionEntryType>("bank_buy_in");
-  const [bankPlayerId, setBankPlayerId] = useState(players[0]?.id ?? "");
-  const [fromPlayerId, setFromPlayerId] = useState(players[0]?.id ?? "");
-  const [toPlayerId, setToPlayerId] = useState(players[0]?.id ?? "");
+  const [bankPlayerId, setBankPlayerId] = useState(firstPlayerId);
+  const [fromPlayerId, setFromPlayerId] = useState(firstPlayerId);
+  // With a seat of your own, a transfer starts from you to someone else.
+  const [toPlayerId, setToPlayerId] = useState(
+    ownPlayerId ? (players.find((player) => player.id !== ownPlayerId)?.id ?? ownPlayerId) : firstPlayerId
+  );
   const [amountInput, setAmountInput] = useState(centsToInputValue(defaultBuyInCents));
   const [note, setNote] = useState("");
   const [bankDirection, setBankDirection] = useState<BankDirection>("incoming");
@@ -72,17 +80,17 @@ export function TransactionForm({
     }
 
     if (!players.some((player) => player.id === bankPlayerId)) {
-      setBankPlayerId(players[0].id);
+      setBankPlayerId(firstPlayerId);
     }
 
     if (!players.some((player) => player.id === fromPlayerId)) {
-      setFromPlayerId(players[0].id);
+      setFromPlayerId(firstPlayerId);
     }
 
     if (!players.some((player) => player.id === toPlayerId)) {
       setToPlayerId(players[0].id);
     }
-  }, [bankPlayerId, fromPlayerId, players, toPlayerId]);
+  }, [bankPlayerId, firstPlayerId, fromPlayerId, players, toPlayerId]);
 
   function applyQuickAmount(cents: number) {
     setAmountInput(centsToInputValue(cents));

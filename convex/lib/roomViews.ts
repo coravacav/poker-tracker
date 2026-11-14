@@ -7,6 +7,7 @@ import { publicHostProfile } from "./friendDiscovery";
 import { requireGuest, requireHost } from "./roomAccess";
 import { activityForRecipient, HOST_RECIPIENT_KEY } from "./roomNotifications";
 import { onlineWatchers, presence } from "./roomPresence";
+import { hostSeats, liveHostPlayerId, liveSeatOf, seatOptions } from "./roomSeats";
 
 export async function publicRoomWithActivity<T extends Record<string, unknown> = Record<never, never>>(
   ctx: QueryCtx | MutationCtx,
@@ -89,6 +90,8 @@ export async function guestRoomView(
     {
       displayName: guest.displayName,
       hostProfile: await publicHostProfile(ctx, room),
+      seatPlayerId: liveSeatOf(room, guest),
+      seats: await seatOptions(ctx, room, guest._id),
       guestRequests: await guestRequestsForGuest(ctx, guest)
     }
   );
@@ -144,6 +147,8 @@ export async function hostRoomView(
       connected: onlineGuestIds.has(String(guest._id)),
       revoked: guest.revokedAt !== undefined
     })),
+    hostPlayerId: liveHostPlayerId(room),
+    seats: await hostSeats(ctx, room, onlineGuestIds),
     guestRequests: await pendingGuestRequests(ctx, room),
     controllerStatus:
       room.hostControllerId === args.controllerId

@@ -14,13 +14,18 @@ import type {
   GuestSession,
   HostRecovery,
   HostRoomProjection,
+  SeatOption,
   SpectatorRoomProjection
 } from "./types";
 
 export type InviteState = {
   mode: "joining";
   route: Extract<InviteRoute, { kind: "invite" }>;
-  preview: { status: "loading" | "active" | "invalid" | "ended" | "closed"; name?: string };
+  preview: {
+    status: "loading" | "active" | "invalid" | "ended" | "closed";
+    name?: string;
+    seats?: SeatOption[];
+  };
   error: string | null;
   joining: boolean;
 };

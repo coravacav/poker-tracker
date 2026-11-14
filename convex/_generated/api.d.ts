@@ -23,6 +23,7 @@ import type * as lib_roomHosting from "../lib/roomHosting.js";
 import type * as lib_roomLifecycle from "../lib/roomLifecycle.js";
 import type * as lib_roomNotifications from "../lib/roomNotifications.js";
 import type * as lib_roomPresence from "../lib/roomPresence.js";
+import type * as lib_roomSeats from "../lib/roomSeats.js";
 import type * as lib_roomSpectators from "../lib/roomSpectators.js";
 import type * as lib_roomValidators from "../lib/roomValidators.js";
 import type * as lib_roomViews from "../lib/roomViews.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   "lib/roomLifecycle": typeof lib_roomLifecycle;
   "lib/roomNotifications": typeof lib_roomNotifications;
   "lib/roomPresence": typeof lib_roomPresence;
+  "lib/roomSeats": typeof lib_roomSeats;
   "lib/roomSpectators": typeof lib_roomSpectators;
   "lib/roomValidators": typeof lib_roomValidators;
   "lib/roomViews": typeof lib_roomViews;

@@ -16,6 +16,7 @@ import { isDiscoverable, profileByFriendCode, publicHostProfile } from "./friend
 import { requireGuest, requireHost, roomByPublicId } from "./roomAccess";
 import { fail } from "./roomErrors";
 import { GUEST_PRESENCE_INTERVAL_MS, presence } from "./roomPresence";
+import { claimSeatForGuest, liveSeatOf, seatOptions } from "./roomSeats";
 import { publicRoomWithActivity } from "./roomViews";
 
 /** Requests one guest may have waiting for the host at a time. */
@@ -48,19 +49,29 @@ export async function rejectPendingGuestRequests(
   }
 }
 
+/**
+ * Joins (or rejoins) a room. With a seat, the guest claims it in the same
+ * step and takes its player's name; without one, they join under the name
+ * they typed and can pick a seat later.
+ */
 export async function joinRoomAsGuest(
   ctx: MutationCtx,
   room: Doc<"rooms">,
   guestSecret: string,
-  rawDisplayName: string
+  choice: { displayName?: string; playerId?: string }
 ) {
   if (!validSecret(guestSecret)) {
     fail("INVALID_CAPABILITY", "Guest capability is invalid.");
   }
   if (room.status !== "active") fail("ROOM_ENDED", "This shared room has ended.");
   if (room.joiningOpen === false) fail("ROOM_NOT_ACTIVE", "This room is not accepting new guests.");
-  const displayName = rawDisplayName.trim();
-  if (rawDisplayName.length > 200 || displayName.length < 1 || displayName.length > 40) {
+  const rawDisplayName = choice.displayName ?? "";
+  let displayName = rawDisplayName.trim();
+  if (choice.playerId === undefined) {
+    if (rawDisplayName.length > 200 || displayName.length < 1 || displayName.length > 40) {
+      fail("INVALID_ARGUMENT", "Display name must be between 1 and 40 characters.");
+    }
+  } else if (rawDisplayName.length > 200) {
     fail("INVALID_ARGUMENT", "Display name must be between 1 and 40 characters.");
   }
 
@@ -86,7 +97,7 @@ export async function joinRoomAsGuest(
   }
   let guestId = existingGuest?._id;
   if (existingGuest) {
-    await ctx.db.patch(existingGuest._id, { displayName });
+    if (choice.playerId === undefined) await ctx.db.patch(existingGuest._id, { displayName });
   } else {
     // Count every guest record, revoked ones included, so neither the active
     // guest count nor the total number of guest rows per room is unbounded.
@@ -102,13 +113,21 @@ export async function joinRoomAsGuest(
     }
     guestId = await ctx.db.insert("roomGuests", {
       roomId: room._id,
-      displayName,
+      // Replaced by the seat's player name just below when joining with a seat.
+      displayName: displayName || "Guest",
       guestSecretHash,
       joinedAt: now
     });
   }
   if (!guestId) {
     fail("INVALID_CAPABILITY", "Guest session could not be created.");
+  }
+  let guest = await ctx.db.get("roomGuests", guestId);
+  if (!guest) fail("INVALID_CAPABILITY", "Guest session could not be created.");
+  if (choice.playerId !== undefined) {
+    // A taken seat fails the whole join, so no seatless guest is left behind.
+    await claimSeatForGuest(ctx, room, guest, choice.playerId);
+    guest = (await ctx.db.get("roomGuests", guestId))!;
   }
   const guestRecipientKey = String(guestId);
   const existingCursor = await ctx.db
@@ -130,7 +149,12 @@ export async function joinRoomAsGuest(
     room,
     sanitizeGuestState(room.state as GameState),
     guestRecipientKey,
-    { displayName, hostProfile: await publicHostProfile(ctx, room) }
+    {
+      displayName: guest.displayName,
+      hostProfile: await publicHostProfile(ctx, room),
+      seatPlayerId: liveSeatOf(room, guest),
+      seats: await seatOptions(ctx, room, guest._id)
+    }
   );
 }
 
@@ -150,12 +174,20 @@ export async function previewInvite(
   if (room.joiningOpen === false && room.status === "active") {
     return { status: "closed" as const, name: room.name };
   }
-  return { status: room.status, name: room.name };
+  if (room.status !== "active") return { status: room.status, name: room.name };
+  // Seats say only whether a phone holds them, never whose.
+  return { status: room.status, name: room.name, seats: await seatOptions(ctx, room) };
 }
 
 export async function joinWithInvite(
   ctx: MutationCtx,
-  args: { publicId: string; inviteSecret: string; guestSecret: string; displayName: string }
+  args: {
+    publicId: string;
+    inviteSecret: string;
+    guestSecret: string;
+    displayName?: string;
+    playerId?: string;
+  }
 ) {
   if (!validSecret(args.inviteSecret) || !validSecret(args.guestSecret)) {
     fail("INVALID_CAPABILITY", "Invitation is invalid.");
@@ -166,7 +198,10 @@ export async function joinWithInvite(
   if (!sameHash(room.inviteSecretHash, inviteHash)) {
     fail("INVALID_CAPABILITY", "Invitation is invalid.");
   }
-  return await joinRoomAsGuest(ctx, room, args.guestSecret, args.displayName);
+  return await joinRoomAsGuest(ctx, room, args.guestSecret, {
+    displayName: args.displayName,
+    playerId: args.playerId
+  });
 }
 
 export async function joinWithFriendCode(
@@ -183,7 +218,7 @@ export async function joinWithFriendCode(
   if (!room || room.hostProfileId !== profile._id || !isDiscoverable(room)) {
     fail("ROOM_NOT_FOUND", "This friend is not sharing that room.");
   }
-  return await joinRoomAsGuest(ctx, room, args.guestSecret, args.displayName);
+  return await joinRoomAsGuest(ctx, room, args.guestSecret, { displayName: args.displayName });
 }
 
 export async function submitGuestTransactionRequest(
@@ -275,8 +310,13 @@ export async function revokeRoomGuest(
   const guest = await ctx.db.get("roomGuests", args.guestId);
   if (!guest || guest.roomId !== room._id) fail("INVALID_ARGUMENT", "Guest was not found.");
   const now = Date.now();
-  if (guest.revokedAt === undefined) {
-    await ctx.db.patch(guest._id, { revokedAt: now });
+  if (guest.revokedAt === undefined || guest.playerId !== undefined) {
+    // Revoking frees the guest's seat for another phone.
+    await ctx.db.patch(guest._id, {
+      revokedAt: guest.revokedAt ?? now,
+      playerId: undefined,
+      claimedAt: undefined
+    });
   }
   // Also clears requests a guest revoked before this rule existed left behind.
   await rejectPendingGuestRequests(ctx, { guestId: guest._id }, now);

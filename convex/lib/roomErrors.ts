@@ -10,6 +10,7 @@ export type RoomErrorCode =
   | "VERSION_CONFLICT"
   | "DUPLICATE_CONTROLLER"
   | "ROOM_LIMIT_REACHED"
+  | "SEAT_TAKEN"
   | typeof CREATION_LIMITED_CODE;
 
 export function fail(code: RoomErrorCode, message: string): never {

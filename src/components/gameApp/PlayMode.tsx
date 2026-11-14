@@ -7,12 +7,15 @@ import { BankSummaryPanel } from "../BankSummary";
 import { ChipKey } from "../ChipKey";
 import { IconKey } from "../IconKey";
 import { PokerTable } from "../PokerTable";
+import { GuestSeatPrompt, type GuestSeatControls } from "./GuestSeatPrompt";
 import type { LedgerOverview } from "./useLedgerOverview";
 
 type PlayModeProps = {
   state: GameState;
   dispatch: Dispatch<GameAction>;
   guest: boolean;
+  /** A guest's own seat and the seats they could take. */
+  guestSeat?: GuestSeatControls;
   readOnly: boolean;
   notice: string | null;
   sessionNotice: string | null;
@@ -36,6 +39,7 @@ export function PlayMode({
   state,
   dispatch,
   guest,
+  guestSeat,
   readOnly,
   notice,
   sessionNotice,
@@ -64,6 +68,7 @@ export function PlayMode({
         {notice || sessionNotice ? (
           <div className="notice notice-warning">{notice ?? sessionNotice}</div>
         ) : null}
+        {guest && guestSeat ? <GuestSeatPrompt {...guestSeat} /> : null}
         <PokerTable
           activePlayers={activePlayers}
           bankBalanceCents={bankSummary.balanceCents}

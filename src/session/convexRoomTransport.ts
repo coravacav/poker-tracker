@@ -112,8 +112,25 @@ export const convexRoomTransport: RoomTransport = {
     return await convex.query(api.rooms.invitePreview, { publicId, inviteSecret });
   },
   async joinRoom(args) {
+    const request = clean(args);
     const { client: convex, api } = await loadClient();
-    return await convex.mutation(api.rooms.join, args);
+    return await convex.mutation(api.rooms.join, request);
+  },
+  async claimSeat(args) {
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.claimSeat, args);
+  },
+  async releaseSeat(args) {
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.releaseSeat, args);
+  },
+  async assignSeat(args) {
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.assignSeat, args);
+  },
+  async setHostPlayer(args) {
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.setHostPlayer, args);
   },
   async joinFriendRoom(args) {
     const { client: convex, api } = await loadClient();

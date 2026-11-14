@@ -311,6 +311,60 @@ describe("realtime sharing UI", () => {
     expect(screen.getByLabelText("Guest invitation QR code")).toBeInTheDocument();
   });
 
+  it("lists seats in the share dialog and sends the host's seat changes", async () => {
+    const local = createDefaultGameState();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+    saveHostRecovery({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      localGameId: local.localGameId,
+      hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteSecret: "invite_abcdefghijklmnopqrstuvwxyz0123456789",
+      inviteUrl: "https://example.test/#/join/room_public_123456/invite",
+      roomName: "Poker Night",
+      lastKnownVersion: 0
+    });
+    const fake = fakeTransport(local);
+    const releaseSeat = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["releaseSeat"]>>[0]) => undefined);
+    const assignSeat = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["assignSeat"]>>[0]) => undefined);
+    const setHostPlayer = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["setHostPlayer"]>>[0]) => undefined);
+    Object.assign(fake.transport, { releaseSeat, assignSeat, setHostPlayer });
+    renderGameApp(fake.transport);
+    const [first, second, third] = local.players;
+    const guestId = "guest_maya" as never;
+    act(() => fake.emitHost({
+      ...projection(local),
+      guestCount: 1,
+      guestRequests: [],
+      joiningOpen: true,
+      guests: [],
+      controllerStatus: "active",
+      hostPlayerId: null,
+      seats: local.players.map((player) => ({
+        playerId: player.id,
+        name: player.name,
+        isHost: false,
+        guest: player.id === second!.id ? { id: guestId, displayName: second!.name, connected: true } : null
+      }))
+    }));
+    const dialog = await screen.findByRole("dialog", { name: "Share game" });
+    const seats = within(dialog).getByRole("region", { name: "Seats" });
+    expect(within(seats).getByText(`${second!.name}’s phone · online`)).toBeInTheDocument();
+
+    fireEvent.change(within(seats).getByRole("combobox", { name: "Your seat" }), { target: { value: first!.id } });
+    await waitFor(() => expect(setHostPlayer).toHaveBeenCalledWith(expect.objectContaining({
+      publicId: "room_public_123456",
+      hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+      playerId: first!.id
+    })));
+    fireEvent.change(within(seats).getByRole("combobox", { name: `Move ${second!.name}’s phone` }), {
+      target: { value: third!.id }
+    });
+    await waitFor(() => expect(assignSeat).toHaveBeenCalledWith(expect.objectContaining({ guestId, playerId: third!.id })));
+    fireEvent.click(within(seats).getByRole("button", { name: `Release ${second!.name}’s seat` }));
+    await waitFor(() => expect(releaseSeat).toHaveBeenCalledWith(expect.objectContaining({ guestId })));
+  });
+
   it("counts waiting guest requests on the sharing button until the host decides", async () => {
     const local = createDefaultGameState();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
@@ -407,6 +461,91 @@ describe("realtime sharing UI", () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null").settings.gameName).toBe(
       "Local game"
     );
+  });
+
+  it("joins on a picked seat and plays as that player", async () => {
+    const remote = createDefaultGameState();
+    remote.settings.gameName = "Remote table";
+    const [host, , maya] = remote.players;
+    const fake = fakeTransport(remote);
+    const seats = remote.players.map((player) => ({
+      playerId: player.id,
+      name: player.name,
+      claimed: false,
+      isHost: player.id === host.id
+    }));
+    fake.transport.getInvitePreview = vi.fn(async () => ({ status: "active" as const, name: "Remote table", seats }));
+    const joinRoom = vi.fn(async (_args: Parameters<RoomTransport["joinRoom"]>[0]) => ({
+      ...projection(remote),
+      displayName: maya.name,
+      seatPlayerId: maya.id,
+      seats
+    }));
+    fake.transport.joinRoom = joinRoom;
+    window.history.replaceState(
+      null,
+      "",
+      "/#/join/room_public_123456/invite_abcdefghijklmnopqrstuvwxyz0123456789"
+    );
+
+    renderGameApp(fake.transport);
+    expect(await screen.findByRole("heading", { name: "Who are you?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: new RegExp(`${host.name}.*Host`) })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(maya.name) }));
+    fireEvent.click(screen.getByRole("button", { name: `Join as ${maya.name}` }));
+
+    expect(await screen.findByText(`Playing as ${maya.name}`)).toBeInTheDocument();
+    expect(joinRoom.mock.calls[0]![0]).toMatchObject({ playerId: maya.id });
+    expect(joinRoom.mock.calls[0]![0]).not.toHaveProperty("displayName");
+    // Seated, there is no seat prompt, and a request starts from the guest's own seat.
+    expect(screen.queryByRole("button", { name: "Pick your seat" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Request transaction" }));
+    const request = screen.getByRole("dialog", { name: "Request transaction" });
+    expect(within(request).getByRole("combobox", { name: "To" })).toHaveValue(maya.id);
+  });
+
+  it("asks a guest who joined without a seat to pick one on Play", async () => {
+    const remote = createDefaultGameState();
+    const fake = fakeTransport(remote);
+    const seats = remote.players.map((player) => ({
+      playerId: player.id,
+      name: player.name,
+      claimed: false,
+      isHost: false
+    }));
+    const claimSeat = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["claimSeat"]>>[0]) => undefined);
+    fake.transport.claimSeat = claimSeat;
+    saveRoomHistoryCredential({
+      schemaVersion: 1,
+      publicId: "room_public_123456",
+      role: "guest",
+      secret: "guest_abcdefghijklmnopqrstuvwxyz0123456789",
+      roomName: "Poker Night",
+      joinedAt: Date.now(),
+      displayName: "Observer"
+    });
+    window.history.replaceState(null, "", "/#/room/room_public_123456");
+
+    renderGameApp(fake.transport);
+    act(() => fake.emitGuest({ ...projection(remote), displayName: "Observer", seatPlayerId: null, seats }));
+    expect(await screen.findByText("Viewing as Observer")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pick your seat" }));
+    const dialog = screen.getByRole("dialog", { name: "Pick your seat" });
+    const seat = remote.players[1]!;
+    fireEvent.click(within(dialog).getByRole("button", { name: new RegExp(seat.name) }));
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: `I'm ${seat.name}` }));
+    });
+    expect(claimSeat.mock.calls[0]![0]).toMatchObject({ publicId: "room_public_123456", playerId: seat.id });
+
+    act(() => fake.emitGuest({
+      ...projection(remote),
+      displayName: seat.name,
+      seatPlayerId: seat.id,
+      seats
+    }));
+    expect(await screen.findByText(`Playing as ${seat.name}`)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pick your seat" })).not.toBeInTheDocument();
   });
 
   it("returns a guest without a local game to Home, not an empty table", async () => {

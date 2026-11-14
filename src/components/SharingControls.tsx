@@ -5,6 +5,7 @@ import { QrCode } from "./QrCode";
 import { SaveSharedGameButton } from "./SaveSharedGameButton";
 import { useDialogFocus } from "./useDialogFocus";
 import { useFormatCurrency } from "./CurrencyContext";
+import { HostSeatList } from "./HostSeatList";
 import type { GameState } from "../domain/pokerTypes";
 import { createWatchUrl } from "../session/capabilities";
 import type { HostRecovery, HostRoomProjection } from "../session/types";
@@ -35,6 +36,9 @@ type HostSharingControlsProps = {
   /** Turns the watch link on with a new secret (also how it is rotated), or off. */
   onSetWatchLink: (on: boolean) => void;
   onRevokeGuest: (guestId: Id<"roomGuests">) => void;
+  onReleaseSeat: (guestId: Id<"roomGuests">) => void;
+  onAssignSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
+  onSetHostPlayer: (playerId: string | null) => void;
 };
 
 type ShareTab = "players" | "watchers";
@@ -147,7 +151,10 @@ export function HostSharingControls({
   onSetFriendVisibility,
   onRotateInvite,
   onSetWatchLink,
-  onRevokeGuest
+  onRevokeGuest,
+  onReleaseSeat,
+  onAssignSeat,
+  onSetHostPlayer
 }: HostSharingControlsProps) {
   const formatCurrency = useFormatCurrency();
   const [open, setOpen] = useState(true);
@@ -268,7 +275,7 @@ export function HostSharingControls({
                         <div className="share-qr" aria-label="Guest invitation QR code">
                           <QrCode value={recovery.inviteUrl} size={210} level="M" marginSize={2} />
                         </div>
-                        <p className="muted">Guests scan this code with their normal camera for a read-only live view.</p>
+                        <p className="muted">Players scan this with their camera to pick their seat.</p>
                         <label className="invite-link-field">
                           <span>Invite link</span>
                           <span>
@@ -302,6 +309,15 @@ export function HostSharingControls({
                           </label>
                         ) : null}
                         <div className="guest-count"><UserRound size={16} /> {room.guestCount} currently online</div>
+                        {room.seats ? (
+                          <HostSeatList
+                            seats={room.seats}
+                            hostPlayerId={room.hostPlayerId ?? null}
+                            onReleaseSeat={onReleaseSeat}
+                            onAssignSeat={onAssignSeat}
+                            onSetHostPlayer={onSetHostPlayer}
+                          />
+                        ) : null}
                         {(room.guests?.length ?? 0) > 0 ? (
                           <div className="guest-management-list">
                             {room.guests?.map((guest) => (
@@ -379,6 +395,7 @@ export function GuestSessionControls({
   connected,
   ended,
   displayName,
+  seatName,
   hostProfile,
   followingHost,
   onFollowHost,
@@ -388,6 +405,8 @@ export function GuestSessionControls({
   connected: boolean;
   ended: boolean;
   displayName: string;
+  /** The guest's seat's player name, while they hold a seat. */
+  seatName?: string;
   hostProfile?: { friendCode: string; displayName: string } | null;
   followingHost?: boolean;
   onFollowHost?: () => void;
@@ -397,7 +416,13 @@ export function GuestSessionControls({
 }) {
   return (
     <div className="guest-session-controls">
-      <span className="guest-session-status">{ended ? "Session ended" : connected ? `Viewing as ${displayName}` : "Reconnecting"}</span>
+      <span className="guest-session-status">{ended
+          ? "Session ended"
+          : !connected
+            ? "Reconnecting"
+            : seatName
+              ? `Playing as ${seatName}`
+              : `Viewing as ${displayName}`}</span>
       {hostProfile ? (
         <button className="text-button" type="button" disabled={followingHost} onClick={onFollowHost}>
           <UserRound size={15} /> {followingHost ? `Following ${hostProfile.displayName}` : `Follow ${hostProfile.displayName}`}

@@ -41,13 +41,18 @@ async function createRoom(configure?: (snapshot: ReturnType<typeof createDefault
 
 describe("shared room authority", () => {
   it("promotes a local snapshot and exposes only a sanitized guest projection", async () => {
-    const { test } = await createRoom((snapshot) => {
+    const { test, snapshot } = await createRoom((snapshot) => {
       snapshot.cashOutDrafts = [{ playerId: snapshot.players[0].id, lines: [] }];
       (snapshot as GameState & { accidentalSecret?: string }).accidentalSecret = "must-not-leak";
     });
 
     const preview = await test.query(api.rooms.invitePreview, { publicId, inviteSecret });
-    expect(preview).toEqual({ status: "active", name: "Poker Night" });
+    expect(preview).toEqual({
+      status: "active",
+      name: "Poker Night",
+      seats: snapshot.players.map((player) =>
+        ({ playerId: player.id, name: player.name, claimed: false, isHost: false }))
+    });
 
     await test.mutation(api.rooms.join, {
       publicId,

@@ -22,6 +22,10 @@ export default defineSchema({
     inviteSecretHash: v.string(),
     // Verifier for the read-only watch link; absent while the link is off.
     spectatorSecretHash: v.optional(v.string()),
+    // The player id of the host's own seat ("This is me"); guests can't claim
+    // it. Absent until the host picks one; ignored while that player is not
+    // an active player.
+    hostPlayerId: v.optional(v.string()),
     joiningOpen: v.optional(v.boolean()),
     hostControllerId: v.string(),
     hostProfileId: v.optional(v.id("friendProfiles")),
@@ -92,11 +96,17 @@ export default defineSchema({
     displayName: v.string(),
     guestSecretHash: v.string(),
     joinedAt: v.number(),
-    revokedAt: v.optional(v.number())
+    revokedAt: v.optional(v.number()),
+    // The seat (player id) this phone claimed, and when. One phone per seat;
+    // a claim on a player who is no longer active counts as no claim, and
+    // revoking a guest clears it.
+    playerId: v.optional(v.string()),
+    claimedAt: v.optional(v.number())
   })
     .index("by_room_id", ["roomId"])
     .index("by_room_id_and_guest_secret_hash", ["roomId", "guestSecretHash"])
-    .index("by_room_id_and_revoked_at", ["roomId", "revokedAt"]),
+    .index("by_room_id_and_revoked_at", ["roomId", "revokedAt"])
+    .index("by_room_id_and_player_id", ["roomId", "playerId"]),
 
   processedActions: defineTable({
     roomId: v.id("rooms"),

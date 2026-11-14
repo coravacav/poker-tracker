@@ -77,6 +77,25 @@ export type HostRoomProjection = RoomProjection & {
   watchLinkOn?: boolean;
   /** Watchers online through the watch link. */
   watcherCount?: number;
+  /** The host's own seat ("This is me"), or null while unset; absent from older backends. */
+  hostPlayerId?: string | null;
+  /** Every active seat in seat order, with the phone holding it. */
+  seats?: HostSeat[];
+};
+
+/** A seat someone with the invitation can pick; `claimed` means another phone holds it. */
+export type SeatOption = {
+  playerId: string;
+  name: string;
+  claimed: boolean;
+  isHost: boolean;
+};
+
+export type HostSeat = {
+  playerId: string;
+  name: string;
+  isHost: boolean;
+  guest: { id: Id<"roomGuests">; displayName: string; connected: boolean } | null;
 };
 
 /** What the watch link shows: the sanitized table and the latest events, newest first. */
@@ -96,6 +115,9 @@ export type HostGuestSession = {
 export type GuestRoomProjection = RoomProjection & {
   displayName: string;
   hostProfile?: { friendCode: string; displayName: string } | null;
+  /** The seat this guest holds, or null; absent from older backends. */
+  seatPlayerId?: string | null;
+  seats?: SeatOption[];
   guestRequests?: GuestTransactionRequest[];
 };
 
@@ -166,13 +188,25 @@ export type RoomTransport = {
   getInvitePreview: (
     publicId: string,
     inviteSecret: string
-  ) => Promise<{ status: RoomStatus | "invalid" | "closed"; name?: string }>;
+  ) => Promise<{ status: RoomStatus | "invalid" | "closed"; name?: string; seats?: SeatOption[] }>;
+  /** Joins with a seat (taking its player's name) or with a display name. */
   joinRoom: (args: {
     publicId: string;
     inviteSecret: string;
     guestSecret: string;
-    displayName: string;
+    displayName?: string;
+    playerId?: string;
   }) => Promise<GuestRoomProjection>;
+  /** A guest takes an open seat, moving off any seat they held. */
+  claimSeat?: (args: { publicId: string; guestSecret: string; playerId: string }) => Promise<void>;
+  releaseSeat?: (args: { publicId: string; hostSecret: string; guestId: Id<"roomGuests"> }) => Promise<void>;
+  assignSeat?: (args: {
+    publicId: string;
+    hostSecret: string;
+    guestId: Id<"roomGuests">;
+    playerId: string;
+  }) => Promise<void>;
+  setHostPlayer?: (args: { publicId: string; hostSecret: string; playerId: string | null }) => Promise<void>;
   joinFriendRoom?: (args: {
     publicId: string;
     friendCode: string;

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { GameApp, preloadGameApp, preloadPlayMode } from "./components/GameApp";
+import type { GuestSeatControls } from "./components/gameApp/GuestSeatPrompt";
 import { GuestJoinScreen } from "./components/GuestJoinScreen";
 import { LazyBoundary, lazyWithPreload, whenIdle } from "./components/lazyComponent";
 import { preloadQrCode } from "./components/QrCode";
@@ -57,8 +58,9 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         hasLocalGame={hasSavedLocalGame()}
         joining={session.joining}
         onCancel={gameSession.dismissInvite}
-        onJoin={(displayName) => void gameSession.joinGame(displayName)}
+        onJoin={(choice) => void gameSession.joinGame(choice)}
         roomName={session.preview.name}
+        seats={session.preview.seats}
         status={session.preview.status}
       />
     );
@@ -128,6 +130,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
 
   let sessionControls: ReactNode;
   let sessionNotice: string | null = null;
+  let guestSeat: GuestSeatControls | undefined;
   if (session.mode === "local") {
     sessionControls = <LocalShareButton onShare={() => void gameSession.shareGame()} />;
     sessionNotice = session.notice;
@@ -135,10 +138,22 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
     sessionControls = <span className="session-status">Creating room…</span>;
     sessionNotice = session.error;
   } else if (session.mode === "guest") {
+    const seatPlayerId = session.room?.seatPlayerId ?? null;
+    const seatName = seatPlayerId
+      ? session.room?.state.players.find((player) => player.id === seatPlayerId)?.name
+      : undefined;
+    if (session.room?.status === "active" && session.room.seats) {
+      guestSeat = {
+        seatPlayerId,
+        seats: session.room.seats,
+        onClaimSeat: gameSession.claimSeat
+      };
+    }
     sessionControls = (
       <GuestSessionControls
         connected={session.connected}
         displayName={session.credentials.displayName}
+        seatName={seatName}
         ended={session.room?.status !== "active"}
         hostProfile={session.room?.hostProfile}
         followingHost={Boolean(session.room?.hostProfile && gameSession.followedFriends.some(
@@ -175,6 +190,9 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onRotateInvite={() => void gameSession.rotateInvite()}
         onSetWatchLink={(on) => void gameSession.setWatchLink(on)}
         onRevokeGuest={(guestId) => void gameSession.revokeGuest(guestId)}
+        onReleaseSeat={(guestId) => void gameSession.releaseSeat(guestId)}
+        onAssignSeat={(guestId, playerId) => void gameSession.assignSeat(guestId, playerId)}
+        onSetHostPlayer={(playerId) => void gameSession.setHostPlayer(playerId)}
         pending={session.pending}
         recovery={session.recovery}
         recoveryRequired={session.mode === "recovery_required"}
@@ -199,6 +217,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
       dispatch={gameSession.dispatch}
       forcedReadOnly={gameSession.forcedReadOnly}
       guest={gameSession.isGuest}
+      guestSeat={guestSeat}
       ledgerLabel={
         gameSession.isGuest
           ? "Shared read-only ledger"

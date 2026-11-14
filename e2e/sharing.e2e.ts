@@ -12,6 +12,10 @@ test("a guest follows a shared game live, through a dropped connection, and keep
   await host.getByRole("button", { name: "Share game" }).click();
   const invite = await host.getByRole("textbox", { name: "Invite link" }).inputValue();
   expect(invite).toMatch(/#\/join\//);
+  // The host marks their own seat, so no guest can take it.
+  const seats = host.getByRole("dialog", { name: "Share game" }).getByRole("region", { name: "Seats" });
+  await seats.getByRole("combobox", { name: "Your seat" }).selectOption({ label: "Alex" });
+  await expect(seats.getByText("You (host)")).toBeVisible();
   await host.getByRole("dialog", { name: "Share game" }).getByRole("button", { name: "Close" }).click();
 
   const guestContext = await browser.newContext({ ...devices["Pixel 7"] });
@@ -29,9 +33,13 @@ test("a guest follows a shared game live, through a dropped connection, and keep
   });
   const guest = await guestContext.newPage();
   await guest.goto(invite);
-  await guest.getByRole("textbox", { name: "Display name" }).fill("Casey");
-  await guest.getByRole("button", { name: "Join game" }).click();
-  await expect(guest.getByText("Viewing as Casey")).toBeVisible();
+  // "Who are you?": the guest picks their seat; the host's is taken.
+  await expect(guest.getByRole("heading", { name: "Who are you?" })).toBeVisible();
+  await expect(guest.getByRole("textbox", { name: "Display name" })).toHaveCount(0);
+  await expect(guest.getByRole("button", { name: /Alex.*Host/ })).toBeDisabled();
+  await guest.getByRole("button", { name: /Blair/ }).click();
+  await guest.getByRole("button", { name: "Join as Blair" }).click();
+  await expect(guest.getByText("Playing as Blair")).toBeVisible();
 
   // Host edits reach the guest.
   await openMode(host, "Play");
@@ -47,7 +55,7 @@ test("a guest follows a shared game live, through a dropped connection, and keep
   await buyIn(host, "Blair");
   await expect(chipPool(host).getByRole("definition").first()).toHaveText("$40.00");
   await guestContext.setOffline(false);
-  await expect(guest.getByText("Viewing as Casey")).toBeVisible({ timeout: 30_000 });
+  await expect(guest.getByText("Playing as Blair")).toBeVisible({ timeout: 30_000 });
   await expect(chipPool(guest).getByRole("definition").first()).toHaveText("$40.00", { timeout: 30_000 });
   // Guests have Play and Settle only.
   await openMode(guest, "Settle");
@@ -58,6 +66,10 @@ test("a guest follows a shared game live, through a dropped connection, and keep
   await guest.getByRole("button", { name: "Send request" }).click();
   await expect(guest.getByText("Request sent to the host for approval.")).toBeVisible();
   await host.getByRole("button", { name: "Sharing live, 1 guest request waiting" }).click();
+  // The host's seat list shows which phone holds Blair's seat.
+  await expect(
+    host.getByRole("dialog", { name: "Share game" }).getByRole("region", { name: "Seats" })
+  ).toContainText("Blair’s phone · online");
   await host.getByRole("dialog", { name: "Share game" }).getByRole("button", { name: "Approve" }).click();
   await host.getByRole("dialog", { name: "Share game" }).getByRole("button", { name: "Close" }).click();
   await expect(host.getByRole("button", { name: "Sharing live" })).toBeVisible();

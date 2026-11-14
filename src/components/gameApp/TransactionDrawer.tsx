@@ -14,6 +14,8 @@ type TransactionDrawerProps = {
   addTransaction: (transaction: Transaction) => boolean;
   onSubmitGuestTransaction: (transaction: Transaction) => void;
   setTransactionDrawerOpen: (open: boolean) => void;
+  /** A seated guest's own player, picked to start with. */
+  defaultPlayerId?: string;
 };
 
 /** Transaction entry drawer; guests submit requests for the host to approve. */
@@ -26,7 +28,8 @@ export function TransactionDrawer({
   summaryByPlayerId,
   addTransaction,
   onSubmitGuestTransaction,
-  setTransactionDrawerOpen
+  setTransactionDrawerOpen,
+  defaultPlayerId
 }: TransactionDrawerProps) {
   const dialogRef = useDialogFocus<HTMLElement>(true, () => setTransactionDrawerOpen(false));
   return (
@@ -58,6 +61,7 @@ export function TransactionDrawer({
           bankBalanceCents={bankSummary.balanceCents}
           chipDenominations={state.settings.chipDenominations}
           defaultBuyInCents={state.settings.defaultBuyInCents}
+          defaultPlayerId={defaultPlayerId}
           onAddTransaction={(transaction) => {
             const added = guest
               ? (onSubmitGuestTransaction(transaction), true)
