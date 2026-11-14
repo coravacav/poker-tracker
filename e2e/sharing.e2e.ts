@@ -82,3 +82,57 @@ test("a guest follows a shared game live, through a dropped connection, and keep
 
   await guestContext.close();
 });
+
+test("a watcher follows the table live from the watch link, with no way to send requests", async ({ browser, page: host }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "the test opens its own phone watcher");
+  test.setTimeout(90_000);
+
+  await startGame(host, ["Alex", "Blair"]);
+  await host.getByRole("button", { name: "Share game" }).click();
+  const share = host.getByRole("dialog", { name: "Share game" });
+  await share.getByRole("button", { name: "Watchers" }).click();
+  await share.getByRole("button", { name: "Turn on watch link" }).click();
+  const watchLink = await share.getByRole("textbox", { name: "Watch link" }).inputValue();
+  expect(watchLink).toMatch(/#\/watch\//);
+  const invite = await share.getByRole("button", { name: "Players" }).click().then(() =>
+    share.getByRole("textbox", { name: "Invite link" }).inputValue()
+  );
+  // The two links carry different secrets.
+  expect(watchLink.split("/").pop()).not.toBe(invite.split("/").pop());
+
+  const watcherContext = await browser.newContext({ ...devices["Pixel 7"] });
+  const watcher = await watcherContext.newPage();
+  await watcher.goto(watchLink);
+  await expect(watcher.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(watcher.getByText(/^Spectating/)).toBeVisible();
+  await expect(watcher.getByRole("textbox", { name: "Display name" })).toHaveCount(0);
+
+  // The host sees the watcher arrive.
+  await share.getByRole("button", { name: "Watchers" }).click();
+  await expect(share.getByText("1 watching")).toBeVisible({ timeout: 30_000 });
+  await share.getByRole("button", { name: "Close" }).click();
+
+  // A host buy-in reaches the watcher's table and feed.
+  await openMode(host, "Play");
+  await buyIn(host, "Alex");
+  await expect(chipPool(watcher).getByRole("definition").first()).toHaveText("$20.00", { timeout: 30_000 });
+  await expect(watcher.getByRole("region", { name: "Live feed" })).toContainText("Alex bought in for $20.00");
+  await expect(watcher.getByRole("region", { name: "Chip key" })).toContainText("White$1");
+
+  // Read-only: no requests, no Activity bell, no Setup.
+  await expect(watcher.getByRole("button", { name: "Request transaction" })).toHaveCount(0);
+  await expect(watcher.getByRole("button", { name: /Shared notifications/ })).toHaveCount(0);
+  await expect(watcher.getByRole("button", { name: "Setup", exact: true })).toHaveCount(0);
+  await expect(watcher.getByTitle("Record default buy-in")).toHaveCount(0);
+
+  // Turning the link off closes the watcher's view.
+  await host.getByRole("button", { name: "Sharing live" }).click();
+  await share.getByRole("button", { name: "Watchers" }).click();
+  await share.getByRole("button", { name: "Turn off" }).click();
+  await expect(share.getByRole("button", { name: "Turn on watch link" })).toBeVisible();
+  await expect(watcher.getByRole("heading", { name: "Watch link unavailable" })).toBeVisible({ timeout: 30_000 });
+  await watcher.getByRole("button", { name: "Back to Home" }).click();
+  await expect(watcher.getByRole("heading", { name: "Ready for poker night?" })).toBeVisible();
+
+  await watcherContext.close();
+});

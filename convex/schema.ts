@@ -20,6 +20,8 @@ export default defineSchema({
     endedAt: v.optional(v.number()),
     hostSecretHash: v.string(),
     inviteSecretHash: v.string(),
+    // Verifier for the read-only watch link; absent while the link is off.
+    spectatorSecretHash: v.optional(v.string()),
     joiningOpen: v.optional(v.boolean()),
     hostControllerId: v.string(),
     hostProfileId: v.optional(v.id("friendProfiles")),

@@ -18,6 +18,11 @@ import {
 import { claimRoomHost, createRoom, endRoom, setRoomFriendVisibility } from "./lib/roomHosting";
 import { lifecycleBatchResultValidator, runLifecycleBatch } from "./lib/roomLifecycle";
 import {
+  recordSpectatorHeartbeat,
+  rotateRoomSpectatorLink,
+  spectatorRoomView
+} from "./lib/roomSpectators";
+import {
   acknowledgeGuestNotificationsForRoom,
   acknowledgeHostNotificationsForRoom
 } from "./lib/roomNotifications";
@@ -29,7 +34,8 @@ import {
   hostActionResultValidator,
   hostRoomValidator,
   invitePreviewValidator,
-  publicRoomValidator
+  publicRoomValidator,
+  spectatorViewValidator
 } from "./lib/roomValidators";
 import { guestRoomView, hostRoomView, roomHistoryView } from "./lib/roomViews";
 
@@ -143,6 +149,29 @@ export const rotateInvite = mutation({
   },
   returns: v.null(),
   handler: rotateRoomInvite
+});
+
+/** Turns the read-only watch link on (or replaces it) with a new secret, or off with null. */
+export const rotateSpectatorLink = mutation({
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    spectatorSecret: v.union(v.string(), v.null())
+  },
+  returns: v.null(),
+  handler: rotateRoomSpectatorLink
+});
+
+export const spectatorView = query({
+  args: { publicId: v.string(), spectatorSecret: v.string() },
+  returns: spectatorViewValidator,
+  handler: spectatorRoomView
+});
+
+export const spectatorHeartbeat = mutation({
+  args: { publicId: v.string(), spectatorSecret: v.string(), sessionId: v.string() },
+  returns: v.null(),
+  handler: recordSpectatorHeartbeat
 });
 
 export const revokeGuest = mutation({

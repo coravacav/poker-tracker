@@ -14,24 +14,25 @@ export const publicRoomValidator = v.object({
   version: v.number(),
   endedAt: v.union(v.number(), v.null())
 });
+export const activityEventValidator = v.object({
+  id: v.string(),
+  version: v.number(),
+  actionType: v.string(),
+  kind: v.union(
+    v.literal("transaction"),
+    v.literal("cash_out"),
+    v.literal("correction"),
+    v.literal("game")
+  ),
+  summary: v.string(),
+  transactionIds: v.array(v.string()),
+  playerIds: v.array(v.string()),
+  actorLabel: v.string(),
+  createdAt: v.number(),
+  notify: v.boolean()
+});
 export const activityValidator = v.object({
-  events: v.array(v.object({
-    id: v.string(),
-    version: v.number(),
-    actionType: v.string(),
-    kind: v.union(
-      v.literal("transaction"),
-      v.literal("cash_out"),
-      v.literal("correction"),
-      v.literal("game")
-    ),
-    summary: v.string(),
-    transactionIds: v.array(v.string()),
-    playerIds: v.array(v.string()),
-    actorLabel: v.string(),
-    createdAt: v.number(),
-    notify: v.boolean()
-  })),
+  events: v.array(activityEventValidator),
   notifications: v.array(v.object({
     id: v.string(),
     eventId: v.string(),
@@ -72,6 +73,10 @@ export const invitePreviewValidator = v.union(
     name: v.string()
   })
 );
+export const spectatorViewValidator = publicRoomValidator.extend({
+  events: v.array(activityEventValidator),
+  watcherCount: v.number()
+});
 export const historyViewValidator = publicRoomValidator.extend({
   role: v.union(v.literal("host"), v.literal("guest")),
   createdAt: v.number(),
@@ -92,6 +97,8 @@ export const hostRoomValidator = publicRoomValidator.extend({
   joiningOpen: v.boolean(),
   visibleToFriends: v.boolean(),
   friendProfileLinked: v.boolean(),
+  watchLinkOn: v.boolean(),
+  watcherCount: v.number(),
   guests: v.array(v.object({
     id: v.id("roomGuests"),
     displayName: v.string(),

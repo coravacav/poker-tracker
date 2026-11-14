@@ -46,13 +46,20 @@ export function TableToolbar({
   return (
     <div className="table-toolbar">
       <div>
+        {/* Nothing can be dragged or done in a read-only view (guests, watchers, a paused host). */}
         <p className="eyebrow">
-          <span className="table-view-only" aria-hidden={compactView}>
-            Drag seats to rearrange
-          </span>
-          <span className="player-list-only" aria-hidden={!compactView}>
-            Player actions
-          </span>
+          {readOnly ? (
+            "Live table"
+          ) : (
+            <>
+              <span className="table-view-only" aria-hidden={compactView}>
+                Drag seats to rearrange
+              </span>
+              <span className="player-list-only" aria-hidden={!compactView}>
+                Player actions
+              </span>
+            </>
+          )}
         </p>
         <h2>
           <span className="table-view-only" aria-hidden={compactView}>

@@ -15,24 +15,16 @@ function notificationTitle(kind: AuditEventKind): string {
   return "Shared game updated";
 }
 
-export async function activityForRecipient(
-  ctx: QueryCtx | MutationCtx,
-  room: Doc<"rooms">,
-  recipientKey: string
-) {
-  const events = await ctx.db
+async function latestAuditEvents(ctx: QueryCtx | MutationCtx, room: Doc<"rooms">, limit: number) {
+  return await ctx.db
     .query("roomAuditEvents")
     .withIndex("by_room_id_and_created_at", (index) => index.eq("roomId", room._id))
     .order("desc")
-    .take(MAX_PUBLIC_SHARED_AUDIT_EVENTS);
-  const cursor = await ctx.db
-    .query("roomNotificationCursors")
-    .withIndex("by_room_id_and_recipient_key", (index) =>
-      index.eq("roomId", room._id).eq("recipientKey", recipientKey)
-    )
-    .unique();
-  const lastReadVersion = cursor?.lastReadVersion ?? 0;
-  const publicEvents = events.map((event) => ({
+    .take(limit);
+}
+
+function publicAuditEvent(event: Doc<"roomAuditEvents">) {
+  return {
     id: event.eventId,
     version: event.version,
     actionType: event.actionType,
@@ -43,7 +35,32 @@ export async function activityForRecipient(
     actorLabel: event.actorLabel,
     createdAt: event.createdAt,
     notify: event.notify
-  }));
+  };
+}
+
+/** The newest room events, newest first, for a feed with no read cursor (the watch link). */
+export async function recentPublicEvents(
+  ctx: QueryCtx | MutationCtx,
+  room: Doc<"rooms">,
+  limit: number
+) {
+  return (await latestAuditEvents(ctx, room, limit)).map(publicAuditEvent);
+}
+
+export async function activityForRecipient(
+  ctx: QueryCtx | MutationCtx,
+  room: Doc<"rooms">,
+  recipientKey: string
+) {
+  const events = await latestAuditEvents(ctx, room, MAX_PUBLIC_SHARED_AUDIT_EVENTS);
+  const cursor = await ctx.db
+    .query("roomNotificationCursors")
+    .withIndex("by_room_id_and_recipient_key", (index) =>
+      index.eq("roomId", room._id).eq("recipientKey", recipientKey)
+    )
+    .unique();
+  const lastReadVersion = cursor?.lastReadVersion ?? 0;
+  const publicEvents = events.map(publicAuditEvent);
   const notifications = events
     .filter((event) => event.notify)
     .map((event) => ({

@@ -4,7 +4,7 @@ import { roomErrorMessage } from "./convexRoomTransport";
 import type { SessionState } from "./sessionState";
 import type { RoomTransport } from "./types";
 
-/** Tracks the transport connection for every shared-room mode and pings guest presence on reconnect. */
+/** Tracks the transport connection for every shared-room mode and pings guest and watcher presence on reconnect. */
 export function useRoomConnection(
   session: SessionState,
   transport: RoomTransport,
@@ -16,6 +16,7 @@ export function useRoomConnection(
     return transport.subscribeToConnection((connected) => {
       setSession((current) =>
         current.mode === "guest" ||
+        current.mode === "spectating" ||
         current.mode === "hosting" ||
         current.mode === "creating_room" ||
         current.mode === "ending" ||
@@ -32,6 +33,14 @@ export function useRoomConnection(
             current.credentials.guestSecret,
             current.credentials.presenceSessionId
           )
+          .catch(() => undefined);
+      } else if (connected && current.mode === "spectating") {
+        void transport
+          .spectatorHeartbeat?.({
+            publicId: current.route.publicId,
+            spectatorSecret: current.route.spectatorSecret,
+            sessionId: current.presenceSessionId
+          })
           .catch(() => undefined);
       }
     });

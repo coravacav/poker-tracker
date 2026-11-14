@@ -64,6 +64,13 @@ export async function joinRoomAsGuest(
   }
 
   const guestSecretHash = await hashSecret(guestSecret);
+  // A guest secret must not double as the room's invitation or watch link.
+  if (
+    sameHash(room.inviteSecretHash, guestSecretHash) ||
+    (room.spectatorSecretHash !== undefined && sameHash(room.spectatorSecretHash, guestSecretHash))
+  ) {
+    fail("INVALID_CAPABILITY", "Guest capability is invalid.");
+  }
   const existingGuest = await ctx.db
     .query("roomGuests")
     .withIndex("by_room_id_and_guest_secret_hash", (index) =>
@@ -247,8 +254,12 @@ export async function rotateRoomInvite(
   if (!validSecret(args.inviteSecret) || args.inviteSecret === args.hostSecret) {
     fail("INVALID_ARGUMENT", "New invitation capability is invalid.");
   }
+  const inviteSecretHash = await hashSecret(args.inviteSecret);
+  if (room.spectatorSecretHash !== undefined && sameHash(room.spectatorSecretHash, inviteSecretHash)) {
+    fail("INVALID_ARGUMENT", "New invitation capability is invalid.");
+  }
   await ctx.db.patch(room._id, {
-    inviteSecretHash: await hashSecret(args.inviteSecret),
+    inviteSecretHash,
     joiningOpen: true,
     lastActivityAt: Date.now()
   });

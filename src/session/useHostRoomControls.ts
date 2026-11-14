@@ -13,7 +13,7 @@ function isHostingRoom(session: SessionState, publicId: string): session is Host
   return session.mode === "hosting" && session.recovery?.publicId === publicId;
 }
 
-/** Host-only room controls: controller takeover, guest requests, invitations, and guest access. */
+/** Host-only room controls: controller takeover, guest requests, invitations, the watch link, and guest access. */
 export function useHostRoomControls(
   transport: RoomTransport,
   sessionRef: RefObject<SessionState>,
@@ -105,6 +105,26 @@ export function useHostRoomControls(
     patchHostedRoom(publicId, (next) => ({ ...next, recovery: { ...next.recovery, ...invite } }));
   }, [patchHostedRoom, runHostAction, transport]);
 
+  /** Turns the watch link on with a new secret (also how it is rotated), or off. */
+  const setWatchLink = useCallback(async (on: boolean) => {
+    const current = sessionRef.current;
+    const rotate = transport.rotateSpectatorLink;
+    if (current.mode !== "hosting" || !current.recovery || !rotate) return;
+    const { publicId, hostSecret } = current.recovery;
+    const spectatorSecret = on ? createCapability() : null;
+    const updated = await runHostAction(publicId, () =>
+      rotate({ publicId, hostSecret, spectatorSecret })
+    );
+    if (!updated) return;
+    const withSecret = (recovery: HostRecovery): HostRecovery => {
+      const { spectatorSecret: _previous, ...rest } = recovery;
+      return spectatorSecret ? { ...rest, spectatorSecret } : rest;
+    };
+    const stored = loadHostRecovery();
+    saveHostRecovery(withSecret(stored?.publicId === publicId ? stored : current.recovery));
+    patchHostedRoom(publicId, (next) => ({ ...next, recovery: withSecret(next.recovery) }));
+  }, [patchHostedRoom, runHostAction, transport]);
+
   const revokeGuest = useCallback(async (guestId: Id<"roomGuests">) => {
     const current = sessionRef.current;
     if (current.mode !== "hosting" || !current.recovery) return;
@@ -118,6 +138,7 @@ export function useHostRoomControls(
     setJoiningOpen,
     setFriendVisibility,
     rotateInvite,
+    setWatchLink,
     revokeGuest
   };
 }

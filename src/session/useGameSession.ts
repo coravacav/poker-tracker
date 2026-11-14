@@ -15,12 +15,13 @@ import { useHostRoomControls } from "./useHostRoomControls";
 import { useHostSession } from "./useHostSession";
 import { useLocalEntryActions, useLocalEntryTracking } from "./useLocalEntry";
 import { useRoomHistory, useRoomHistoryCredentials } from "./useRoomHistory";
+import { useSpectatorSession } from "./useSpectatorSession";
 import { useMarkNotificationsRead, useRoomConnection } from "./useSharedRoom";
 
 export type { LocalEntryDestination } from "./sessionState";
 
 /**
- * Composes the local game, hosted and guest shared-room sessions, friend
+ * Composes the local game, hosted, guest, and watch-link shared-room sessions, friend
  * discovery, and Home-screen state into the single API the app renders from.
  * Sub-hooks are called in a fixed order so their effects run in the same
  * sequence on every commit.
@@ -98,6 +99,14 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     dismissGuestInvite();
     if (toHome) setLocalEntry({ reason: "first_visit", savedGame: null });
   }, [dismissGuestInvite]);
+  // Leaving the watch view always opens Home.
+  const openHomeAfterWatching = useCallback(() => setLocalEntry(loadInitialLocalEntry()), []);
+  const { leaveSpectating } = useSpectatorSession({
+    session,
+    transport,
+    setSession,
+    onLeave: openHomeAfterWatching
+  });
   const hostControls = useHostRoomControls(transport, sessionRef, setSession);
   const markNotificationsRead = useMarkNotificationsRead(transport, sessionRef, setSession);
   const localEntryActions = useLocalEntryActions({
@@ -151,8 +160,10 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     setJoiningOpen: hostControls.setJoiningOpen,
     setFriendVisibility: hostControls.setFriendVisibility,
     rotateInvite: hostControls.rotateInvite,
+    setWatchLink: hostControls.setWatchLink,
     revokeGuest: hostControls.revokeGuest,
     leaveGuest,
+    leaveSpectating,
     dismissInvite,
     localEntry,
     localEntryDestination,

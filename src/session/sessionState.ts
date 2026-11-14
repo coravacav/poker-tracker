@@ -6,13 +6,15 @@ import {
   loadGuestSession,
   loadHostRecovery,
   recoverGuestSession,
-  saveHostRecovery
+  saveHostRecovery,
+  watchPresenceSessionId
 } from "./sessionPersistence";
 import type {
   GuestRoomProjection,
   GuestSession,
   HostRecovery,
-  HostRoomProjection
+  HostRoomProjection,
+  SpectatorRoomProjection
 } from "./types";
 
 export type InviteState = {
@@ -41,9 +43,25 @@ export type HostState = {
   error: string | null;
 };
 
+/** Watching through the read-only watch link: no name, no requests, nothing stored but a presence id. */
+export type SpectatorState = {
+  mode: "spectating";
+  route: Extract<InviteRoute, { kind: "watch" }>;
+  presenceSessionId: string;
+  room: SpectatorRoomProjection | null;
+  connected: boolean;
+  error: string | null;
+};
+
 export type LocalState = { mode: "local"; notice: string | null };
 export type InvalidState = { mode: "invalid_invite"; message: string };
-export type SessionState = LocalState | InviteState | GuestState | HostState | InvalidState;
+export type SessionState =
+  | LocalState
+  | InviteState
+  | GuestState
+  | SpectatorState
+  | HostState
+  | InvalidState;
 export type LocalEntryDestination = "play" | "setup";
 
 const ROOM_UNAVAILABLE_COPY =
@@ -95,6 +113,16 @@ export function initialSession(localGameId: string, deploymentUrl: string | null
       preview: { status: "loading" },
       error: null,
       joining: false
+    };
+  }
+  if (route.kind === "watch") {
+    return {
+      mode: "spectating",
+      route,
+      presenceSessionId: watchPresenceSessionId(route.publicId, () => createCapability(18)),
+      room: null,
+      connected: false,
+      error: null
     };
   }
   if (route.kind === "guest_room") {

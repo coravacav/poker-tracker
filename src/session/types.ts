@@ -73,6 +73,16 @@ export type HostRoomProjection = RoomProjection & {
   guests?: HostGuestSession[];
   visibleToFriends?: boolean;
   friendProfileLinked?: boolean;
+  /** Whether the read-only watch link is on; absent from older backends. */
+  watchLinkOn?: boolean;
+  /** Watchers online through the watch link. */
+  watcherCount?: number;
+};
+
+/** What the watch link shows: the sanitized table and the latest events, newest first. */
+export type SpectatorRoomProjection = RoomProjection & {
+  events: SharedAuditEvent[];
+  watcherCount: number;
 };
 
 export type HostGuestSession = {
@@ -109,6 +119,8 @@ export type HostRecovery = {
   lastKnownVersion: number;
   deploymentUrl?: string;
   endingActionId?: string;
+  /** The watch link's secret while it is on, so the link survives reloads. */
+  spectatorSecret?: string;
 };
 
 export type GuestSession = {
@@ -201,6 +213,22 @@ export type RoomTransport = {
     onError: (error: Error) => void
   ) => () => void;
   heartbeat: (publicId: string, guestSecret: string, sessionId: string) => Promise<void>;
+  subscribeSpectator?: (
+    args: { publicId: string; spectatorSecret: string },
+    onUpdate: (room: SpectatorRoomProjection) => void,
+    onError: (error: Error) => void
+  ) => () => void;
+  spectatorHeartbeat?: (args: {
+    publicId: string;
+    spectatorSecret: string;
+    sessionId: string;
+  }) => Promise<void>;
+  /** Turns the watch link on or replaces it (a new secret), or off (null). */
+  rotateSpectatorLink?: (args: {
+    publicId: string;
+    hostSecret: string;
+    spectatorSecret: string | null;
+  }) => Promise<void>;
   submitGuestTransaction: (args: {
     publicId: string;
     guestSecret: string;

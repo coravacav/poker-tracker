@@ -1,4 +1,4 @@
-import { Copy, Radio, RefreshCw, Share2, StopCircle, UserRound, WifiOff, X } from "lucide-react";
+import { Copy, Eye, EyeOff, Radio, RefreshCw, Share2, StopCircle, UserRound, WifiOff, X } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { QrCode } from "./QrCode";
@@ -6,6 +6,7 @@ import { SaveSharedGameButton } from "./SaveSharedGameButton";
 import { useDialogFocus } from "./useDialogFocus";
 import { useFormatCurrency } from "./CurrencyContext";
 import type { GameState } from "../domain/pokerTypes";
+import { createWatchUrl } from "../session/capabilities";
 import type { HostRecovery, HostRoomProjection } from "../session/types";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -31,8 +32,91 @@ type HostSharingControlsProps = {
   onSetJoiningOpen: (open: boolean) => void;
   onSetFriendVisibility: (visible: boolean) => void;
   onRotateInvite: () => void;
+  /** Turns the watch link on with a new secret (also how it is rotated), or off. */
+  onSetWatchLink: (on: boolean) => void;
   onRevokeGuest: (guestId: Id<"roomGuests">) => void;
 };
+
+type ShareTab = "players" | "watchers";
+
+function useCopy() {
+  const [copied, setCopied] = useState(false);
+  async function copy(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  }
+  return { copied, copy };
+}
+
+/** The Watchers tab: the read-only watch link, its QR code, rotate and turn off, and who is watching. */
+function WatchLinkPanel({
+  publicId,
+  spectatorSecret,
+  on,
+  watcherCount,
+  onSetWatchLink
+}: {
+  publicId: string;
+  spectatorSecret?: string;
+  on: boolean;
+  watcherCount: number;
+  onSetWatchLink: (on: boolean) => void;
+}) {
+  const { copied, copy } = useCopy();
+  if (!on) {
+    return (
+      <div className="watch-link-panel">
+        <p className="muted">
+          Anyone with the watch link sees the table, the chip key, and the results live. They can’t join
+          or send requests, and they don’t take a guest spot.
+        </p>
+        <button className="primary-button" type="button" onClick={() => onSetWatchLink(true)}>
+          <Eye size={16} /> Turn on watch link
+        </button>
+      </div>
+    );
+  }
+  const watchUrl = spectatorSecret ? createWatchUrl(publicId, spectatorSecret) : null;
+  return (
+    <div className="watch-link-panel">
+      {watchUrl ? (
+        <>
+          <div className="share-qr" aria-label="Watch link QR code">
+            <QrCode value={watchUrl} size={210} level="M" marginSize={2} />
+          </div>
+          <p className="muted">Watchers scan this to follow the game. They can’t change anything.</p>
+          <label className="invite-link-field">
+            <span>Watch link</span>
+            <span>
+              <input aria-label="Watch link" readOnly value={watchUrl} />
+              <button className="text-button" type="button" onClick={() => void copy(watchUrl)}>
+                <Copy size={15} /> {copied ? "Copied" : "Copy"}
+              </button>
+            </span>
+          </label>
+        </>
+      ) : (
+        <div className="notice notice-warning">
+          The watch link is on, but this device doesn’t have it. Make a new one to share it from here.
+        </div>
+      )}
+      <div className="invite-management-row">
+        <button className="text-button" type="button" onClick={() => onSetWatchLink(true)}>
+          <RefreshCw size={15} /> {watchUrl ? "Rotate link" : "New watch link"}
+        </button>
+        <button className="text-button danger" type="button" onClick={() => onSetWatchLink(false)}>
+          <EyeOff size={15} /> Turn off
+        </button>
+      </div>
+      <div className="guest-count"><Eye size={16} /> {watcherCount} watching</div>
+    </div>
+  );
+}
 
 export function LocalShareButton({ onShare }: { onShare: () => void }) {
   return (
@@ -62,23 +146,15 @@ export function HostSharingControls({
   onSetJoiningOpen,
   onSetFriendVisibility,
   onRotateInvite,
+  onSetWatchLink,
   onRevokeGuest
 }: HostSharingControlsProps) {
   const formatCurrency = useFormatCurrency();
   const [open, setOpen] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<ShareTab>("players");
+  const { copied, copy } = useCopy();
   const duplicate = room?.controllerStatus === "duplicate";
   const dialogRef = useDialogFocus<HTMLElement>(open, () => setOpen(false));
-
-  async function copyInvite() {
-    try {
-      await navigator.clipboard.writeText(recovery.inviteUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(false);
-    }
-  }
 
   const sharingLive = connected && roomReady && room?.status === "active";
   const statusLabel = recoveryRequired
@@ -101,7 +177,11 @@ export function HostSharingControls({
             ? `${statusLabel}, ${waitingRequests} guest ${waitingRequests === 1 ? "request" : "requests"} waiting`
             : undefined
         }
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // Guest requests live on Players, so the dialog opens there.
+          setTab("players");
+          setOpen(true);
+        }}
       >
         {sharingLive ? <Radio size={16} /> : <WifiOff size={16} />}
         {statusLabel}
@@ -122,7 +202,7 @@ export function HostSharingControls({
               >
                 <div className="drawer-heading">
                   <div>
-                    <p className="eyebrow">Realtime guest view</p>
+                    <p className="eyebrow">Realtime sharing</p>
                     <h2>{room?.name ?? recovery.roomName}</h2>
                   </div>
                   <button className="icon-button" type="button" onClick={() => setOpen(false)} title="Close">
@@ -163,78 +243,102 @@ export function HostSharingControls({
                     </>
                   ) : (
                     <>
-                      <div className="share-qr" aria-label="Guest invitation QR code">
-                        <QrCode value={recovery.inviteUrl} size={210} level="M" marginSize={2} />
-                      </div>
-                      <p className="muted">Guests scan this code with their normal camera for a read-only live view.</p>
-                      <label className="invite-link-field">
-                        <span>Invite link</span>
-                        <span>
-                          <input aria-label="Invite link" readOnly value={recovery.inviteUrl} />
-                          <button className="text-button" type="button" onClick={() => void copyInvite()}>
-                            <Copy size={15} /> {copied ? "Copied" : "Copy"}
+                      <div className="shape-segments share-link-segments" aria-label="Link type">
+                        {(["players", "watchers"] as const).map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            aria-pressed={tab === option}
+                            onClick={() => setTab(option)}
+                          >
+                            {option === "players" ? "Players" : "Watchers"}
                           </button>
-                        </span>
-                      </label>
-                      <div className="invite-management-row">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={room.joiningOpen !== false}
-                            onChange={(event) => onSetJoiningOpen(event.currentTarget.checked)}
-                          />
-                          Accept new guests
-                        </label>
-                        <button className="text-button" type="button" onClick={onRotateInvite}>
-                          <RefreshCw size={15} /> Rotate invite
-                        </button>
+                        ))}
                       </div>
-                      {room.friendProfileLinked ? (
-                        <label className="friend-visibility-toggle">
-                          <input
-                            type="checkbox"
-                            checked={room.visibleToFriends}
-                            onChange={(event) => onSetFriendVisibility(event.currentTarget.checked)}
-                          />
-                          Show this room to followers on Home
+                      {tab === "watchers" ? (
+                        <WatchLinkPanel
+                          publicId={recovery.publicId}
+                          spectatorSecret={recovery.spectatorSecret}
+                          on={room.watchLinkOn === true}
+                          watcherCount={room.watcherCount ?? 0}
+                          onSetWatchLink={onSetWatchLink}
+                        />
+                      ) : (
+                        <>
+                        <div className="share-qr" aria-label="Guest invitation QR code">
+                          <QrCode value={recovery.inviteUrl} size={210} level="M" marginSize={2} />
+                        </div>
+                        <p className="muted">Guests scan this code with their normal camera for a read-only live view.</p>
+                        <label className="invite-link-field">
+                          <span>Invite link</span>
+                          <span>
+                            <input aria-label="Invite link" readOnly value={recovery.inviteUrl} />
+                            <button className="text-button" type="button" onClick={() => void copy(recovery.inviteUrl)}>
+                              <Copy size={15} /> {copied ? "Copied" : "Copy"}
+                            </button>
+                          </span>
                         </label>
-                      ) : null}
-                      <div className="guest-count"><UserRound size={16} /> {room.guestCount} currently online</div>
-                      {(room.guests?.length ?? 0) > 0 ? (
-                        <div className="guest-management-list">
-                          {room.guests?.map((guest) => (
-                            <div className="guest-management-item" key={guest.id}>
-                              <span className={guest.connected ? "positive" : "muted"}>
-                                {guest.displayName} · {guest.revoked ? "Revoked" : guest.connected ? "Online" : "Away"}
-                              </span>
-                              {!guest.revoked ? (
-                                <button className="text-button danger" type="button" onClick={() => onRevokeGuest(guest.id)}>
-                                  Revoke
-                                </button>
-                              ) : null}
-                            </div>
-                          ))}
+                        <div className="invite-management-row">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={room.joiningOpen !== false}
+                              onChange={(event) => onSetJoiningOpen(event.currentTarget.checked)}
+                            />
+                            Accept new guests
+                          </label>
+                          <button className="text-button" type="button" onClick={onRotateInvite}>
+                            <RefreshCw size={15} /> Rotate invite
+                          </button>
                         </div>
-                      ) : null}
-                      {(room.guestRequests?.length ?? 0) > 0 ? (
-                        <div className="guest-request-list">
-                          <h3>Guest requests</h3>
-                          {room.guestRequests?.map((request) => (
-                            <article key={request.id} className="guest-request-item">
-                              <div>
-                                <strong>{request.displayName ?? "Guest"}</strong>
-                                <span>
-                                  {request.transaction.type.replace(/_/g, " ")} · {formatCurrency(request.transaction.amountCents)}
+                        {room.friendProfileLinked ? (
+                          <label className="friend-visibility-toggle">
+                            <input
+                              type="checkbox"
+                              checked={room.visibleToFriends}
+                              onChange={(event) => onSetFriendVisibility(event.currentTarget.checked)}
+                            />
+                            Show this room to followers on Home
+                          </label>
+                        ) : null}
+                        <div className="guest-count"><UserRound size={16} /> {room.guestCount} currently online</div>
+                        {(room.guests?.length ?? 0) > 0 ? (
+                          <div className="guest-management-list">
+                            {room.guests?.map((guest) => (
+                              <div className="guest-management-item" key={guest.id}>
+                                <span className={guest.connected ? "positive" : "muted"}>
+                                  {guest.displayName} · {guest.revoked ? "Revoked" : guest.connected ? "Online" : "Away"}
                                 </span>
+                                {!guest.revoked ? (
+                                  <button className="text-button danger" type="button" onClick={() => onRevokeGuest(guest.id)}>
+                                    Revoke
+                                  </button>
+                                ) : null}
                               </div>
-                              <div>
-                                <button className="text-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "rejected")}>Reject</button>
-                                <button className="primary-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "approved")}>Approve</button>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-                      ) : null}
+                            ))}
+                          </div>
+                        ) : null}
+                        {(room.guestRequests?.length ?? 0) > 0 ? (
+                          <div className="guest-request-list">
+                            <h3>Guest requests</h3>
+                            {room.guestRequests?.map((request) => (
+                              <article key={request.id} className="guest-request-item">
+                                <div>
+                                  <strong>{request.displayName ?? "Guest"}</strong>
+                                  <span>
+                                    {request.transaction.type.replace(/_/g, " ")} · {formatCurrency(request.transaction.amountCents)}
+                                  </span>
+                                </div>
+                                <div>
+                                  <button className="text-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "rejected")}>Reject</button>
+                                  <button className="primary-button" type="button" onClick={() => onDecideGuestTransaction(request.id, "approved")}>Approve</button>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        ) : null}
+                        </>
+                      )}
                       {!connected ? <div className="notice notice-warning">Host edits are paused until the room reconnects.</div> : null}
                       {duplicate ? (
                         <div className="notice notice-warning">

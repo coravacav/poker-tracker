@@ -136,3 +136,24 @@
   align-items: center;
   min-height: 40px;
 }
+
+/* Players | Watchers: which link the share dialog shows. */
+.shape-segments.share-link-segments {
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.share-link-segments button {
+  min-height: 44px;
+  font-size: 0.86rem;
+}
+
+.watch-link-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.watch-link-panel > .primary-button {
+  justify-self: start;
+  min-height: 44px;
+}

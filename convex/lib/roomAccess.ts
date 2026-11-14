@@ -1,4 +1,4 @@
-// Capability checks: resolve a room by public id and verify host or guest secrets.
+// Capability checks: resolve a room by public id and verify host, guest, or watch secrets.
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { hashSecret, sameHash, validSecret } from "./capabilities";
 import { fail } from "./roomErrors";
@@ -40,4 +40,30 @@ export async function requireGuest(ctx: QueryCtx | MutationCtx, publicId: string
     fail("INVALID_CAPABILITY", "Guest session is invalid or revoked.");
   }
   return { room, guest };
+}
+
+/**
+ * Resolves a room by its watch link. The watch secret is checked only against
+ * the room's spectator verifier, so it never authorizes hosting, joining, or
+ * guest requests; a rotated or turned-off link stops working at once. Ended
+ * rooms stay watchable until the lifecycle job prunes their details.
+ */
+export async function requireSpectator(
+  ctx: QueryCtx | MutationCtx,
+  publicId: string,
+  spectatorSecret: string
+) {
+  if (!validSecret(spectatorSecret)) {
+    fail("INVALID_CAPABILITY", "This watch link is invalid or turned off.");
+  }
+  const room = await roomByPublicId(ctx, publicId);
+  if (!room) fail("ROOM_NOT_FOUND", "Shared room was not found.");
+  const presentedHash = await hashSecret(spectatorSecret);
+  if (room.spectatorSecretHash === undefined || !sameHash(room.spectatorSecretHash, presentedHash)) {
+    fail("INVALID_CAPABILITY", "This watch link is invalid or turned off.");
+  }
+  if (room.detailsPrunedAt !== undefined) {
+    fail("ROOM_ENDED", "This game ended a while ago and can no longer be watched.");
+  }
+  return room;
 }

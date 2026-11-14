@@ -1,6 +1,7 @@
 export type InviteRoute =
   | { kind: "invite"; publicId: string; inviteSecret: string }
   | { kind: "guest_room"; publicId: string }
+  | { kind: "watch"; publicId: string; spectatorSecret: string }
   | { kind: "none" };
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -26,10 +27,23 @@ export function createInviteUrl(
   return `${location.origin}${location.pathname}#/join/${publicId}/${inviteSecret}`;
 }
 
+/** The read-only watch link; its secret is separate from the invitation's. */
+export function createWatchUrl(
+  publicId: string,
+  spectatorSecret: string,
+  location: Pick<Location, "origin" | "pathname"> = window.location
+): string {
+  return `${location.origin}${location.pathname}#/watch/${publicId}/${spectatorSecret}`;
+}
+
 export function parseInviteRoute(hash = window.location.hash): InviteRoute {
   const inviteMatch = hash.match(/^#\/join\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
   if (inviteMatch) {
     return { kind: "invite", publicId: inviteMatch[1], inviteSecret: inviteMatch[2] };
+  }
+  const watchMatch = hash.match(/^#\/watch\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
+  if (watchMatch) {
+    return { kind: "watch", publicId: watchMatch[1], spectatorSecret: watchMatch[2] };
   }
   const roomMatch = hash.match(/^#\/room\/([A-Za-z0-9_-]+)$/);
   if (roomMatch) return { kind: "guest_room", publicId: roomMatch[1] };

@@ -15,7 +15,8 @@ import type {
   GuestRoomProjection,
   HostRoomProjection,
   RoomProjection,
-  RoomTransport
+  RoomTransport,
+  SpectatorRoomProjection
 } from "../session/types";
 
 function renderGameApp(transport: RoomTransport) {
@@ -44,10 +45,14 @@ function fakeTransport(state = createDefaultGameState()) {
   let hostListener: ((value: HostRoomProjection) => void) | null = null;
   let hostError: ((error: Error) => void) | null = null;
   let guestListener: ((value: GuestRoomProjection) => void) | null = null;
+  let spectatorListener: ((value: SpectatorRoomProjection) => void) | null = null;
+  let spectatorError: ((error: Error) => void) | null = null;
   let connectionListener: ((connected: boolean) => void) | null = null;
   let connected = true;
   const createRoom = vi.fn(async (_args: Parameters<RoomTransport["createRoom"]>[0]) => room);
   const heartbeat = vi.fn(async () => undefined);
+  const spectatorHeartbeat = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["spectatorHeartbeat"]>>[0]) => undefined);
+  const rotateSpectatorLink = vi.fn(async (_args: Parameters<NonNullable<RoomTransport["rotateSpectatorLink"]>>[0]) => undefined);
   const endRoom = vi.fn(async (_args: Parameters<RoomTransport["endRoom"]>[0]) => ({
     ...room,
     status: "ended" as const,
@@ -81,6 +86,16 @@ function fakeTransport(state = createDefaultGameState()) {
       };
     },
     heartbeat,
+    subscribeSpectator(_args, onUpdate, onError) {
+      spectatorListener = onUpdate;
+      spectatorError = onError;
+      return () => {
+        spectatorListener = null;
+        spectatorError = null;
+      };
+    },
+    spectatorHeartbeat,
+    rotateSpectatorLink,
     submitGuestTransaction: vi.fn(async () => "request_test" as never),
     decideGuestTransaction: vi.fn(async () => undefined),
     setJoiningOpen: vi.fn(async () => undefined),
@@ -105,6 +120,8 @@ function fakeTransport(state = createDefaultGameState()) {
     createRoom,
     endRoom,
     heartbeat,
+    spectatorHeartbeat,
+    rotateSpectatorLink,
     emitHost(value: HostRoomProjection) {
       hostListener?.(value);
     },
@@ -113,6 +130,12 @@ function fakeTransport(state = createDefaultGameState()) {
     },
     emitGuest(value: GuestRoomProjection) {
       guestListener?.(value);
+    },
+    emitSpectator(value: SpectatorRoomProjection) {
+      spectatorListener?.(value);
+    },
+    emitSpectatorError(error: Error) {
+      spectatorError?.(error);
     },
     setConnected(value: boolean) {
       connected = value;
@@ -428,6 +451,197 @@ describe("realtime sharing UI", () => {
     // Straight back to the game, as before.
     expect(await screen.findByRole("button", { name: "Play" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { level: 1, name: "Poker Tracker" })).toBeInTheDocument();
+  });
+
+  describe("watch link", () => {
+    const watchHash = "/#/watch/room_public_123456/watch_abcdefghijklmnopqrstuvwxyz0123456789";
+    const watchedState = () => {
+      const state = createDefaultGameState();
+      state.settings.gameName = "Friday Night Poker";
+      state.settings.chipDenominations = [
+        { id: "chip_white", label: "White", colorHex: "#ffffff", valueCents: 100 }
+      ];
+      return gameReducer(state, {
+        type: "add_transaction",
+        transaction: {
+          id: "transaction_watch_1",
+          type: "bank_buy_in",
+          createdAt: new Date(0).toISOString(),
+          amountCents: 2000,
+          toPlayerId: state.players[0]!.id
+        }
+      });
+    };
+    const spectatorProjection = (
+      state: GameState,
+      extra: Partial<SpectatorRoomProjection> = {}
+    ): SpectatorRoomProjection => ({
+      ...projection(state),
+      name: state.settings.gameName,
+      version: 1,
+      watcherCount: 3,
+      events: [
+        {
+          id: "event_buy_in",
+          version: 1,
+          actionType: "add_transaction",
+          kind: "transaction",
+          summary: "Player 1 bought in for $20.00",
+          transactionIds: ["transaction_watch_1"],
+          playerIds: [state.players[0]!.id],
+          actorLabel: "Host",
+          createdAt: Date.now(),
+          notify: true
+        },
+        {
+          id: "event_created",
+          version: 0,
+          actionType: "create_room",
+          kind: "game",
+          summary: "Created shared room",
+          transactionIds: [],
+          playerIds: [],
+          actorLabel: "Host",
+          createdAt: Date.now() - 1000,
+          notify: false
+        }
+      ],
+      ...extra
+    });
+
+    it("shows a live, read-only table with no name, requests, or Setup", async () => {
+      const local = createDefaultGameState();
+      local.settings.gameName = "My own game";
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+      const fake = fakeTransport();
+      window.history.replaceState(null, "", watchHash);
+      render(<App roomTransport={fake.transport} />);
+
+      expect(await screen.findByRole("heading", { name: "Opening the game…" })).toBeInTheDocument();
+      expect(screen.queryByRole("textbox", { name: "Display name" })).not.toBeInTheDocument();
+      act(() => fake.emitSpectator(spectatorProjection(watchedState())));
+
+      expect(await screen.findByRole("heading", { level: 1, name: "Friday Night Poker" })).toBeInTheDocument();
+      expect(screen.getByText("Spectating · 3 watching")).toBeInTheDocument();
+      expect(within(screen.getByRole("region", { name: "Chip pool" })).getAllByRole("definition")[0]).toHaveTextContent("$20.00");
+      expect(within(screen.getByRole("region", { name: "Chip key" })).getByText("White").closest("div")).toHaveTextContent("White$1");
+      const feed = screen.getByRole("region", { name: "Live feed" });
+      expect(within(feed).getByText("Player 1 bought in for $20.00")).toBeInTheDocument();
+      expect(within(feed).queryByText("Created shared room")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Player 1" })).toBeInTheDocument();
+      for (const name of [/Request transaction/, /Add transaction/, /^Setup$/, /^Settle$/, /Shared notifications/, /Undo/, /Record default buy-in/, /Transaction Audit/]) {
+        expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+      }
+      expect(screen.queryByTitle("Record default buy-in")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Results" })).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(fake.spectatorHeartbeat).toHaveBeenCalledWith({
+          publicId: "room_public_123456",
+          spectatorSecret: "watch_abcdefghijklmnopqrstuvwxyz0123456789",
+          sessionId: expect.any(String)
+        })
+      );
+      // Watching stores nothing about the room or a guest identity.
+      expect(sessionStorage.getItem(GUEST_SESSION_KEY)).toBeNull();
+      expect(localStorage.getItem("poker-tracker:v1:room-history")).toBeNull();
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null").settings.gameName).toBe("My own game");
+
+      // The host ends the game: watchers land on the results.
+      act(() =>
+        fake.emitSpectator(spectatorProjection(watchedState(), { status: "ended", endedAt: Date.now(), watcherCount: 0 }))
+      );
+      expect(await screen.findByRole("heading", { name: "Settlement" })).toBeInTheDocument();
+      expect(screen.getByText("The host ended this game.")).toBeInTheDocument();
+      expect(screen.getByText("Game ended")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Table" }));
+      expect(screen.getByRole("region", { name: "Live feed" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+      expect(await screen.findByRole("heading", { name: "Welcome back" })).toBeInTheDocument();
+      expect(window.location.hash).toBe("");
+    });
+
+    it("explains a turned-off watch link and leads Home", async () => {
+      const fake = fakeTransport();
+      window.history.replaceState(null, "", watchHash);
+      render(<App roomTransport={fake.transport} />);
+      act(() => fake.emitSpectator(spectatorProjection(watchedState())));
+      await screen.findByText("Spectating · 3 watching");
+
+      act(() =>
+        fake.emitSpectatorError(
+          Object.assign(new Error("[CONVEX Q(rooms:spectatorView)]"), {
+            data: { code: "INVALID_CAPABILITY", message: "This watch link is invalid or turned off." }
+          })
+        )
+      );
+      expect(await screen.findByRole("heading", { name: "Watch link unavailable" })).toBeInTheDocument();
+      expect(screen.getByText("This watch link is invalid or turned off.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Back to Home" }));
+      expect(await screen.findByRole("heading", { name: "Ready for poker night?" })).toBeInTheDocument();
+    });
+
+    it("lets the host turn the watch link on, rotate it, and turn it off", async () => {
+      const local = createDefaultGameState();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(local));
+      saveHostRecovery({
+        schemaVersion: 1,
+        publicId: "room_public_123456",
+        localGameId: local.localGameId,
+        hostSecret: "host_abcdefghijklmnopqrstuvwxyz0123456789",
+        inviteSecret: "invite_abcdefghijklmnopqrstuvwxyz0123456789",
+        inviteUrl: "https://example.test/#/join/room_public_123456/invite",
+        roomName: "Poker Night",
+        lastKnownVersion: 0
+      });
+      const fake = fakeTransport(local);
+      renderGameApp(fake.transport);
+      const host = (watchLinkOn: boolean, watcherCount = 0): HostRoomProjection => ({
+        ...projection(local),
+        guestCount: 0,
+        guestRequests: [],
+        joiningOpen: true,
+        guests: [],
+        controllerStatus: "active",
+        watchLinkOn,
+        watcherCount
+      });
+      act(() => fake.emitHost(host(false)));
+      const dialog = await screen.findByRole("dialog", { name: "Share game" });
+      expect(within(dialog).getByRole("button", { name: "Players" })).toHaveAttribute("aria-pressed", "true");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Watchers" }));
+      expect(within(dialog).queryByRole("textbox", { name: "Invite link" })).not.toBeInTheDocument();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: /Turn on watch link/ }));
+      await waitFor(() => expect(fake.rotateSpectatorLink).toHaveBeenCalledTimes(1));
+      const { spectatorSecret } = fake.rotateSpectatorLink.mock.calls[0]![0];
+      expect(spectatorSecret).toEqual(expect.any(String));
+      act(() => fake.emitHost(host(true, 2)));
+      const watchLink = () => (within(dialog).getByRole("textbox", { name: "Watch link" }) as HTMLInputElement).value;
+      expect(watchLink()).toContain(`#/watch/room_public_123456/${spectatorSecret}`);
+      expect(watchLink()).not.toContain("host_abcdefghijklmnopqrstuvwxyz0123456789");
+      expect(within(dialog).getByLabelText("Watch link QR code")).toBeInTheDocument();
+      expect(within(dialog).getByText("2 watching")).toBeInTheDocument();
+      const stored = () => JSON.parse(localStorage.getItem("poker-tracker:v1:hosted-room") ?? "null");
+      expect(stored()).toMatchObject({ spectatorSecret });
+
+      fireEvent.click(within(dialog).getByRole("button", { name: /Rotate link/ }));
+      await waitFor(() => expect(fake.rotateSpectatorLink).toHaveBeenCalledTimes(2));
+      const rotated = fake.rotateSpectatorLink.mock.calls[1]![0].spectatorSecret;
+      expect(rotated).not.toBe(spectatorSecret);
+      await waitFor(() => expect(watchLink()).toContain(rotated!));
+      // A later room update keeps the new link, on screen and in storage.
+      act(() => fake.emitHost({ ...host(true, 0), version: 1 }));
+      expect(watchLink()).toContain(rotated!);
+      expect(stored()).toMatchObject({ spectatorSecret: rotated, lastKnownVersion: 1 });
+
+      fireEvent.click(within(dialog).getByRole("button", { name: /Turn off/ }));
+      await waitFor(() => expect(fake.rotateSpectatorLink).toHaveBeenCalledTimes(3));
+      expect(fake.rotateSpectatorLink.mock.calls[2]![0].spectatorSecret).toBeNull();
+      act(() => fake.emitHost({ ...host(false), version: 1 }));
+      expect(within(dialog).getByRole("button", { name: /Turn on watch link/ })).toBeInTheDocument();
+      await waitFor(() => expect(stored().spectatorSecret).toBeUndefined());
+    });
   });
 
   it("restores a guest after tab storage is discarded", async () => {

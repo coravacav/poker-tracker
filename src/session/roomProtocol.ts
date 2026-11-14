@@ -323,6 +323,15 @@ export function applyHostedAction(
   }
 }
 
+/** What the watch link shows: the guest view without settlement pay handles. */
+export function sanitizeSpectatorState(state: GameState): GameState {
+  const guestState = sanitizeGuestState(state);
+  return {
+    ...guestState,
+    players: guestState.players.map(({ venmoHandle: _venmoHandle, ...player }) => player)
+  };
+}
+
 export function sanitizeGuestState(state: GameState): GameState {
   const normalized = normalizeGameState(state);
   return {

@@ -158,6 +158,20 @@ export const convexRoomTransport: RoomTransport = {
     const { client: convex, api } = await loadClient();
     await convex.mutation(api.rooms.heartbeat, { publicId, guestSecret, sessionId });
   },
+  subscribeSpectator(args, onUpdate, onError) {
+    return subscribeWhenLoaded(
+      ({ client: current, api }) => current.onUpdate(api.rooms.spectatorView, args, onUpdate, onError),
+      onError
+    );
+  },
+  async spectatorHeartbeat(args) {
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.spectatorHeartbeat, args);
+  },
+  async rotateSpectatorLink(args) {
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.rotateSpectatorLink, args);
+  },
   async submitGuestTransaction(args) {
     const request = clean(args);
     const { client: convex, api } = await loadClient();

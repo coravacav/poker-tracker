@@ -10,6 +10,7 @@ export const HOST_RECOVERY_KEY = "poker-tracker:v1:hosted-room";
 export const GUEST_SESSION_KEY = "poker-tracker:v1:guest-room";
 export const HOST_CONTROLLER_KEY = "poker-tracker:v1:host-controller";
 export const ROOM_HISTORY_KEY = "poker-tracker:v1:room-history";
+export const WATCH_SESSION_KEY = "poker-tracker:v1:watch-room";
 
 function parseStored<T>(storage: Storage | undefined, key: string): T | null {
   if (!storage) return null;
@@ -40,7 +41,15 @@ export function loadHostRecovery(): HostRecovery | null {
     isString(value.roomName) &&
     typeof value.lastKnownVersion === "number" &&
     (value.deploymentUrl === undefined || isString(value.deploymentUrl));
-  if (valid) return value as HostRecovery;
+  if (valid) {
+    // An unusable watch secret only turns the watch link off here (the host can
+    // turn it on again); it never costs the host secret.
+    if (value.spectatorSecret !== undefined && !isString(value.spectatorSecret)) {
+      const { spectatorSecret: _spectatorSecret, ...rest } = value;
+      return rest as HostRecovery;
+    }
+    return value as HostRecovery;
+  }
   // The host secret cannot be recreated, so keep a copy before a new room replaces it.
   quarantineRaw(HOST_RECOVERY_KEY, stored.raw, reasonForInvalid(stored.value, SESSION_SCHEMA_VERSION));
   return null;
@@ -83,6 +92,27 @@ export function saveGuestSession(value: GuestSession): void {
 
 export function clearGuestSession(): void {
   if (typeof sessionStorage !== "undefined") sessionStorage.removeItem(GUEST_SESSION_KEY);
+}
+
+/**
+ * The presence id this tab watches a room with, kept for the tab's lifetime so
+ * a reload is not counted as a second watcher.
+ */
+export function watchPresenceSessionId(publicId: string, createId: () => string): string {
+  const stored = parseStored<{ publicId?: unknown; presenceSessionId?: unknown }>(
+    typeof sessionStorage === "undefined" ? undefined : sessionStorage,
+    WATCH_SESSION_KEY
+  );
+  if (stored?.publicId === publicId && isString(stored.presenceSessionId)) {
+    return stored.presenceSessionId;
+  }
+  const presenceSessionId = createId();
+  try {
+    sessionStorage.setItem(WATCH_SESSION_KEY, JSON.stringify({ publicId, presenceSessionId }));
+  } catch {
+    // Watching still works; a reload is just counted as a new watcher for a while.
+  }
+  return presenceSessionId;
 }
 
 export function recoverGuestSession(

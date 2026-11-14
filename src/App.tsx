@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { GameApp, preloadGameApp, preloadPlayMode } from "./components/GameApp";
 import { GuestJoinScreen } from "./components/GuestJoinScreen";
-import { whenIdle } from "./components/lazyComponent";
+import { LazyBoundary, lazyWithPreload, whenIdle } from "./components/lazyComponent";
 import { preloadQrCode } from "./components/QrCode";
 import { StartPage } from "./components/StartPage";
 import {
@@ -17,6 +17,11 @@ import { useGameSession } from "./session/useGameSession";
 import { watchedRoomSave } from "./state/sharedGameArchive";
 import { useStoragePersistenceRequest } from "./state/useStoragePersistence";
 import type { RoomTransport, SharedActivity } from "./session/types";
+
+// Only watch links open it, so it stays out of the main chunk.
+const SpectatorScreen = lazyWithPreload(() =>
+  import("./components/spectator/SpectatorScreen").then((module) => module.SpectatorScreen)
+);
 
 export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
   const gameSession = useGameSession(roomTransport);
@@ -56,6 +61,19 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         roomName={session.preview.name}
         status={session.preview.status}
       />
+    );
+  }
+
+  if (session.mode === "spectating") {
+    return (
+      <LazyBoundary fallback={<p className="muted" role="status">Opening the game…</p>}>
+        <SpectatorScreen
+          room={session.room}
+          connected={session.connected}
+          error={session.error}
+          onLeave={gameSession.leaveSpectating}
+        />
+      </LazyBoundary>
     );
   }
 
@@ -155,6 +173,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onSetJoiningOpen={(open) => void gameSession.setJoiningOpen(open)}
         onSetFriendVisibility={(visible) => void gameSession.setFriendVisibility(visible)}
         onRotateInvite={() => void gameSession.rotateInvite()}
+        onSetWatchLink={(on) => void gameSession.setWatchLink(on)}
         onRevokeGuest={(guestId) => void gameSession.revokeGuest(guestId)}
         pending={session.pending}
         recovery={session.recovery}
