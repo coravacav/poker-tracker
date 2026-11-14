@@ -53,7 +53,9 @@ export const seatOptionValidator = v.object({
   playerId: v.string(),
   name: v.string(),
   claimed: v.boolean(),
-  isHost: v.boolean()
+  isHost: v.boolean(),
+  /** Guest view only: the host released this guest from this seat. */
+  releasedByHost: v.optional(v.boolean())
 });
 export const guestRoomValidator = publicRoomValidator.extend({
   displayName: v.string(),
@@ -64,6 +66,8 @@ export const guestRoomValidator = publicRoomValidator.extend({
   activity: activityValidator,
   /** The seat this guest holds, or null. */
   seatPlayerId: v.union(v.string(), v.null()),
+  /** Why this guest last lost a seat ("released" by the host, or the player "changed"). */
+  seatLost: v.union(v.literal("released"), v.literal("changed"), v.null()),
   seats: v.array(seatOptionValidator)
 });
 export const guestViewValidator = guestRoomValidator.extend({
@@ -123,6 +127,8 @@ export const hostRoomValidator = publicRoomValidator.extend({
   })),
   /** The host's own seat ("This is me"), or null while unset. */
   hostPlayerId: v.union(v.string(), v.null()),
+  /** The host said they aren't playing. */
+  hostNotPlaying: v.boolean(),
   /** Every active seat in seat order, with the phone holding it. */
   seats: v.array(v.object({
     playerId: v.string(),

@@ -214,7 +214,13 @@ describe("seat claims", () => {
     const maya = await guestId(test, "Maya");
 
     for (const call of [
-      () => test.mutation(api.rooms.releaseSeat, { publicId, hostSecret: wrongHostSecret, guestId: maya }),
+      () =>
+        test.mutation(api.rooms.releaseSeat, {
+          publicId,
+          hostSecret: wrongHostSecret,
+          guestId: maya,
+          playerId: players.second
+        }),
       () =>
         test.mutation(api.rooms.assignSeat, {
           publicId,
@@ -229,20 +235,191 @@ describe("seat claims", () => {
           playerId: players.first
         }),
       // A guest's own secret is not a host secret.
-      () => test.mutation(api.rooms.releaseSeat, { publicId, hostSecret: guestSecret, guestId: maya })
+      () =>
+        test.mutation(api.rooms.releaseSeat, {
+          publicId,
+          hostSecret: guestSecret,
+          guestId: maya,
+          playerId: players.second
+        })
     ]) {
       await expect(call()).rejects.toThrow(/Host capability is invalid/);
     }
 
     await test.mutation(api.rooms.assignSeat, { publicId, hostSecret, guestId: maya, playerId: players.third });
     expect((await guestView(test)).seatPlayerId).toBe(players.third);
-    await test.mutation(api.rooms.releaseSeat, { publicId, hostSecret, guestId: maya });
+    await test.mutation(api.rooms.releaseSeat, { publicId, hostSecret, guestId: maya, playerId: players.third });
     expect((await guestView(test)).seatPlayerId).toBeNull();
     // A move only goes to an open seat.
     await joinSeat(test, players.second, otherGuestSecret);
     await expect(
       test.mutation(api.rooms.assignSeat, { publicId, hostSecret, guestId: maya, playerId: players.second })
     ).rejects.toThrow(/took that seat/);
+  });
+
+  it("releases a claim when the host renames or relinks its player", async () => {
+    const { test, snapshot, players } = await createRoom();
+    await joinSeat(test, players.second);
+    await joinSeat(test, players.third, otherGuestSecret);
+
+    // A typo fix or a different person: either way the phone no longer holds the seat.
+    await hostAction(test, 0, "action_rename_second_seat", {
+      type: "rename_player",
+      playerId: players.second,
+      name: "Bob"
+    });
+    const maya = await guestView(test);
+    expect(maya.seatPlayerId).toBeNull();
+    expect(maya.seatLost).toBe("changed");
+    expect(maya.displayName).toBe("Maya");
+    const host = await hostView(test);
+    expect(holders(host.seats)).toMatchObject({ [players.second]: null, [players.third]: "Jon" });
+    // Renaming back doesn't bring the old claim back.
+    await hostAction(test, 1, "action_rename_second_back", {
+      type: "rename_player",
+      playerId: players.second,
+      name: "Maya"
+    });
+    expect((await guestView(test)).seatPlayerId).toBeNull();
+    expect(holders((await hostView(test)).seats)[players.second]).toBeNull();
+
+    // Replacing the lineup renames seats in place: every changed seat is released.
+    await hostAction(test, 2, "action_replace_lineup_seat", {
+      type: "replace_active_players",
+      names: snapshot.players.filter((player) => player.isActive).map((player, index) =>
+        index === 2 ? "Bob" : ["Alex", "Maya", "Jon", "Priya"][index] ?? player.name)
+    });
+    const jon = await guestView(test, otherGuestSecret);
+    expect(jon.seatPlayerId).toBeNull();
+    expect(jon.seatLost).toBe("changed");
+
+    // Even a stored claim that bypassed the release never counts once the name differs.
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.second });
+    await test.run(async (ctx) => {
+      const room = await ctx.db
+        .query("rooms")
+        .withIndex("by_public_id", (index) => index.eq("publicId", publicId))
+        .unique();
+      if (!room) throw new Error("room missing");
+      const state = room.state as typeof snapshot;
+      await ctx.db.patch(room._id, {
+        state: {
+          ...state,
+          players: state.players.map((player) =>
+            player.id === players.second ? { ...player, name: "Someone else" } : player)
+        }
+      });
+    });
+    expect((await guestView(test)).seatPlayerId).toBeNull();
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret: otherGuestSecret, playerId: players.second });
+    expect((await guestView(test, otherGuestSecret)).seatPlayerId).toBe(players.second);
+  });
+
+  it("never revives a claim when an archived player comes back", async () => {
+    const { test, players } = await createRoom();
+    await joinSeat(test, players.second);
+    await hostAction(test, 0, "action_archive_second_seat", { type: "archive_player", playerId: players.second });
+    const released = await guestView(test);
+    expect(released.seatPlayerId).toBeNull();
+    expect(released.seatLost).toBe("changed");
+    // The claim itself is gone, so nothing invisible is left behind.
+    const claims = async () =>
+      await test.run(async (ctx) =>
+        (await ctx.db.query("roomGuests").collect()).filter((guest) => guest.playerId !== undefined));
+    expect(await claims()).toEqual([]);
+
+    // However the player comes back, the seat is open rather than Maya's again.
+    await test.run(async (ctx) => {
+      const room = await ctx.db
+        .query("rooms")
+        .withIndex("by_public_id", (index) => index.eq("publicId", publicId))
+        .unique();
+      if (!room) throw new Error("room missing");
+      const state = room.state as { players: { id: string; isActive: boolean }[] };
+      await ctx.db.patch(room._id, {
+        state: {
+          ...state,
+          players: state.players.map((player) =>
+            player.id === players.second ? { ...player, isActive: true } : player)
+        }
+      });
+    });
+    expect((await guestView(test)).seatPlayerId).toBeNull();
+    expect(holders((await hostView(test)).seats)[players.second]).toBeNull();
+    await joinSeat(test, players.second, otherGuestSecret);
+  });
+
+  it("frees the host's seat when the host's player is archived", async () => {
+    const { test, players } = await createRoom();
+    await test.mutation(api.rooms.setHostPlayer, { publicId, hostSecret, playerId: players.third });
+    await hostAction(test, 0, "action_archive_third_seat", { type: "archive_player", playerId: players.third });
+    const room = await test.run(async (ctx) =>
+      await ctx.db
+        .query("rooms")
+        .withIndex("by_public_id", (index) => index.eq("publicId", publicId))
+        .unique());
+    expect(room?.hostPlayerId).toBeUndefined();
+  });
+
+  it("keeps a released guest from retaking that seat until the host moves them back", async () => {
+    const { test, players } = await createRoom();
+    await joinSeat(test, players.second);
+    const maya = await guestId(test, "Maya");
+    await test.mutation(api.rooms.releaseSeat, { publicId, hostSecret, guestId: maya, playerId: players.second });
+
+    const guest = await guestView(test);
+    expect(guest.seatPlayerId).toBeNull();
+    expect(guest.seatLost).toBe("released");
+    expect(guest.seats.find((seat) => seat.playerId === players.second)).toMatchObject({
+      claimed: false,
+      releasedByHost: true
+    });
+    await expect(
+      test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.second })
+    ).rejects.toThrow(/Ask the host/);
+    // Rejoining through the invitation is no way around it.
+    await expect(joinSeat(test, players.second)).rejects.toThrow(/Ask the host/);
+    // Other seats are still open to them, and other phones may take the released one.
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.third });
+    expect((await guestView(test)).seatLost).toBeNull();
+
+    await test.mutation(api.rooms.assignSeat, { publicId, hostSecret, guestId: maya, playerId: players.second });
+    expect((await guestView(test)).seatPlayerId).toBe(players.second);
+    // The host's move clears that release: the guest may come back to it later.
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.third });
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.second });
+    expect((await guestView(test)).seatPlayerId).toBe(players.second);
+  });
+
+  it("releases only the seat the host saw, and remembers a host who isn't playing", async () => {
+    const { test, players } = await createRoom();
+    await joinSeat(test, players.second);
+    const maya = await guestId(test, "Maya");
+    await test.mutation(api.rooms.claimSeat, { publicId, guestSecret, playerId: players.third });
+    await expect(
+      test.mutation(api.rooms.releaseSeat, { publicId, hostSecret, guestId: maya, playerId: players.second })
+    ).rejects.toThrow(/no longer in that seat/);
+    expect((await guestView(test)).seatPlayerId).toBe(players.third);
+
+    expect((await hostView(test)).hostNotPlaying).toBe(false);
+    await test.mutation(api.rooms.setHostPlayer, { publicId, hostSecret, playerId: null });
+    let host = await hostView(test);
+    expect(host.hostNotPlaying).toBe(true);
+    expect(host.hostPlayerId).toBeNull();
+    await test.mutation(api.rooms.setHostPlayer, { publicId, hostSecret, playerId: players.first });
+    host = await hostView(test);
+    expect(host.hostNotPlaying).toBe(false);
+    expect(host.hostPlayerId).toBe(players.first);
+  });
+
+  it("labels a seated guest by their seat, whatever name a rejoin sends", async () => {
+    const { test, players } = await createRoom();
+    await joinSeat(test, players.second);
+    // An old client or friend join sends a typed name for the same guest secret.
+    const rejoined = await joinNamed(test, "Mallory");
+    expect(rejoined.displayName).toBe("Maya");
+    expect(rejoined.seatPlayerId).toBe(players.second);
+    expect((await hostView(test)).guests[0]).toMatchObject({ displayName: "Maya" });
   });
 
   it("never shows other guests' names or ids in the invitation or a guest's seat list", async () => {

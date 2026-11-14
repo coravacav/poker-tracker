@@ -8,6 +8,8 @@ import { useDialogFocus } from "../useDialogFocus";
 /** What a guest's Play screen needs to know and do about their own seat. */
 export type GuestSeatControls = {
   seatPlayerId: string | null;
+  /** Why the guest last lost a seat, if they did. */
+  seatLost?: "released" | "changed" | null;
   seats: SeatOption[];
   /** Resolves to whether the seat was taken. */
   onClaimSeat: (playerId: string) => Promise<boolean>;
@@ -62,14 +64,20 @@ function SeatDialog({
 }
 
 /** Shown on Play to a guest who joined without a seat, while a seat is open. */
-export function GuestSeatPrompt({ seatPlayerId, seats, onClaimSeat }: GuestSeatControls) {
+export function GuestSeatPrompt({ seatPlayerId, seatLost, seats, onClaimSeat }: GuestSeatControls) {
   const [open, setOpen] = useState(false);
   if (seatPlayerId !== null || openSeats(seats).length === 0) return null;
   return (
     <>
       <div className="notice guest-seat-prompt">
         <Armchair size={18} aria-hidden="true" />
-        <span>You haven’t picked a seat yet.</span>
+        <span>
+          {seatLost === "released"
+            ? "The host released your seat."
+            : seatLost === "changed"
+              ? "Your seat changed on the host’s table."
+              : "You haven’t picked a seat yet."}
+        </span>
         <button className="text-button" type="button" onClick={() => setOpen(true)}>
           Pick your seat
         </button>

@@ -81,6 +81,8 @@ export type HostRoomProjection = RoomProjection & {
   watcherCount?: number;
   /** The host's own seat ("This is me"), or null while unset; absent from older backends. */
   hostPlayerId?: string | null;
+  /** The host said they aren't playing, so the dialog stops asking for their seat. */
+  hostNotPlaying?: boolean;
   /** Every active seat in seat order, with the phone holding it. */
   seats?: HostSeat[];
 };
@@ -91,7 +93,11 @@ export type SeatOption = {
   name: string;
   claimed: boolean;
   isHost: boolean;
+  /** The host released this guest from this seat; only the host can move them back. */
+  releasedByHost?: boolean;
 };
+
+export type InvitePreview = { status: RoomStatus | "invalid" | "closed"; name?: string; seats?: SeatOption[] };
 
 export type HostSeat = {
   playerId: string;
@@ -118,6 +124,8 @@ export type GuestRoomProjection = RoomProjection & {
   hostProfile?: { friendCode: string; displayName: string } | null;
   /** The seat this guest holds, or null; absent from older backends. */
   seatPlayerId?: string | null;
+  /** Why the guest last lost a seat: the host released it, or its player changed. */
+  seatLost?: "released" | "changed" | null;
   seats?: SeatOption[];
   guestRequests?: GuestTransactionRequest[];
 };
@@ -189,7 +197,13 @@ export type RoomTransport = {
   getInvitePreview: (
     publicId: string,
     inviteSecret: string
-  ) => Promise<{ status: RoomStatus | "invalid" | "closed"; name?: string; seats?: SeatOption[] }>;
+  ) => Promise<InvitePreview>;
+  /** The invitation preview, kept live while someone is on the join screen. */
+  subscribeInvitePreview?: (
+    args: { publicId: string; inviteSecret: string },
+    onUpdate: (preview: InvitePreview) => void,
+    onError: (error: Error) => void
+  ) => () => void;
   /** Joins with a seat (taking its player's name) or with a display name. */
   joinRoom: (args: {
     publicId: string;
@@ -200,7 +214,13 @@ export type RoomTransport = {
   }) => Promise<GuestRoomProjection>;
   /** A guest takes an open seat, moving off any seat they held. */
   claimSeat?: (args: { publicId: string; guestSecret: string; playerId: string }) => Promise<void>;
-  releaseSeat?: (args: { publicId: string; hostSecret: string; guestId: Id<"roomGuests"> }) => Promise<void>;
+  /** Host: frees a guest's seat; `playerId` is the seat the host saw them in. */
+  releaseSeat?: (args: {
+    publicId: string;
+    hostSecret: string;
+    guestId: Id<"roomGuests">;
+    playerId: string;
+  }) => Promise<void>;
   assignSeat?: (args: {
     publicId: string;
     hostSecret: string;

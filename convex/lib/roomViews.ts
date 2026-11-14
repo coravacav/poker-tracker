@@ -7,7 +7,7 @@ import { publicHostProfile } from "./friendDiscovery";
 import { requireGuest, requireHost } from "./roomAccess";
 import { activityForRecipient, HOST_RECIPIENT_KEY } from "./roomNotifications";
 import { onlineWatchers, presence, watchLinkId } from "./roomPresence";
-import { hostSeats, liveHostPlayerId, liveSeatOf, seatOptions } from "./roomSeats";
+import { guestShownName, hostSeats, liveHostPlayerId, liveSeatOf, seatOptions } from "./roomSeats";
 
 export async function publicRoomWithActivity<T extends Record<string, unknown> = Record<never, never>>(
   ctx: QueryCtx | MutationCtx,
@@ -36,7 +36,7 @@ async function pendingGuestRequests(ctx: QueryCtx | MutationCtx, room: Doc<"room
       const guest = await ctx.db.get("roomGuests", request.guestId);
       return {
         id: request._id,
-        displayName: guest?.displayName ?? "Guest",
+        displayName: guest ? guestShownName(room, guest) : "Guest",
         transaction: request.transaction,
         status: request.status,
         createdAt: request.createdAt
@@ -88,10 +88,11 @@ export async function guestRoomView(
     sanitizeGuestState(room.state as GameState),
     String(guest._id),
     {
-      displayName: guest.displayName,
+      displayName: guestShownName(room, guest),
       hostProfile: await publicHostProfile(ctx, room),
       seatPlayerId: liveSeatOf(room, guest),
-      seats: await seatOptions(ctx, room, guest._id),
+      seatLost: guest.seatLost ?? null,
+      seats: await seatOptions(ctx, room, guest),
       guestRequests: await guestRequestsForGuest(ctx, guest)
     }
   );
@@ -115,7 +116,7 @@ export async function roomHistoryView(
     ...publicRoom(room, sanitizeGuestState(room.state as GameState)),
     role: "guest" as const,
     createdAt: room.createdAt,
-    displayName: guest.displayName
+    displayName: guestShownName(room, guest)
   };
 }
 
@@ -143,12 +144,13 @@ export async function hostRoomView(
     watcherCount: (await onlineWatchers(ctx, room)).length,
     guests: guestDocs.map((guest) => ({
       id: guest._id,
-      displayName: guest.displayName,
+      displayName: guestShownName(room, guest),
       joinedAt: guest.joinedAt,
       connected: onlineGuestIds.has(String(guest._id)),
       revoked: guest.revokedAt !== undefined
     })),
     hostPlayerId: liveHostPlayerId(room),
+    hostNotPlaying: room.hostNotPlaying === true,
     seats: await hostSeats(ctx, room, onlineGuestIds),
     guestRequests: await pendingGuestRequests(ctx, room),
     controllerStatus:

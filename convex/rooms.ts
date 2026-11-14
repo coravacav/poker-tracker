@@ -209,7 +209,13 @@ export const revokeGuest = mutation({
 
 /** Host: frees the seat a guest's phone holds. */
 export const releaseSeat = mutation({
-  args: { publicId: v.string(), hostSecret: v.string(), guestId: v.id("roomGuests") },
+  args: {
+    publicId: v.string(),
+    hostSecret: v.string(),
+    guestId: v.id("roomGuests"),
+    // The seat the host saw the phone in; refused if it has moved since.
+    playerId: v.string()
+  },
   returns: v.null(),
   handler: releaseRoomSeat
 });
@@ -226,7 +232,7 @@ export const assignSeat = mutation({
   handler: assignRoomSeat
 });
 
-/** Host: marks the host's own seat, or clears it with null. */
+/** Host: marks the host's own seat, or says they aren't playing with null. */
 export const setHostPlayer = mutation({
   args: {
     publicId: v.string(),

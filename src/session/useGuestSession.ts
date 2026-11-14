@@ -2,20 +2,43 @@ import { useCallback, useEffect } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { Transaction } from "../domain/pokerTypes";
 import { createCapability, guestRoomHash } from "./capabilities";
-import { roomErrorCode, roomErrorMessage, SHARING_UNAVAILABLE_MESSAGE } from "./convexRoomTransport";
+import { roomErrorMessage, SHARING_UNAVAILABLE_MESSAGE } from "./convexRoomTransport";
 import { clearGuestSession, saveGuestSession, saveRoomHistoryCredential } from "./sessionPersistence";
 import { normalizeRoomState, type LocalEntryDestination, type SessionState } from "./sessionState";
-import type { GuestSession, RoomTransport } from "./types";
+import type { GuestSession, InvitePreview, RoomTransport } from "./types";
 
-/** Loads the invitation preview while a visitor is deciding whether to join. */
+/** Folds an invitation preview into the joining session; a join error stays until the next try. */
+function withInvitePreview(current: SessionState, preview: InvitePreview): SessionState {
+  if (current.mode !== "joining") return current;
+  const status =
+    preview.status === "active"
+      ? "active"
+      : preview.status === "ended" || preview.status === "expired"
+        ? "ended"
+        : "invalid";
+  return {
+    ...current,
+    preview: { status, name: preview.name, seats: preview.seats },
+    error: current.preview.status === "loading" ? null : current.error
+  };
+}
+
+/**
+ * Loads the invitation preview while a visitor is deciding whether to join,
+ * and keeps it live where the transport can, so seats taken by other phones
+ * and players the host adds show up without a reload.
+ */
 export function useInvitePreview(
   session: SessionState,
   transport: RoomTransport,
   setSession: Dispatch<SetStateAction<SessionState>>
 ) {
+  const route = session.mode === "joining" ? session.route : null;
+  const loading = session.mode === "joining" && session.preview.status === "loading";
   useEffect(() => {
-    if (session.mode !== "joining" || session.preview.status !== "loading") return;
+    if (!route) return;
     if (!transport.configured) {
+      if (!loading) return;
       setSession((current) =>
         current.mode === "joining"
           ? {
@@ -27,39 +50,33 @@ export function useInvitePreview(
       );
       return;
     }
+    const fail = (error: unknown) =>
+      setSession((current) =>
+        current.mode === "joining" && current.preview.status === "loading"
+          ? { ...current, preview: { status: "invalid" }, error: roomErrorMessage(error) }
+          : current
+      );
+    if (transport.subscribeInvitePreview) {
+      return transport.subscribeInvitePreview(
+        { publicId: route.publicId, inviteSecret: route.inviteSecret },
+        (preview) => setSession((current) => withInvitePreview(current, preview)),
+        fail
+      );
+    }
+    if (!loading) return;
     let cancelled = false;
     void transport
-      .getInvitePreview(session.route.publicId, session.route.inviteSecret)
+      .getInvitePreview(route.publicId, route.inviteSecret)
       .then((preview) => {
-        if (cancelled) return;
-        setSession((current) => {
-          if (current.mode !== "joining") return current;
-          const status =
-            preview.status === "active"
-              ? "active"
-              : preview.status === "ended" || preview.status === "expired"
-                ? "ended"
-                : "invalid";
-          return {
-            ...current,
-            preview: { status, name: preview.name, seats: preview.seats },
-            error: null
-          };
-        });
+        if (!cancelled) setSession((current) => withInvitePreview(current, preview));
       })
       .catch((error) => {
-        if (!cancelled) {
-          setSession((current) =>
-            current.mode === "joining"
-              ? { ...current, preview: { status: "invalid" }, error: roomErrorMessage(error) }
-              : current
-          );
-        }
+        if (!cancelled) fail(error);
       });
     return () => {
       cancelled = true;
     };
-  }, [session, transport]);
+  }, [route?.publicId, route?.inviteSecret, loading && !transport.subscribeInvitePreview, transport]);
 }
 
 type GuestSessionOptions = {
@@ -192,13 +209,14 @@ export function useGuestSession({
         setSession((next) =>
           next.mode === "joining" ? { ...next, joining: false, error: roomErrorMessage(error) } : next
         );
-        // Someone took the seat first: refresh the seats so it shows as taken.
-        if (roomErrorCode(error) === "SEAT_TAKEN") {
+        // The seats may have changed (taken, removed, or joining closed):
+        // refresh them, unless the preview is already live.
+        if (!transport.subscribeInvitePreview) {
           const { publicId, inviteSecret } = current.route;
           void transport.getInvitePreview(publicId, inviteSecret).then((preview) => {
             setSession((next) =>
-              next.mode === "joining" && next.route.publicId === publicId && preview.seats
-                ? { ...next, preview: { ...next.preview, seats: preview.seats } }
+              next.mode === "joining" && next.route.publicId === publicId
+                ? withInvitePreview(next, preview)
                 : next
             );
           }).catch(() => undefined);

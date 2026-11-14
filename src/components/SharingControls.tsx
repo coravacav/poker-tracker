@@ -36,7 +36,7 @@ type HostSharingControlsProps = {
   /** Turns the watch link on with a new secret (also how it is rotated), or off. */
   onSetWatchLink: (on: boolean) => void;
   onRevokeGuest: (guestId: Id<"roomGuests">) => void;
-  onReleaseSeat: (guestId: Id<"roomGuests">) => void;
+  onReleaseSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
   onAssignSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
   onSetHostPlayer: (playerId: string | null) => void;
 };
@@ -340,6 +340,7 @@ export function HostSharingControls({
                           <HostSeatList
                             seats={room.seats}
                             hostPlayerId={room.hostPlayerId ?? null}
+                            hostNotPlaying={room.hostNotPlaying === true}
                             onReleaseSeat={onReleaseSeat}
                             onAssignSeat={onAssignSeat}
                             onSetHostPlayer={onSetHostPlayer}

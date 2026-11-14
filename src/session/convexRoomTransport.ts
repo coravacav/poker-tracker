@@ -111,6 +111,12 @@ export const convexRoomTransport: RoomTransport = {
     const { client: convex, api } = await loadClient();
     return await convex.query(api.rooms.invitePreview, { publicId, inviteSecret });
   },
+  subscribeInvitePreview(args, onUpdate, onError) {
+    return subscribeWhenLoaded(
+      ({ client: current, api }) => current.onUpdate(api.rooms.invitePreview, args, onUpdate, onError),
+      onError
+    );
+  },
   async joinRoom(args) {
     const request = clean(args);
     const { client: convex, api } = await loadClient();

@@ -132,12 +132,12 @@ export function useHostRoomControls(
     await runHostAction(publicId, () => transport.revokeGuest({ publicId, hostSecret, guestId }));
   }, [runHostAction, transport]);
 
-  const releaseSeat = useCallback(async (guestId: Id<"roomGuests">) => {
+  const releaseSeat = useCallback(async (guestId: Id<"roomGuests">, playerId: string) => {
     const current = sessionRef.current;
     const release = transport.releaseSeat;
     if (current.mode !== "hosting" || !current.recovery || !release) return;
     const { publicId, hostSecret } = current.recovery;
-    await runHostAction(publicId, () => release({ publicId, hostSecret, guestId }));
+    await runHostAction(publicId, () => release({ publicId, hostSecret, guestId, playerId }));
   }, [runHostAction, transport]);
 
   const assignSeat = useCallback(async (guestId: Id<"roomGuests">, playerId: string) => {

@@ -88,6 +88,29 @@ describe("seat picker on the join screen", () => {
   });
 });
 
+describe("a seat the host released", () => {
+  it("can't be picked again from the guest's phone", () => {
+    const onClaimSeat = vi.fn(async () => true);
+    render(
+      <GuestSeatPrompt
+        seatPlayerId={null}
+        seatLost="released"
+        seats={seats.map((seat) => (seat.playerId === "player_maya" ? { ...seat, releasedByHost: true } : seat))}
+        onClaimSeat={onClaimSeat}
+      />
+    );
+    expect(screen.getByText("The host released your seat.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pick your seat" }));
+    const dialog = screen.getByRole("dialog", { name: "Pick your seat" });
+    expect(within(dialog).getByRole("button", { name: /Maya.*Released by the host/ })).toBeDisabled();
+  });
+
+  it("explains a seat lost to a change at the table", () => {
+    render(<GuestSeatPrompt seatPlayerId={null} seatLost="changed" seats={seats} onClaimSeat={vi.fn(async () => true)} />);
+    expect(screen.getByText("Your seat changed on the host’s table.")).toBeInTheDocument();
+  });
+});
+
 describe("pick your seat on Play", () => {
   it("prompts a guest without a seat and claims the one picked", async () => {
     const onClaimSeat = vi.fn(async () => true);
@@ -131,9 +154,9 @@ const hostSeats: HostSeat[] = [
   { playerId: "player_dev", name: "Dev", isHost: false, guest: null }
 ];
 
-function hostList(seatList: HostSeat[], hostPlayerId: string | null) {
+function hostList(seatList: HostSeat[], hostPlayerId: string | null, hostNotPlaying = false) {
   const handlers = { onReleaseSeat: vi.fn(), onAssignSeat: vi.fn(), onSetHostPlayer: vi.fn() };
-  render(<HostSeatList seats={seatList} hostPlayerId={hostPlayerId} {...handlers} />);
+  render(<HostSeatList seats={seatList} hostPlayerId={hostPlayerId} hostNotPlaying={hostNotPlaying} {...handlers} />);
   return handlers;
 }
 
@@ -149,7 +172,8 @@ describe("host seat list", () => {
     expect(within(list).queryByText("Which seat is yours?")).not.toBeInTheDocument();
 
     fireEvent.click(within(list).getByRole("button", { name: "Release Maya’s seat" }));
-    expect(handlers.onReleaseSeat).toHaveBeenCalledWith(maya);
+    // The seat shown goes along, so a phone that has moved since isn't released.
+    expect(handlers.onReleaseSeat).toHaveBeenCalledWith(maya, "player_maya");
 
     const move = within(list).getByRole("combobox", { name: "Move Maya’s phone" });
     // Only open seats are offered: not the host's, and not another phone's.
@@ -170,6 +194,11 @@ describe("host seat list", () => {
     ]);
     fireEvent.change(picker, { target: { value: "player_alex" } });
     expect(handlers.onSetHostPlayer).toHaveBeenCalledWith("player_alex");
+  });
+
+  it("stops asking once the room knows the host isn't playing", () => {
+    hostList(hostSeats.map((seat) => ({ ...seat, isHost: false })), null, true);
+    expect(screen.queryByText("Which seat is yours?")).not.toBeInTheDocument();
   });
 
   it("lets the host change or clear their seat", () => {

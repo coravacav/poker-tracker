@@ -16,7 +16,7 @@ import { isDiscoverable, profileByFriendCode, publicHostProfile } from "./friend
 import { requireGuest, requireHost, roomByPublicId } from "./roomAccess";
 import { fail } from "./roomErrors";
 import { GUEST_PRESENCE_INTERVAL_MS, presence } from "./roomPresence";
-import { claimSeatForGuest, liveSeatOf, seatOptions } from "./roomSeats";
+import { claimSeatForGuest, guestShownName, liveSeatOf, seatOptions } from "./roomSeats";
 import { publicRoomWithActivity } from "./roomViews";
 
 /** Requests one guest may have waiting for the host at a time. */
@@ -97,7 +97,10 @@ export async function joinRoomAsGuest(
   }
   let guestId = existingGuest?._id;
   if (existingGuest) {
-    if (choice.playerId === undefined) await ctx.db.patch(existingGuest._id, { displayName });
+    // A seated guest stays labeled by their seat, whatever name a rejoin sends.
+    if (choice.playerId === undefined && liveSeatOf(room, existingGuest) === null) {
+      await ctx.db.patch(existingGuest._id, { displayName });
+    }
   } else {
     // Count every guest record, revoked ones included, so neither the active
     // guest count nor the total number of guest rows per room is unbounded.
@@ -150,10 +153,11 @@ export async function joinRoomAsGuest(
     sanitizeGuestState(room.state as GameState),
     guestRecipientKey,
     {
-      displayName: guest.displayName,
+      displayName: guestShownName(room, guest),
       hostProfile: await publicHostProfile(ctx, room),
       seatPlayerId: liveSeatOf(room, guest),
-      seats: await seatOptions(ctx, room, guest._id)
+      seatLost: guest.seatLost ?? null,
+      seats: await seatOptions(ctx, room, guest)
     }
   );
 }
@@ -315,7 +319,9 @@ export async function revokeRoomGuest(
     await ctx.db.patch(guest._id, {
       revokedAt: guest.revokedAt ?? now,
       playerId: undefined,
-      claimedAt: undefined
+      claimedAt: undefined,
+      claimedName: undefined,
+      claimedPersonId: undefined
     });
   }
   // Also clears requests a guest revoked before this rule existed left behind.

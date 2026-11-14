@@ -26,6 +26,9 @@ export default defineSchema({
     // it. Absent until the host picks one; ignored while that player is not
     // an active player.
     hostPlayerId: v.optional(v.string()),
+    // The host said they aren't playing, so the share dialog stops asking
+    // which seat is theirs. Cleared when they pick a seat.
+    hostNotPlaying: v.optional(v.boolean()),
     joiningOpen: v.optional(v.boolean()),
     hostControllerId: v.string(),
     hostProfileId: v.optional(v.id("friendProfiles")),
@@ -97,11 +100,20 @@ export default defineSchema({
     guestSecretHash: v.string(),
     joinedAt: v.number(),
     revokedAt: v.optional(v.number()),
-    // The seat (player id) this phone claimed, and when. One phone per seat;
-    // a claim on a player who is no longer active counts as no claim, and
-    // revoking a guest clears it.
+    // The seat (player id) this phone claimed, when, and who that player was
+    // at the time (name and people link). One phone per seat. A host change
+    // that renames, relinks, archives or removes the player releases the
+    // claim; a claim whose player no longer matches never counts. Revoking a
+    // guest clears it.
     playerId: v.optional(v.string()),
-    claimedAt: v.optional(v.number())
+    claimedAt: v.optional(v.number()),
+    claimedName: v.optional(v.string()),
+    claimedPersonId: v.optional(v.string()),
+    // Why this phone last lost its seat, shown on its "Pick your seat" prompt.
+    seatLost: v.optional(v.union(v.literal("released"), v.literal("changed"))),
+    // Seats the host released this phone from; it can't take them back on
+    // its own (the host can still move it there).
+    hostReleasedPlayerIds: v.optional(v.array(v.string()))
   })
     .index("by_room_id", ["roomId"])
     .index("by_room_id_and_guest_secret_hash", ["roomId", "guestSecretHash"])

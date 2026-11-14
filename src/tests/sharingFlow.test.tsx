@@ -364,7 +364,8 @@ describe("realtime sharing UI", () => {
     });
     await waitFor(() => expect(assignSeat).toHaveBeenCalledWith(expect.objectContaining({ guestId, playerId: third!.id })));
     fireEvent.click(within(seats).getByRole("button", { name: `Release ${second!.name}’s seat` }));
-    await waitFor(() => expect(releaseSeat).toHaveBeenCalledWith(expect.objectContaining({ guestId })));
+    await waitFor(() =>
+      expect(releaseSeat).toHaveBeenCalledWith(expect.objectContaining({ guestId, playerId: second!.id })));
   });
 
   it("counts waiting guest requests on the sharing button until the host decides", async () => {
@@ -504,6 +505,31 @@ describe("realtime sharing UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Request transaction" }));
     const request = screen.getByRole("dialog", { name: "Request transaction" });
     expect(within(request).getByRole("combobox", { name: "To" })).toHaveValue(maya.id);
+  });
+
+  it("keeps the join screen's seats live", async () => {
+    const remote = createDefaultGameState();
+    const fake = fakeTransport(remote);
+    let emitPreview: ((preview: Awaited<ReturnType<RoomTransport["getInvitePreview"]>>) => void) | null = null;
+    fake.transport.subscribeInvitePreview = (_args, onUpdate) => {
+      emitPreview = onUpdate;
+      return () => {
+        emitPreview = null;
+      };
+    };
+    const seat = (name: string, claimed = false) => ({ playerId: `player_${name}`, name, claimed, isHost: false });
+    window.history.replaceState(
+      null,
+      "",
+      "/#/join/room_public_123456/invite_abcdefghijklmnopqrstuvwxyz0123456789"
+    );
+
+    renderGameApp(fake.transport);
+    act(() => emitPreview?.({ status: "active", name: "Remote table", seats: [seat("Maya")] }));
+    expect(await screen.findByRole("button", { name: /Maya/ })).toBeEnabled();
+    act(() => emitPreview?.({ status: "active", name: "Remote table", seats: [seat("Maya", true), seat("Lena")] }));
+    expect(screen.getByRole("button", { name: /Maya.*Joined on another phone/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Lena/ })).toBeEnabled();
   });
 
   it("asks a guest who joined without a seat to pick one on Play", async () => {

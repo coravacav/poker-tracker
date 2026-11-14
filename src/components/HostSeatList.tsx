@@ -12,22 +12,25 @@ const NOT_PLAYING = "__not_playing__";
 export function HostSeatList({
   seats,
   hostPlayerId,
+  hostNotPlaying = false,
   onReleaseSeat,
   onAssignSeat,
   onSetHostPlayer
 }: {
   seats: HostSeat[];
   hostPlayerId: string | null;
-  onReleaseSeat: (guestId: Id<"roomGuests">) => void;
+  /** The host said they aren't playing (kept by the room), so don't ask again. */
+  hostNotPlaying?: boolean;
+  /** `playerId` is the seat shown, so a phone that has since moved isn't released. */
+  onReleaseSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
   onAssignSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
   onSetHostPlayer: (playerId: string | null) => void;
 }) {
   const [choosingHostSeat, setChoosingHostSeat] = useState(false);
-  const [notPlaying, setNotPlaying] = useState(false);
   if (seats.length === 0) return null;
   const phones = seats.filter((seat) => seat.guest !== null).length;
   const openSeats = seats.filter((seat) => !seat.guest && !seat.isHost);
-  const showHostPrompt = choosingHostSeat || (hostPlayerId === null && !notPlaying);
+  const showHostPrompt = choosingHostSeat || (hostPlayerId === null && !hostNotPlaying);
 
   return (
     <section className="host-seat-list" aria-labelledby="host-seats-title">
@@ -48,8 +51,7 @@ export function HostSeatList({
               const value = event.currentTarget.value;
               setChoosingHostSeat(false);
               if (value === NOT_PLAYING) {
-                setNotPlaying(true);
-                if (hostPlayerId !== null) onSetHostPlayer(null);
+                onSetHostPlayer(null);
               } else if (value) {
                 onSetHostPlayer(value);
               }
@@ -113,7 +115,7 @@ export function HostSeatList({
                       className="host-seat-action danger"
                       type="button"
                       aria-label={`Release ${seat.name}’s seat`}
-                      onClick={() => seat.guest && onReleaseSeat(seat.guest.id)}
+                      onClick={() => seat.guest && onReleaseSeat(seat.guest.id, seat.playerId)}
                     >
                       Release
                     </button>

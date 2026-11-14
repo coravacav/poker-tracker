@@ -12,6 +12,7 @@ import { validIdentifier } from "./capabilities";
 import { syncFriendRoomListing } from "./friendDiscovery";
 import { requireHost } from "./roomAccess";
 import { appendAuditEvent, buildAuditEvent } from "./roomAudit";
+import { releaseChangedSeats } from "./roomSeats";
 import { fail } from "./roomErrors";
 import { HOST_RECIPIENT_KEY } from "./roomNotifications";
 import { publicRoomWithActivity } from "./roomViews";
@@ -85,17 +86,22 @@ export async function commitRoomAction(
   if ("error" in applied) fail("INVALID_ARGUMENT", applied.error);
   const version = room.version + 1;
   const name = applied.state.settings.gameName.trim().slice(0, 80) || "Poker Night";
+  // A seat whose player was renamed, relinked, archived, or removed is no
+  // longer the person its phone claimed.
+  const hostPlayerId = await releaseChangedSeats(ctx, room, beforeState, applied.state);
   const nextRoom: Doc<"rooms"> = {
     ...room,
     state: applied.state,
     name,
     version,
+    hostPlayerId,
     hostBaseVersion: options.hostAuthored ? version : hostBaseVersion(room),
     acceptedActionCount: room.acceptedActionCount + 1,
     lastActivityAt: now
   };
   await ctx.db.patch(room._id, {
     state: nextRoom.state,
+    hostPlayerId,
     name: nextRoom.name,
     version: nextRoom.version,
     hostBaseVersion: nextRoom.hostBaseVersion,

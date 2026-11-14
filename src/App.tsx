@@ -145,6 +145,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
     if (session.room?.status === "active" && session.room.seats) {
       guestSeat = {
         seatPlayerId,
+        seatLost: session.room.seatLost ?? null,
         seats: session.room.seats,
         onClaimSeat: gameSession.claimSeat
       };
@@ -190,7 +191,7 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onRotateInvite={() => void gameSession.rotateInvite()}
         onSetWatchLink={(on) => void gameSession.setWatchLink(on)}
         onRevokeGuest={(guestId) => void gameSession.revokeGuest(guestId)}
-        onReleaseSeat={(guestId) => void gameSession.releaseSeat(guestId)}
+        onReleaseSeat={(guestId, playerId) => void gameSession.releaseSeat(guestId, playerId)}
         onAssignSeat={(guestId, playerId) => void gameSession.assignSeat(guestId, playerId)}
         onSetHostPlayer={(playerId) => void gameSession.setHostPlayer(playerId)}
         pending={session.pending}
