@@ -1,4 +1,4 @@
-// Shared audit-event construction: describes each accepted host action in
+// Shared audit-event construction: describes each accepted room action in
 // locale-independent text and retains a bounded event log per room.
 import { formatPlainCurrency } from "../../src/domain/money";
 import type { GameState, SettlementPin, Transaction } from "../../src/domain/pokerTypes";
@@ -236,7 +236,9 @@ export function buildAuditEvent(
   after: GameState,
   action: unknown,
   version: number,
-  createdAt: number
+  createdAt: number,
+  /** Who the shared feed says made the change, e.g. "Host". */
+  actorLabel: string
 ): AuditEventDraft | null {
   const type = actionType(action);
   if (isPrivateAuditAction(type)) return null;
@@ -256,7 +258,7 @@ export function buildAuditEvent(
     summary: auditSummary(action, before, after, changed),
     transactionIds,
     playerIds,
-    actorLabel: "Host",
+    actorLabel,
     createdAt,
     notify: kind !== "game"
   };

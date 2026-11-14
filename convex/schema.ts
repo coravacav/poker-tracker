@@ -9,6 +9,11 @@ export default defineSchema({
     localGameId: v.string(),
     state: v.any(),
     version: v.number(),
+    // The version the host last wrote (or, for rooms that predate it, absent:
+    // read as `version`). Server-authored writes such as agreed entries bump
+    // only `version`, so a host action sent against a version in between can
+    // still be rebased onto the latest state when it is safe to.
+    hostBaseVersion: v.optional(v.number()),
     acceptedActionCount: v.number(),
     createdAt: v.number(),
     lastActivityAt: v.optional(v.number()),
@@ -139,7 +144,8 @@ export default defineSchema({
     decidedAt: v.optional(v.number())
   })
     .index("by_room_id_and_status", ["roomId", "status"])
-    .index("by_guest_id", ["guestId"]),
+    .index("by_guest_id", ["guestId"])
+    .index("by_guest_id_and_status", ["guestId", "status"]),
 
   // Browser errors reported by the app (see convex/clientErrors.ts), one row
   // per distinct error per build, counting repeats. No game data is stored.

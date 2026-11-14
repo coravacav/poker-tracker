@@ -17,6 +17,36 @@ import { fail } from "./roomErrors";
 import { GUEST_PRESENCE_INTERVAL_MS, presence } from "./roomPresence";
 import { publicRoomWithActivity } from "./roomViews";
 
+/** Requests one guest may have waiting for the host at a time. */
+const MAX_PENDING_REQUESTS_PER_GUEST = 10;
+
+/**
+ * Rejects every request still waiting in the room (when it ends) or from one
+ * guest (when they are revoked), so none can be approved afterwards.
+ */
+export async function rejectPendingGuestRequests(
+  ctx: MutationCtx,
+  scope: { roomId: Id<"rooms"> } | { guestId: Id<"roomGuests"> },
+  decidedAt: number
+) {
+  const pending = "guestId" in scope
+    ? await ctx.db
+        .query("roomGuestRequests")
+        .withIndex("by_guest_id_and_status", (index) =>
+          index.eq("guestId", scope.guestId).eq("status", "pending")
+        )
+        .take(MAX_PENDING_REQUESTS_PER_GUEST * 10)
+    : await ctx.db
+        .query("roomGuestRequests")
+        .withIndex("by_room_id_and_status", (index) =>
+          index.eq("roomId", scope.roomId).eq("status", "pending")
+        )
+        .take(MAX_ROOM_GUESTS * MAX_PENDING_REQUESTS_PER_GUEST);
+  for (const request of pending) {
+    await ctx.db.patch(request._id, { status: "rejected", decidedAt });
+  }
+}
+
 export async function joinRoomAsGuest(
   ctx: MutationCtx,
   room: Doc<"rooms">,
@@ -164,10 +194,11 @@ export async function submitGuestTransactionRequest(
 
   const pending = await ctx.db
     .query("roomGuestRequests")
-    .withIndex("by_guest_id", (index) => index.eq("guestId", guest._id))
-    .order("desc")
-    .take(25);
-  if (pending.filter((request) => request.status === "pending").length >= 10) {
+    .withIndex("by_guest_id_and_status", (index) =>
+      index.eq("guestId", guest._id).eq("status", "pending")
+    )
+    .take(MAX_PENDING_REQUESTS_PER_GUEST);
+  if (pending.length >= MAX_PENDING_REQUESTS_PER_GUEST) {
     fail("ROOM_LIMIT_REACHED", "Wait for the host to review your pending requests.");
   }
 
@@ -231,8 +262,11 @@ export async function revokeRoomGuest(
   const room = await requireHost(ctx, args.publicId, args.hostSecret);
   const guest = await ctx.db.get("roomGuests", args.guestId);
   if (!guest || guest.roomId !== room._id) fail("INVALID_ARGUMENT", "Guest was not found.");
+  const now = Date.now();
   if (guest.revokedAt === undefined) {
-    await ctx.db.patch(guest._id, { revokedAt: Date.now() });
+    await ctx.db.patch(guest._id, { revokedAt: now });
   }
+  // Also clears requests a guest revoked before this rule existed left behind.
+  await rejectPendingGuestRequests(ctx, { guestId: guest._id }, now);
   return null;
 }

@@ -62,7 +62,12 @@ export function reduceTransactionAction(state: GameState, action: TransactionAct
         createdAt: new Date().toISOString(),
         flippedFromTransactionId: original.id,
         voidedAt: undefined,
-        voidReason: undefined
+        voidReason: undefined,
+        // The reversal is the host's correction, not something the players agreed on.
+        proposedByPlayerId: undefined,
+        confirmedByPlayerId: undefined,
+        agreementId: undefined,
+        confirmedVia: undefined
       };
 
       let flippedTransaction: Transaction | null = null;

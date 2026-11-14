@@ -1,3 +1,4 @@
+import { withoutAgreementMetadata, withUsableAgreementMetadata } from "../domain/agreementMetadata";
 import type { GameState, Transaction } from "../domain/pokerTypes";
 import { isValidPersonId } from "../domain/people";
 import { normalizeLegacyPlayerTransaction } from "../domain/playerTransactions";
@@ -46,6 +47,43 @@ const HOSTED_ACTION_TYPES = new Set<GameAction["type"]>([
   "clear_settlement_pins"
 ]);
 
+/**
+ * Host actions the server may apply on top of changes the host has not seen
+ * yet, when those changes were made by the server itself (for example an entry
+ * two players agreed on). Each one targets ids or only adds, and is re-run
+ * through the reducer and validation against the latest state. Anything that
+ * reorders, removes, or depends on "the latest entry" is left out.
+ */
+const REBASEABLE_HOSTED_ACTION_TYPES = new Set<GameAction["type"]>([
+  "set_game_name",
+  "set_default_buy_in",
+  "set_currency",
+  "set_chip_denominations",
+  "set_table_shape",
+  "add_player",
+  "rename_player",
+  "set_player_venmo_handle",
+  "add_transaction",
+  "add_transactions",
+  "save_cash_out_draft",
+  "clear_cash_out_draft",
+  "start_cash_out_correction",
+  "record_cash_out",
+  "replace_cash_out",
+  "flip_transaction",
+  "void_transaction",
+  "pin_settlement_payment",
+  "set_settlement_pin_status",
+  "unpin_settlement_payment",
+  "clear_settlement_pins"
+]);
+
+export function isRebaseableHostedAction(action: unknown): boolean {
+  if (!action || typeof action !== "object") return false;
+  const type = (action as { type?: unknown }).type;
+  return typeof type === "string" && REBASEABLE_HOSTED_ACTION_TYPES.has(type as GameAction["type"]);
+}
+
 function jsonSize(value: unknown): number {
   try {
     return new TextEncoder().encode(JSON.stringify(value)).byteLength;
@@ -55,6 +93,7 @@ function jsonSize(value: unknown): number {
 }
 
 export function normalizeGameState(state: GameState): GameState {
+  const playerIds = new Set(state.players.map((player) => player.id));
   const settlementPins = sanitizeSettlementPins(state.settlementPins, state.players);
   // Validated before it gets here; the fallback only guards the type.
   const currencyCode = toCurrencyCode(state.settings.currencyCode);
@@ -108,9 +147,13 @@ export function normalizeGameState(state: GameState): GameState {
         chipCountBreakdown,
         correctsTransactionId,
         voidedAt,
-        voidReason
+        voidReason,
+        proposedByPlayerId,
+        confirmedByPlayerId,
+        agreementId,
+        confirmedVia
       }) =>
-        normalizeLegacyPlayerTransaction({
+        withUsableAgreementMetadata(normalizeLegacyPlayerTransaction({
           id,
           type,
           createdAt,
@@ -135,8 +178,12 @@ export function normalizeGameState(state: GameState): GameState {
           ),
           correctsTransactionId,
           voidedAt,
-          voidReason
-        })
+          voidReason,
+          proposedByPlayerId,
+          confirmedByPlayerId,
+          agreementId,
+          confirmedVia
+        }), playerIds)
     ),
     cashOutDrafts: state.cashOutDrafts.map(({ playerId, lines, correctingTransactionId }) => ({
       playerId,
@@ -174,14 +221,25 @@ export function roomStateError(state: unknown): string | null {
   return null;
 }
 
+export type ApplyHostedActionOptions = {
+  /**
+   * Keep proposedBy/confirmedBy/agreement metadata on submitted transactions.
+   * Only for transactions the server built itself; anything a host or guest
+   * submits has that metadata stripped.
+   */
+  trustAgreementMetadata?: boolean;
+};
+
 function withServerTransactionMetadata(
   transaction: unknown,
   nowIso: string,
-  createTransactionId: () => string
+  createTransactionId: () => string,
+  options: ApplyHostedActionOptions
 ): Transaction | null {
   if (!transaction || typeof transaction !== "object") return null;
+  const submitted = transaction as Transaction;
   return {
-    ...(transaction as Transaction),
+    ...(options.trustAgreementMetadata ? submitted : withoutAgreementMetadata(submitted)),
     id: createTransactionId(),
     createdAt: nowIso
   };
@@ -191,7 +249,8 @@ export function applyHostedAction(
   state: GameState,
   actionValue: unknown,
   nowIso: string,
-  createTransactionId: () => string
+  createTransactionId: () => string,
+  options: ApplyHostedActionOptions = {}
 ): { state: GameState } | { error: string } {
   if (!actionValue || typeof actionValue !== "object") {
     return { error: "Action must be an object." };
@@ -214,7 +273,8 @@ export function applyHostedAction(
     const transaction = withServerTransactionMetadata(
       candidate.transaction,
       nowIso,
-      createTransactionId
+      createTransactionId,
+      options
     );
     if (!transaction) return { error: "Transaction details are required." };
     action = { ...candidate, transaction } as GameAction;
@@ -223,7 +283,7 @@ export function applyHostedAction(
       return { error: "Enter a valid bounded transaction batch." };
     }
     const transactions = candidate.transactions.map((transaction) =>
-      withServerTransactionMetadata(transaction, nowIso, createTransactionId)
+      withServerTransactionMetadata(transaction, nowIso, createTransactionId, options)
     );
     if (transactions.some((transaction) => transaction === null)) {
       return { error: "Every transaction in the batch must be valid." };
@@ -233,7 +293,8 @@ export function applyHostedAction(
     const replacement = withServerTransactionMetadata(
       candidate.replacement,
       nowIso,
-      createTransactionId
+      createTransactionId,
+      options
     );
     if (!replacement || typeof candidate.originalTransactionId !== "string") {
       return { error: "Cash-out replacement details are required." };

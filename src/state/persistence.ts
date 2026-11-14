@@ -10,6 +10,7 @@ import {
   createDefaultSeatPlacements,
   normalizeSeatPlacements
 } from "../domain/tableLayout";
+import { hasAgreementMetadata, withUsableAgreementMetadata } from "../domain/agreementMetadata";
 import { normalizeLegacyPlayerTransactions } from "../domain/playerTransactions";
 import { cleanNotPersonIds, isValidPersonId } from "../domain/people";
 import { sanitizeSettlementPins } from "../domain/settlement";
@@ -210,9 +211,27 @@ function withUsableSettlementPins(state: GameState): GameState {
   return pins.length > 0 ? { ...rest, settlementPins: pins } : rest;
 }
 
+/**
+ * Transaction agreement metadata (who proposed and confirmed an entry) is
+ * optional and additive like settlementPins: validation ignores it, and an
+ * entry whose metadata this build cannot use loads without it.
+ */
+function withUsableAgreementMetadataOnTransactions(state: GameState): GameState {
+  if (!state.transactions.some(hasAgreementMetadata)) return state;
+  const playerIds = new Set(state.players.map((player) => player.id));
+  return {
+    ...state,
+    transactions: state.transactions.map((transaction) =>
+      withUsableAgreementMetadata(transaction, playerIds)
+    )
+  };
+}
+
 export function migratePersistedState(state: AnyPersistedGameState): GameState {
-  return withUsableSettlementPins(
-    withUsableVenmoHandles(withUsableNotPersonIds(withUsablePersonIds(migrateSchema(state))))
+  return withUsableAgreementMetadataOnTransactions(
+    withUsableSettlementPins(
+      withUsableVenmoHandles(withUsableNotPersonIds(withUsablePersonIds(migrateSchema(state))))
+    )
   );
 }
 

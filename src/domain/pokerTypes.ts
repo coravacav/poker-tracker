@@ -90,6 +90,8 @@ export type TransactionType =
 export type BankDirection = "incoming" | "outgoing";
 export type TransactionCategory = "poker" | "food";
 export type CashOutKind = "partial" | "final";
+/** How an agreed entry was confirmed: by the other player, or by the host for them. */
+export type TransactionConfirmation = "peer" | "host";
 
 export type Transaction = {
   id: TransactionId;
@@ -109,6 +111,17 @@ export type Transaction = {
   correctsTransactionId?: TransactionId;
   voidedAt?: string;
   voidReason?: string;
+  /**
+   * Agreement metadata for entries players confirmed between themselves in a
+   * shared room (see domain/agreementMetadata.ts). Only the room server sets
+   * these, only on player_gave and bank_buy_in. Additive and optional, so they
+   * need no schema bump: older builds ignore them and unusable values are
+   * dropped on load.
+   */
+  proposedByPlayerId?: PlayerId;
+  confirmedByPlayerId?: PlayerId;
+  agreementId?: string;
+  confirmedVia?: TransactionConfirmation;
 };
 
 export type PlayerLedgerSummary = {

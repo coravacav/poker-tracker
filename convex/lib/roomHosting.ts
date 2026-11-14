@@ -19,8 +19,10 @@ import {
   verifyProfileOwner
 } from "./friendDiscovery";
 import { requireHost, roomByPublicId } from "./roomAccess";
+import { requireHostVersion } from "./roomActions";
 import { appendAuditEvent } from "./roomAudit";
 import { fail } from "./roomErrors";
+import { rejectPendingGuestRequests } from "./roomGuests";
 import { HOST_RECIPIENT_KEY } from "./roomNotifications";
 import { publicRoomWithActivity } from "./roomViews";
 
@@ -107,6 +109,7 @@ export async function createRoom(
     localGameId: args.localGameId,
     state: snapshot,
     version: 0,
+    hostBaseVersion: 0,
     acceptedActionCount: 0,
     createdAt: now,
     lastActivityAt: now,
@@ -213,11 +216,12 @@ export async function endRoom(
   if (room.hostControllerId !== args.controllerId) {
     fail("DUPLICATE_CONTROLLER", "Another tab controls this hosted room.");
   }
-  if (!Number.isSafeInteger(args.expectedVersion) || args.expectedVersion !== room.version) {
-    fail("VERSION_CONFLICT", `Room changed; reload version ${room.version}.`);
-  }
+  // Ending changes no entries, so the host may end from any version since its
+  // own last write (the room ends at its latest, authoritative state).
+  requireHostVersion(room, args.expectedVersion, true);
   const endedAt = Date.now();
   await ctx.db.patch(room._id, { status: "ended", endedAt, lastActivityAt: endedAt });
+  await rejectPendingGuestRequests(ctx, { roomId: room._id }, endedAt);
   await releaseActiveRoomSlot(ctx, room);
   if (room.hostProfileId) {
     await syncFriendRoomListing(ctx, { ...room, status: "ended" });

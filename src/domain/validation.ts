@@ -11,6 +11,7 @@ import type {
   Transaction,
   TransactionType
 } from "./pokerTypes";
+import { agreementMetadataError, withoutAgreementMetadata } from "./agreementMetadata";
 import { chipCountTotalCents } from "./chipCounts";
 import { isSupportedCurrencyCode, type CurrencyCode } from "./money";
 
@@ -262,7 +263,7 @@ export function validateTransaction(
     }
   }
 
-  return null;
+  return agreementMetadataError(transaction, playerIds);
 }
 
 function isValidTableShape(value: unknown): value is TableShape {
@@ -413,8 +414,10 @@ export function validatePersistedState(value: unknown): value is AnyPersistedGam
         return false;
       }
 
+      // Unusable agreement metadata is dropped on load (see agreementMetadata.ts),
+      // never a reason to reject the save.
       const structuralError = validateTransaction(
-        transaction as Transaction,
+        withoutAgreementMetadata(transaction as Transaction),
         candidate.players as Player[]
       );
       if (structuralError) return false;

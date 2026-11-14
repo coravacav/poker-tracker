@@ -30,7 +30,11 @@ export function repeatTransaction(
     flippedFromTransactionId: undefined,
     correctsTransactionId: undefined,
     voidedAt: undefined,
-    voidReason: undefined
+    voidReason: undefined,
+    proposedByPlayerId: undefined,
+    confirmedByPlayerId: undefined,
+    agreementId: undefined,
+    confirmedVia: undefined
   };
 }
 
