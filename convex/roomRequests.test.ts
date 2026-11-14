@@ -506,3 +506,54 @@ describe("rebasing stale host actions", () => {
     });
   });
 });
+
+describe("agreement metadata from clients", () => {
+  it("drops confirmed-by claims from a shared snapshot and from stored guest requests", async () => {
+    const test = setup();
+    const base = createDefaultGameState();
+    const [first, second] = base.players.map((player) => player.id);
+    const snapshot = {
+      ...base,
+      transactions: [
+        {
+          id: "transaction_forged",
+          type: "player_gave" as const,
+          createdAt: new Date().toISOString(),
+          amountCents: 2000,
+          fromPlayerId: second,
+          toPlayerId: first,
+          category: "poker" as const,
+          proposedByPlayerId: first,
+          confirmedByPlayerId: second,
+          agreementId: "agreement_forged",
+          confirmedVia: "peer" as const
+        }
+      ]
+    };
+    await test.mutation(api.rooms.create, {
+      publicId,
+      localGameId: snapshot.localGameId,
+      snapshot,
+      hostSecret,
+      inviteSecret,
+      controllerId
+    });
+    const room = await roomDoc(test);
+    const stored = (room.state as typeof snapshot).transactions[0] as Record<string, unknown>;
+    expect(stored.amountCents).toBe(2000);
+    expect(stored.confirmedByPlayerId).toBeUndefined();
+    expect(stored.proposedByPlayerId).toBeUndefined();
+    expect(stored.agreementId).toBeUndefined();
+    expect(stored.confirmedVia).toBeUndefined();
+
+    await join(test);
+    const requestId = await test.mutation(api.rooms.submitGuestTransaction, {
+      publicId,
+      guestSecret,
+      transaction: buyIn(first, 2000, { confirmedByPlayerId: second, confirmedVia: "peer" })
+    });
+    const request = await requestDoc(test, requestId);
+    expect(request?.transaction.confirmedByPlayerId).toBeUndefined();
+    expect(request?.transaction.confirmedVia).toBeUndefined();
+  });
+});

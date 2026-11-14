@@ -1,4 +1,5 @@
 // Host room lifecycle: create, claim the controller, friend visibility, and end.
+import { withoutAgreementMetadata } from "../../src/domain/agreementMetadata";
 import type { GameState } from "../../src/domain/pokerTypes";
 import {
   CREATION_LIMITED_CODE,
@@ -53,7 +54,13 @@ export async function createRoom(
 
   const stateError = roomStateError(args.snapshot);
   if (stateError) fail("INVALID_ARGUMENT", stateError);
-  const snapshot = normalizeGameState(args.snapshot as GameState);
+  // Only the room server records who agreed to an entry, so a shared
+  // snapshot can't arrive already carrying "confirmed by" claims.
+  const normalized = normalizeGameState(args.snapshot as GameState);
+  const snapshot: GameState = {
+    ...normalized,
+    transactions: normalized.transactions.map(withoutAgreementMetadata)
+  };
   if (snapshot.localGameId !== args.localGameId) {
     fail("INVALID_ARGUMENT", "Local game identity does not match the snapshot.");
   }

@@ -1,5 +1,6 @@
 // Guest access: invitations, joining, guest requests, presence, and the host
 // controls that open, rotate, or revoke guest access.
+import { withoutAgreementMetadata } from "../../src/domain/agreementMetadata";
 import type { GameState } from "../../src/domain/pokerTypes";
 import { parseFriendCode } from "../../src/session/friendCode";
 import {
@@ -212,7 +213,7 @@ export async function submitGuestTransactionRequest(
   return await ctx.db.insert("roomGuestRequests", {
     roomId: room._id,
     guestId: guest._id,
-    transaction: args.transaction,
+    transaction: withoutAgreementMetadata(args.transaction),
     status: "pending",
     createdAt: Date.now()
   });
