@@ -74,7 +74,6 @@ function SpectatorGame({
   }, [ended]);
   const activeView = resultsAvailable ? view : "table";
   const status = ended ? "Game ended" : connected ? "Spectating" : "Reconnecting";
-  const watching = !ended && connected && room.watcherCount > 0 ? ` · ${room.watcherCount} watching` : "";
   const showChipKey = state.settings.chipDenominations.length > 0;
 
   return (
@@ -89,7 +88,6 @@ function SpectatorGame({
             <span className="spectator-pill">
               {connected || ended ? <Eye size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}
               {status}
-              {watching}
             </span>
             <button className="text-button" type="button" onClick={onLeave}>
               <LogOut size={15} /> Leave

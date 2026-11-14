@@ -20,7 +20,11 @@ export const creationLimiter = new RateLimiter(components.rateLimiter, {
   // A single host rarely starts more than one or two rooms in an evening.
   // Five back-to-back, then one every ten minutes, keeps a leaked profile
   // capability from flooding followers' discovery lists.
-  profileRoomCreation: { kind: "token bucket", rate: 6, period: HOUR, capacity: 5 }
+  profileRoomCreation: { kind: "token bucket", rate: 6, period: HOUR, capacity: 5 },
+  // New watcher ids per room (keyed by room). A watch link shared to a crowd
+  // admits 100 at once, then 60/hour, bounding the presence rows a client
+  // inventing ids can create before the link is rotated or the room pruned.
+  newRoomWatcher: { kind: "token bucket", rate: 60, period: HOUR, capacity: 100 }
 });
 
 /**

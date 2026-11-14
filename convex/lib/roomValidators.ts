@@ -89,8 +89,7 @@ export const invitePreviewValidator = v.union(
   })
 );
 export const spectatorViewValidator = publicRoomValidator.extend({
-  events: v.array(activityEventValidator),
-  watcherCount: v.number()
+  events: v.array(activityEventValidator)
 });
 export const historyViewValidator = publicRoomValidator.extend({
   role: v.union(v.literal("host"), v.literal("guest")),
@@ -113,6 +112,7 @@ export const hostRoomValidator = publicRoomValidator.extend({
   visibleToFriends: v.boolean(),
   friendProfileLinked: v.boolean(),
   watchLinkOn: v.boolean(),
+  watchLinkId: v.union(v.string(), v.null()),
   watcherCount: v.number(),
   guests: v.array(v.object({
     id: v.id("roomGuests"),

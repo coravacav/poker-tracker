@@ -336,8 +336,11 @@ export function sanitizeGuestState(state: GameState): GameState {
   const normalized = normalizeGameState(state);
   return {
     ...normalized,
-    // People links point into the host's device-local directory; guests have no use for them.
-    players: normalized.players.map(({ personId: _personId, ...player }) => player),
+    // People links (and corrections to them) point into the host's device-local
+    // directory; guests have no use for them.
+    players: normalized.players.map(
+      ({ personId: _personId, notPersonIds: _notPersonIds, ...player }) => player
+    ),
     cashOutDrafts: []
   };
 }

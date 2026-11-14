@@ -75,6 +75,8 @@ export type HostRoomProjection = RoomProjection & {
   friendProfileLinked?: boolean;
   /** Whether the read-only watch link is on; absent from older backends. */
   watchLinkOn?: boolean;
+  /** Short id of the current watch link (null while off), to tell whether a stored secret is still current. */
+  watchLinkId?: string | null;
   /** Watchers online through the watch link. */
   watcherCount?: number;
   /** The host's own seat ("This is me"), or null while unset; absent from older backends. */
@@ -101,7 +103,6 @@ export type HostSeat = {
 /** What the watch link shows: the sanitized table and the latest events, newest first. */
 export type SpectatorRoomProjection = RoomProjection & {
   events: SharedAuditEvent[];
-  watcherCount: number;
 };
 
 export type HostGuestSession = {

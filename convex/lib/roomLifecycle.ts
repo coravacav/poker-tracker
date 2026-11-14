@@ -7,7 +7,9 @@
 //    (processed actions, audit events, notification cursors) and their guest
 //    records pruned (every guest request and revoked guest session; guests in
 //    good standing are kept so they can still review the room). Each room is
-//    marked with `detailsPrunedAt` / `guestRecordsPrunedAt` once drained.
+//    marked with `detailsPrunedAt` / `guestRecordsPrunedAt` once drained, and
+//    its watch link is turned off, with the link's watcher presence removed by
+//    a scheduled batch job (internal.rooms.removeWatcherPresence).
 //
 // Transaction budget. Convex limits a mutation to 16 MiB read, 16 MiB written,
 // 32,000 documents read, 16,000 documents written and 4,096 index ranges
@@ -41,6 +43,7 @@ import type { Doc, Id, TableNames } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { decrementActiveRoomCounter } from "./creationLimits";
 import { clearLegacyActiveRoom, syncFriendRoomListing } from "./friendDiscovery";
+import { scheduleWatcherPresenceCleanup } from "./roomSpectators";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MiB = 1 << 20;
@@ -288,8 +291,13 @@ async function pruneOldRoom(ctx: MutationCtx, state: BatchState, room: Doc<"room
   const guestsDone =
     detailsDone &&
     (room.guestRecordsPrunedAt !== undefined || (await pruneGuestRecords(ctx, state, room._id)));
+  // Once details are pruned the watch link stops working: turn it off and
+  // remove its watcher presence rows in background batches.
+  const closesWatchLink = detailsDone && room.spectatorSecretHash !== undefined;
+  if (closesWatchLink) await scheduleWatcherPresenceCleanup(ctx, room);
   const markers = {
     ...(detailsDone && room.detailsPrunedAt === undefined ? { detailsPrunedAt: state.now } : {}),
+    ...(closesWatchLink ? { spectatorSecretHash: undefined } : {}),
     ...(guestsDone && room.guestRecordsPrunedAt === undefined
       ? { guestRecordsPrunedAt: state.now }
       : {})

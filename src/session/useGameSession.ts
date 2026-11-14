@@ -99,12 +99,17 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     dismissGuestInvite();
     if (toHome) setLocalEntry({ reason: "first_visit", savedGame: null });
   }, [dismissGuestInvite]);
-  // Leaving the watch view always opens Home.
+  // Leaving the watch view returns a host or guest to their room, and anyone else Home.
+  const sessionAfterWatching = useCallback(
+    () => initialSession(localStateRef.current.localGameId, deploymentUrl),
+    [deploymentUrl]
+  );
   const openHomeAfterWatching = useCallback(() => setLocalEntry(loadInitialLocalEntry()), []);
   const { leaveSpectating } = useSpectatorSession({
     session,
     transport,
     setSession,
+    resolveSession: sessionAfterWatching,
     onLeave: openHomeAfterWatching
   });
   const hostControls = useHostRoomControls(transport, sessionRef, setSession);

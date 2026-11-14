@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { GameState } from "../domain/pokerTypes";
 import { validatePersistedState } from "../domain/validation";
-import { applyHostedAction, normalizeGameState, roomStateError, sanitizeGuestState } from "../session/roomProtocol";
+import {
+  applyHostedAction,
+  normalizeGameState,
+  roomStateError,
+  sanitizeGuestState,
+  sanitizeSpectatorState
+} from "../session/roomProtocol";
 import { gameReducer } from "../state/gameReducer";
 import { migratePersistedState } from "../state/persistence";
 import { createDefaultGameState } from "../state/seedGame";
@@ -83,6 +89,17 @@ describe("person links in shared rooms", () => {
     expect(sanitizeGuestState(state).players.some((player) => "personId" in player)).toBe(false);
     const bad = { ...state, players: [{ ...state.players[0], personId: "x".repeat(500) }, state.players[1]] };
     expect(normalizeGameState(bad).players[0]).not.toHaveProperty("personId");
+  });
+
+  it("never shares link corrections or links with guests or watchers", () => {
+    const state = game();
+    state.players[0] = { ...state.players[0], notPersonIds: ["person_jon"] };
+    for (const shared of [sanitizeGuestState(state), sanitizeSpectatorState(state)]) {
+      for (const player of shared.players) {
+        expect(player).not.toHaveProperty("personId");
+        expect(player).not.toHaveProperty("notPersonIds");
+      }
+    }
   });
 
   it("applies hosted renames that carry a link", () => {

@@ -1,5 +1,5 @@
 import { Copy, Eye, EyeOff, Radio, RefreshCw, Share2, StopCircle, UserRound, WifiOff, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { QrCode } from "./QrCode";
 import { SaveSharedGameButton } from "./SaveSharedGameButton";
@@ -7,7 +7,7 @@ import { useDialogFocus } from "./useDialogFocus";
 import { useFormatCurrency } from "./CurrencyContext";
 import { HostSeatList } from "./HostSeatList";
 import type { GameState } from "../domain/pokerTypes";
-import { createWatchUrl } from "../session/capabilities";
+import { createWatchUrl, watchLinkIdForSecret } from "../session/capabilities";
 import type { HostRecovery, HostRoomProjection } from "../session/types";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -57,21 +57,43 @@ function useCopy() {
   return { copied, copy };
 }
 
+/** The short id of a stored watch secret, once computed (null until then). */
+function useWatchLinkId(secret: string | undefined): string | null {
+  const [computed, setComputed] = useState<{ secret: string; id: string } | null>(null);
+  useEffect(() => {
+    if (!secret) return;
+    let cancelled = false;
+    void watchLinkIdForSecret(secret)
+      .then((id) => {
+        if (!cancelled) setComputed({ secret, id });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [secret]);
+  return secret && computed?.secret === secret ? computed.id : null;
+}
+
 /** The Watchers tab: the read-only watch link, its QR code, rotate and turn off, and who is watching. */
 function WatchLinkPanel({
   publicId,
   spectatorSecret,
   on,
+  currentLinkId,
   watcherCount,
   onSetWatchLink
 }: {
   publicId: string;
   spectatorSecret?: string;
   on: boolean;
+  /** The server's id for the current link; a stored secret with another id was replaced elsewhere. */
+  currentLinkId?: string | null;
   watcherCount: number;
   onSetWatchLink: (on: boolean) => void;
 }) {
   const { copied, copy } = useCopy();
+  const storedLinkId = useWatchLinkId(spectatorSecret);
   if (!on) {
     return (
       <div className="watch-link-panel">
@@ -85,7 +107,9 @@ function WatchLinkPanel({
       </div>
     );
   }
-  const watchUrl = spectatorSecret ? createWatchUrl(publicId, spectatorSecret) : null;
+  // Another tab or device may have rotated the link since this one stored it.
+  const replaced = Boolean(currentLinkId && storedLinkId && storedLinkId !== currentLinkId);
+  const watchUrl = spectatorSecret && !replaced ? createWatchUrl(publicId, spectatorSecret) : null;
   return (
     <div className="watch-link-panel">
       {watchUrl ? (
@@ -106,7 +130,9 @@ function WatchLinkPanel({
         </>
       ) : (
         <div className="notice notice-warning">
-          The watch link is on, but this device doesn’t have it. Make a new one to share it from here.
+          {replaced
+            ? "The watch link was changed in another tab or on another device. Make a new one to share it from here."
+            : "The watch link is on, but this device doesn’t have it. Make a new one to share it from here."}
         </div>
       )}
       <div className="invite-management-row">
@@ -267,6 +293,7 @@ export function HostSharingControls({
                           publicId={recovery.publicId}
                           spectatorSecret={recovery.spectatorSecret}
                           on={room.watchLinkOn === true}
+                          currentLinkId={room.watchLinkId}
                           watcherCount={room.watcherCount ?? 0}
                           onSetWatchLink={onSetWatchLink}
                         />

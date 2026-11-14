@@ -1,6 +1,8 @@
 import { useCallback, useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { roomErrorCode, roomErrorMessage, SHARING_UNAVAILABLE_MESSAGE } from "./convexRoomTransport";
+import { guestRoomHash } from "./capabilities";
+import { loadGuestSession } from "./sessionPersistence";
 import { normalizeRoomState, type SessionState } from "./sessionState";
 import type { RoomTransport } from "./types";
 
@@ -8,12 +10,20 @@ type SpectatorSessionOptions = {
   session: SessionState;
   transport: RoomTransport;
   setSession: Dispatch<SetStateAction<SessionState>>;
-  /** Opens Home once the watcher leaves. */
+  /** The session this device would open on its own (hosting, a guest session, or local). */
+  resolveSession: () => SessionState;
+  /** Opens Home when leaving leads nowhere else. */
   onLeave: () => void;
 };
 
 /** The watch link: a read-only room subscription plus watcher presence heartbeats. */
-export function useSpectatorSession({ session, transport, setSession, onLeave }: SpectatorSessionOptions) {
+export function useSpectatorSession({
+  session,
+  transport,
+  setSession,
+  resolveSession,
+  onLeave
+}: SpectatorSessionOptions) {
   const route = session.mode === "spectating" ? session.route : null;
   const presenceSessionId = session.mode === "spectating" ? session.presenceSessionId : null;
 
@@ -74,11 +84,21 @@ export function useSpectatorSession({ session, transport, setSession, onLeave }:
     };
   }, [route?.publicId, route?.spectatorSecret, presenceSessionId, transport]);
 
+  /**
+   * Leaving goes back to whatever this device was doing before the watch link
+   * opened: the room it hosts, the guest session in this tab, or else Home.
+   */
   const leaveSpectating = useCallback(() => {
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    setSession({ mode: "local", notice: null });
-    onLeave();
-  }, [onLeave]);
+    const guest = loadGuestSession();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}${guest ? guestRoomHash(guest.publicId) : ""}`
+    );
+    const next = resolveSession();
+    setSession(next);
+    if (next.mode === "local") onLeave();
+  }, [onLeave, resolveSession]);
 
   return { leaveSpectating };
 }

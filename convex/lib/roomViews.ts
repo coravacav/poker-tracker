@@ -6,7 +6,7 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { publicHostProfile } from "./friendDiscovery";
 import { requireGuest, requireHost } from "./roomAccess";
 import { activityForRecipient, HOST_RECIPIENT_KEY } from "./roomNotifications";
-import { onlineWatchers, presence } from "./roomPresence";
+import { onlineWatchers, presence, watchLinkId } from "./roomPresence";
 import { hostSeats, liveHostPlayerId, liveSeatOf, seatOptions } from "./roomSeats";
 
 export async function publicRoomWithActivity<T extends Record<string, unknown> = Record<never, never>>(
@@ -138,8 +138,9 @@ export async function hostRoomView(
     visibleToFriends: room.visibleToFriends === true,
     friendProfileLinked: room.hostProfileId !== undefined,
     watchLinkOn: room.spectatorSecretHash !== undefined,
-    watcherCount:
-      room.spectatorSecretHash !== undefined ? (await onlineWatchers(ctx, room)).length : 0,
+    watchLinkId:
+      room.spectatorSecretHash !== undefined ? watchLinkId(room.spectatorSecretHash) : null,
+    watcherCount: (await onlineWatchers(ctx, room)).length,
     guests: guestDocs.map((guest) => ({
       id: guest._id,
       displayName: guest.displayName,

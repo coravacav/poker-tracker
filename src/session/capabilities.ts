@@ -36,6 +36,17 @@ export function createWatchUrl(
   return `${location.origin}${location.pathname}#/watch/${publicId}/${spectatorSecret}`;
 }
 
+/**
+ * The watch link's short id for a secret: the same SHA-256 prefix the host
+ * view reports, so a host tab can tell whether its stored secret is current.
+ */
+export async function watchLinkIdForSecret(spectatorSecret: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(spectatorSecret));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+}
+
 export function parseInviteRoute(hash = window.location.hash): InviteRoute {
   const inviteMatch = hash.match(/^#\/join\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
   if (inviteMatch) {

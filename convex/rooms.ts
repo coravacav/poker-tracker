@@ -25,6 +25,7 @@ import {
 import { lifecycleBatchResultValidator, runLifecycleBatch } from "./lib/roomLifecycle";
 import {
   recordSpectatorHeartbeat,
+  removeWatcherPresence as removeWatcherPresenceBatches,
   rotateRoomSpectatorLink,
   spectatorRoomView
 } from "./lib/roomSpectators";
@@ -187,6 +188,13 @@ export const spectatorHeartbeat = mutation({
   args: { publicId: v.string(), spectatorSecret: v.string(), sessionId: v.string() },
   returns: v.null(),
   handler: recordSpectatorHeartbeat
+});
+
+/** Removes an old watch link's presence rows in batches (rotate, turn off, pruning). */
+export const removeWatcherPresence = internalMutation({
+  args: { presenceKey: v.string() },
+  returns: v.null(),
+  handler: removeWatcherPresenceBatches
 });
 
 export const revokeGuest = mutation({
