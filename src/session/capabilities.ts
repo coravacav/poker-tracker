@@ -2,6 +2,7 @@ export type InviteRoute =
   | { kind: "invite"; publicId: string; inviteSecret: string }
   | { kind: "guest_room"; publicId: string }
   | { kind: "watch"; publicId: string; spectatorSecret: string }
+  | { kind: "host_phone"; publicId: string; linkSecret: string }
   | { kind: "none" };
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -36,6 +37,15 @@ export function createWatchUrl(
   return `${location.origin}${location.pathname}#/watch/${publicId}/${spectatorSecret}`;
 }
 
+/** The host's one-time link for their own phone, which seats it in the host's seat. */
+export function createHostPhoneUrl(
+  publicId: string,
+  linkSecret: string,
+  location: Pick<Location, "origin" | "pathname"> = window.location
+): string {
+  return `${location.origin}${location.pathname}#/phone/${publicId}/${linkSecret}`;
+}
+
 /**
  * The watch link's short id for a secret: the same SHA-256 prefix the host
  * view reports, so a host tab can tell whether its stored secret is current.
@@ -55,6 +65,10 @@ export function parseInviteRoute(hash = window.location.hash): InviteRoute {
   const watchMatch = hash.match(/^#\/watch\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
   if (watchMatch) {
     return { kind: "watch", publicId: watchMatch[1], spectatorSecret: watchMatch[2] };
+  }
+  const phoneMatch = hash.match(/^#\/phone\/([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)$/);
+  if (phoneMatch) {
+    return { kind: "host_phone", publicId: phoneMatch[1], linkSecret: phoneMatch[2] };
   }
   const roomMatch = hash.match(/^#\/room\/([A-Za-z0-9_-]+)$/);
   if (roomMatch) return { kind: "guest_room", publicId: roomMatch[1] };

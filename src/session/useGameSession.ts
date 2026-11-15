@@ -178,6 +178,8 @@ export function useGameSession(transport: RoomTransport = convexRoomTransport) {
     releaseSeat: hostControls.releaseSeat,
     assignSeat: hostControls.assignSeat,
     setHostPlayer: hostControls.setHostPlayer,
+    createHostPhoneLink: hostControls.createHostPhoneLink,
+    cancelHostPhoneLink: hostControls.cancelHostPhoneLink,
     leaveGuest,
     leaveSpectating,
     dismissInvite,

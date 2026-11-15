@@ -1,7 +1,8 @@
 // Seat claims: which guest phone holds each active player's seat, and which
 // seat is the host's own. First come, first served, one phone per seat; the
 // host can release a claim, move a phone to an open seat, or mark their own
-// seat.
+// seat. No phone can claim the host's seat; only the host's own phone, paired
+// through the host's one-time phone link, holds it (as a `hostPhone` guest).
 //
 // A claim names a player by id and also records who that player was when it
 // was made (name and people link). Seat identity authorizes what a phone may
@@ -14,6 +15,7 @@ import { MAX_ROOM_GUEST_RECORDS, MAX_ROOM_GUESTS } from "../../src/session/roomP
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { cancelGuestAgreements, cancelSeatAgreements } from "./agreementCleanup";
+import { hashSecret, sameHash, validSecret } from "./capabilities";
 import { requireGuest, requireHost } from "./roomAccess";
 import { fail } from "./roomErrors";
 
@@ -65,7 +67,10 @@ export function liveSeatOf(room: Doc<"rooms">, guest: Doc<"roomGuests">): string
   if (guest.revokedAt !== undefined || guest.playerId === undefined) return null;
   const player = activeSeatPlayer(room, guest.playerId);
   if (!player || !samePerson(player, guest)) return null;
-  return guest.playerId === liveHostPlayerId(room) ? null : guest.playerId;
+  const hostSeat = liveHostPlayerId(room);
+  // The host's phone holds only the host's seat; nobody else ever does.
+  if (guest.hostPhone === true) return guest.playerId === hostSeat ? guest.playerId : null;
+  return guest.playerId === hostSeat ? null : guest.playerId;
 }
 
 /** The name a guest is shown under: their seat's player while seated, else the name they joined with. */
@@ -79,7 +84,8 @@ const releasedClaim = {
   playerId: undefined,
   claimedAt: undefined,
   claimedName: undefined,
-  claimedPersonId: undefined
+  claimedPersonId: undefined,
+  hostPhone: undefined
 };
 
 /**
@@ -93,14 +99,39 @@ export async function cancelClaimAgreements(ctx: MutationCtx, guest: Doc<"roomGu
   }
 }
 
-/** Takes a guest off their seat, closing the agreements that claim stood behind. */
+/**
+ * Takes a guest off their seat, closing the agreements that claim stood
+ * behind. The host's phone was let in only to sit in the host's seat (even
+ * while new guests are turned away), so unpairing it, however that happens,
+ * removes it from the room.
+ */
 async function releaseClaim(
   ctx: MutationCtx,
   guest: Doc<"roomGuests">,
   extra: Partial<Doc<"roomGuests">>
 ) {
+  if (guest.hostPhone === true) {
+    await revokeHostPhone(ctx, guest);
+    return;
+  }
   await ctx.db.patch(guest._id, { ...releasedClaim, ...extra });
   await cancelClaimAgreements(ctx, guest);
+}
+
+/** Requests one guest can have waiting; matches roomGuests' per-guest cap with room to spare. */
+const MAX_PENDING_REQUESTS_TO_CLOSE = 100;
+
+async function revokeHostPhone(ctx: MutationCtx, guest: Doc<"roomGuests">) {
+  const now = Date.now();
+  await ctx.db.patch(guest._id, { ...releasedClaim, revokedAt: guest.revokedAt ?? now });
+  const pending = await ctx.db
+    .query("roomGuestRequests")
+    .withIndex("by_guest_id_and_status", (index) => index.eq("guestId", guest._id).eq("status", "pending"))
+    .take(MAX_PENDING_REQUESTS_TO_CLOSE);
+  for (const request of pending) {
+    await ctx.db.patch(request._id, { status: "rejected", decidedAt: now });
+  }
+  await cancelGuestAgreements(ctx, guest._id, "revoked", { includeBounced: true });
 }
 
 /** Good-standing guests with a claim (live or not) on a seat. */
@@ -253,7 +284,7 @@ async function requireOpenSeat(
   if (playerId === liveHostPlayerId(room)) fail("SEAT_TAKEN", "That's the host's seat.");
   for (const guest of await claimsOn(ctx, room, playerId)) {
     if (guest._id === guestId) continue;
-    if (samePerson(player, guest)) fail("SEAT_TAKEN", "Someone else just took that seat. Pick another.");
+    if (liveSeatOf(room, guest) === playerId) fail("SEAT_TAKEN", "Someone else just took that seat. Pick another.");
     await releaseClaim(ctx, guest, { seatLost: "changed" });
   }
   return player;
@@ -298,6 +329,8 @@ export async function claimSeatForGuest(
     claimedPersonId: player.personId,
     displayName: seatDisplayName(player),
     seatLost: undefined,
+    // A seat taken like any other's is an ordinary claim, even for the host's phone.
+    hostPhone: undefined,
     // The host's Move lifts an older per-phone release too.
     ...(byHost && legacyReleased.includes(playerId)
       ? { hostReleasedPlayerIds: legacyReleased.filter((id) => id !== playerId) }
@@ -312,6 +345,7 @@ export async function claimRoomSeat(
 ) {
   const { room, guest } = await requireGuest(ctx, args.publicId, args.guestSecret);
   if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
+  if (guest.hostPhone === true) fail("INVALID_ARGUMENT", "This is the host's phone; it stays in the host's seat.");
   await claimSeatForGuest(ctx, room, guest, args.playerId);
   return null;
 }
@@ -339,6 +373,8 @@ export async function releaseRoomSeat(
     fail("INVALID_ARGUMENT", "That phone is no longer in that seat.");
   }
   await releaseClaim(ctx, guest, { seatLost: "released" });
+  // Unpairing the host's phone leaves the host's seat with the host.
+  if (args.playerId === liveHostPlayerId(room)) return null;
   const released = hostReleasedSeats(room).filter((id) => id !== args.playerId);
   await ctx.db.patch(room._id, {
     releasedSeatPlayerIds: [...released, args.playerId].slice(-MAX_HOST_RELEASED_SEATS)
@@ -354,6 +390,7 @@ export async function assignRoomSeat(
   const room = await requireHost(ctx, args.publicId, args.hostSecret);
   if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
   const guest = await requireRoomGuest(ctx, room, args.guestId);
+  if (guest.hostPhone === true) fail("INVALID_ARGUMENT", "Your phone stays in your seat. Change your seat instead.");
   await claimSeatForGuest(ctx, room, guest, args.playerId, true);
   return null;
 }
@@ -365,11 +402,20 @@ export async function setRoomHostPlayer(
 ) {
   const room = await requireHost(ctx, args.publicId, args.hostSecret);
   if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
+  const currentHostSeat = liveHostPlayerId(room);
+  if (args.playerId !== null && args.playerId === currentHostSeat) return null;
+  // The host's phone was paired to the host's seat, not to a player: moving
+  // the host's seat (or leaving it) unpairs it, and an unused link is void.
+  if (room.hostPlayerId !== undefined) {
+    for (const guest of await claimsOn(ctx, room, room.hostPlayerId)) {
+      if (guest.hostPhone === true) await releaseClaim(ctx, guest, { seatLost: "changed" });
+    }
+  }
   if (args.playerId !== null) {
     const player = args.playerId.length <= MAX_PLAYER_ID_LENGTH ? activeSeatPlayer(room, args.playerId) : null;
     if (!player) fail("INVALID_ARGUMENT", "That seat is no longer at the table.");
     for (const guest of await claimsOn(ctx, room, args.playerId)) {
-      if (samePerson(player, guest)) {
+      if (liveSeatOf(room, guest) === args.playerId) {
         fail("SEAT_TAKEN", `${seatDisplayName(player)}'s phone holds that seat. Release it first.`);
       }
       await releaseClaim(ctx, guest, { seatLost: "changed" });
@@ -383,7 +429,78 @@ export async function setRoomHostPlayer(
       : {}),
     hostPlayerId: args.playerId ?? undefined,
     hostNotPlaying: args.playerId === null ? true : undefined,
+    hostPhoneLinkHash: undefined,
+    hostPhoneLinkExpiresAt: undefined,
     lastActivityAt: Date.now()
   });
   return null;
+}
+
+/** How long the host's phone link works once made. */
+export const HOST_PHONE_LINK_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Host: makes a one-time link for the host's own phone (replacing any earlier
+ * one). `linkSecret` is made by the host's device; only its hash is kept.
+ */
+export async function createHostPhoneLink(
+  ctx: MutationCtx,
+  args: { publicId: string; hostSecret: string; linkSecret: string }
+) {
+  const room = await requireHost(ctx, args.publicId, args.hostSecret);
+  if (room.status !== "active") fail("ROOM_NOT_ACTIVE", "This room is no longer active.");
+  if (liveHostPlayerId(room) === null) fail("INVALID_ARGUMENT", "Pick which seat is yours first.");
+  if (!validSecret(args.linkSecret) || args.linkSecret === args.hostSecret) {
+    fail("INVALID_ARGUMENT", "Phone link capability is invalid.");
+  }
+  const hostPhoneLinkHash = await hashSecret(args.linkSecret);
+  if (
+    sameHash(room.inviteSecretHash, hostPhoneLinkHash) ||
+    (room.spectatorSecretHash !== undefined && sameHash(room.spectatorSecretHash, hostPhoneLinkHash))
+  ) {
+    fail("INVALID_ARGUMENT", "Phone link capability is invalid.");
+  }
+  const expiresAt = Date.now() + HOST_PHONE_LINK_TTL_MS;
+  await ctx.db.patch(room._id, { hostPhoneLinkHash, hostPhoneLinkExpiresAt: expiresAt });
+  return { expiresAt };
+}
+
+/** Host: voids an unused phone link (the host closed it). */
+export async function cancelHostPhoneLink(
+  ctx: MutationCtx,
+  args: { publicId: string; hostSecret: string }
+) {
+  const room = await requireHost(ctx, args.publicId, args.hostSecret);
+  if (room.hostPhoneLinkHash !== undefined) {
+    await ctx.db.patch(room._id, { hostPhoneLinkHash: undefined, hostPhoneLinkExpiresAt: undefined });
+  }
+  return null;
+}
+
+/**
+ * Seats the host's phone on the host's seat. One phone per seat: a phone
+ * paired earlier (or anything else left on the seat) is taken off it.
+ */
+export async function claimHostSeatForPhone(
+  ctx: MutationCtx,
+  room: Doc<"rooms">,
+  guest: Doc<"roomGuests">
+) {
+  const hostSeat = liveHostPlayerId(room);
+  const player = hostSeat === null ? null : activeSeatPlayer(room, hostSeat);
+  if (hostSeat === null || !player) fail("INVALID_ARGUMENT", "The host isn't in a seat any more.");
+  for (const other of await claimsOn(ctx, room, hostSeat)) {
+    if (other._id !== guest._id) await releaseClaim(ctx, other, { seatLost: "changed" });
+  }
+  // Whatever seat this phone held before, what it stood behind no longer stands.
+  if (guest.playerId !== undefined && liveSeatOf(room, guest) !== hostSeat) await cancelClaimAgreements(ctx, guest);
+  await ctx.db.patch(guest._id, {
+    playerId: hostSeat,
+    claimedAt: Date.now(),
+    claimedName: player.name,
+    claimedPersonId: player.personId,
+    displayName: seatDisplayName(player),
+    seatLost: undefined,
+    hostPhone: true
+  });
 }

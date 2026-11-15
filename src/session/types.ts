@@ -299,6 +299,20 @@ export type RoomTransport = {
     displayName?: string;
     playerId?: string;
   }) => Promise<GuestRoomProjection>;
+  /** The host's own phone joins with the host's one-time phone link, in the host's seat. */
+  joinHostPhone?: (args: {
+    publicId: string;
+    linkSecret: string;
+    guestSecret: string;
+  }) => Promise<GuestRoomProjection>;
+  /** Host: makes a one-time link that seats the host's own phone in the host's seat. */
+  createHostPhoneLink?: (args: {
+    publicId: string;
+    hostSecret: string;
+    linkSecret: string;
+  }) => Promise<{ expiresAt: number }>;
+  /** Host: voids an unused phone link. */
+  cancelHostPhoneLink?: (args: { publicId: string; hostSecret: string }) => Promise<void>;
   /** A guest takes an open seat, moving off any seat they held. */
   claimSeat?: (args: { publicId: string; guestSecret: string; playerId: string }) => Promise<void>;
   /** Host: frees a guest's seat; `playerId` is the seat the host saw them in. */

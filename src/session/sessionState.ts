@@ -58,11 +58,19 @@ export type SpectatorState = {
   error: string | null;
 };
 
+/** Opening the host's one-time phone link: joins in the host's seat, then becomes a guest session. */
+export type PairingState = {
+  mode: "pairing_phone";
+  route: Extract<InviteRoute, { kind: "host_phone" }>;
+  error: string | null;
+};
+
 export type LocalState = { mode: "local"; notice: string | null };
 export type InvalidState = { mode: "invalid_invite"; message: string };
 export type SessionState =
   | LocalState
   | InviteState
+  | PairingState
   | GuestState
   | SpectatorState
   | HostState
@@ -119,6 +127,9 @@ export function initialSession(localGameId: string, deploymentUrl: string | null
       error: null,
       joining: false
     };
+  }
+  if (route.kind === "host_phone") {
+    return { mode: "pairing_phone", route, error: null };
   }
   if (route.kind === "watch") {
     return {

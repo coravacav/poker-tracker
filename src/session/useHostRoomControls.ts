@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { Id } from "../../convex/_generated/dataModel";
-import { createCapability, createInviteUrl } from "./capabilities";
+import { createCapability, createHostPhoneUrl, createInviteUrl } from "./capabilities";
 import { roomErrorMessage } from "./convexRoomTransport";
 import { getHostControllerId, loadHostRecovery, saveHostRecovery } from "./sessionPersistence";
 import type { HostState, SessionState } from "./sessionState";
@@ -157,6 +157,34 @@ export function useHostRoomControls(
     await runHostAction(publicId, () => setSeat({ publicId, hostSecret, playerId }));
   }, [runHostAction, transport]);
 
+  /**
+   * Makes a one-time link for the host's own phone (replacing any earlier
+   * one); resolves to it, or null after showing why it failed. The link is
+   * kept only on screen.
+   */
+  const createHostPhoneLink = useCallback(async (): Promise<{ url: string; expiresAt: number } | null> => {
+    const current = sessionRef.current;
+    const create = transport.createHostPhoneLink;
+    if (current.mode !== "hosting" || !current.recovery || !create) return null;
+    const { publicId, hostSecret } = current.recovery;
+    const linkSecret = createCapability();
+    let link: { url: string; expiresAt: number } | null = null;
+    await runHostAction(publicId, async () => {
+      const { expiresAt } = await create({ publicId, hostSecret, linkSecret });
+      link = { url: createHostPhoneUrl(publicId, linkSecret), expiresAt };
+    });
+    return link;
+  }, [runHostAction, transport]);
+
+  /** Voids an unused phone link once the host closes it. */
+  const cancelHostPhoneLink = useCallback(async () => {
+    const current = sessionRef.current;
+    const cancel = transport.cancelHostPhoneLink;
+    if (current.mode !== "hosting" || !current.recovery || !cancel) return;
+    const { publicId, hostSecret } = current.recovery;
+    await runHostAction(publicId, () => cancel({ publicId, hostSecret }));
+  }, [runHostAction, transport]);
+
   /** Turns "Players confirm each other" on or off (off cancels open proposals). */
   const setPeerConfirm = useCallback(async (on: boolean) => {
     const current = sessionRef.current;
@@ -216,6 +244,8 @@ export function useHostRoomControls(
     releaseSeat,
     assignSeat,
     setHostPlayer,
+    createHostPhoneLink,
+    cancelHostPhoneLink,
     decideGuestTransaction,
     setJoiningOpen,
     setFriendVisibility,

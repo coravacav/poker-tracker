@@ -7,6 +7,7 @@ import { internalMutation, mutation, query, type MutationCtx } from "./_generate
 import { applyHostAction, decideGuestRequest } from "./lib/roomActions";
 import {
   joinWithFriendCode,
+  joinWithHostPhoneLink,
   joinWithInvite,
   previewInvite,
   recordGuestHeartbeat,
@@ -30,6 +31,8 @@ import {
 import {
   assignRoomSeat,
   claimRoomSeat,
+  cancelHostPhoneLink as cancelHostPhoneLinkForRoom,
+  createHostPhoneLink as createHostPhoneLinkForRoom,
   releaseRoomSeat,
   setRoomHostPlayer
 } from "./lib/roomSeats";
@@ -93,6 +96,13 @@ export const join = mutation({
   },
   returns: guestRoomValidator,
   handler: joinWithInvite
+});
+
+/** The host's own phone joins through the host's one-time phone link, seated in the host's seat. */
+export const joinHostPhone = mutation({
+  args: { publicId: v.string(), linkSecret: v.string(), guestSecret: v.string() },
+  returns: guestRoomValidator,
+  handler: joinWithHostPhoneLink
 });
 
 export const joinFriend = mutation({
@@ -309,6 +319,20 @@ export const setHostPlayer = mutation({
   },
   returns: v.null(),
   handler: setRoomHostPlayer
+});
+
+/** Host: makes a one-time link that seats the host's own phone in the host's seat. */
+export const createHostPhoneLink = mutation({
+  args: { publicId: v.string(), hostSecret: v.string(), linkSecret: v.string() },
+  returns: v.object({ expiresAt: v.number() }),
+  handler: createHostPhoneLinkForRoom
+});
+
+/** Host: voids an unused phone link. */
+export const cancelHostPhoneLink = mutation({
+  args: { publicId: v.string(), hostSecret: v.string() },
+  returns: v.null(),
+  handler: cancelHostPhoneLinkForRoom
 });
 
 /** Host: turns "Players confirm each other" on or off (off cancels open proposals). */

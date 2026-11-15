@@ -325,9 +325,28 @@ export async function proposeRoomAgreement(
   if (!limit.ok) fail("ROOM_LIMIT_REACHED", "You're sending entries quickly. Try again in a few minutes.");
 
   // Who may answer is fixed now: the phone on the counterparty (or named
-  // witness) seat at this moment, on this claim, or the host if none.
+  // witness) seat at this moment, on this claim, or the host if none. The
+  // host's seat is always the host's to answer, from the host screen or the
+  // host's own phone.
   const answerSeat = counterpartyPlayerId ?? witnessPlayerId;
-  const holder = answerSeat === undefined ? undefined : (await seatClaims(ctx, room)).get(answerSeat);
+  const hostSeat = liveHostPlayerId(room);
+  const claims = await seatClaims(ctx, room);
+  const holder = answerSeat === undefined || answerSeat === hostSeat ? undefined : claims.get(answerSeat);
+  // The host screen can't see the host's own buy-in, so another phone must be
+  // able to (a seat with no phone would leave it waiting on nobody).
+  if (args.kind === "bank" && proposerPlayerId === hostSeat) {
+    const someoneCanSee = witnessPlayerId !== undefined
+      ? holder !== undefined
+      : [...claims.keys()].some((playerId) => playerId !== hostSeat);
+    if (!someoneCanSee) {
+      fail(
+        "INVALID_ARGUMENT",
+        witnessPlayerId !== undefined
+          ? `${agreementPlayerName(room.state as GameState, witnessPlayerId)} has no phone here to see it. Pick someone else, or record it on the host screen.`
+          : "Nobody else has a phone here to see it. Record it on the host screen instead."
+      );
+    }
+  }
 
   const now = Date.now();
   const agreementId = await ctx.db.insert("roomAgreements", {
@@ -478,9 +497,11 @@ export async function hostAnswerRoomAgreement(
   if (role === null) {
     fail(
       "INVALID_ARGUMENT",
-      isActiveSeat(room, agreement.counterpartyPlayerId)
-        ? `${agreementPlayerName(state, agreement.counterpartyPlayerId)}'s phone answers for that seat.`
-        : "That player is no longer at the table."
+      agreement.kind === "bank"
+        ? "You can't confirm your own buy-in."
+        : isActiveSeat(room, agreement.counterpartyPlayerId)
+          ? `${agreementPlayerName(state, agreement.counterpartyPlayerId)}'s phone answers for that seat.`
+          : "That player is no longer at the table."
     );
   }
   const stale = await closeIfStale(ctx, room, agreement);

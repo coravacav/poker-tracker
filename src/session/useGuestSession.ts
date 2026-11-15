@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { Transaction } from "../domain/pokerTypes";
 import { createCapability, guestRoomHash } from "./capabilities";
@@ -166,6 +166,70 @@ export function useGuestSession({
     };
   }, [session.mode, session.mode === "guest" ? session.credentials : null, transport]);
 
+  /** Saves a joined guest session and opens its room. */
+  const enterGuestRoom = useCallback(
+    (publicId: string, guestSecret: string, room: Awaited<ReturnType<RoomTransport["joinRoom"]>>) => {
+      const normalizedState = normalizeRoomState(room.state);
+      if (!normalizedState) {
+        throw new Error("The room returned an invalid game snapshot.");
+      }
+      const normalizedRoom = { ...room, state: normalizedState };
+      const credentials: GuestSession = {
+        schemaVersion: 1,
+        publicId,
+        guestSecret,
+        presenceSessionId: createCapability(18),
+        displayName: normalizedRoom.displayName
+      };
+      saveGuestSession(credentials);
+      saveRoomHistoryCredential({
+        schemaVersion: 1,
+        publicId: credentials.publicId,
+        role: "guest",
+        secret: credentials.guestSecret,
+        roomName: normalizedRoom.name,
+        joinedAt: Date.now(),
+        displayName: credentials.displayName,
+        ...(deploymentUrl ? { deploymentUrl } : {})
+      });
+      void refreshRoomHistory();
+      window.history.replaceState(null, "", guestRoomHash(credentials.publicId));
+      setSession({
+        mode: "guest",
+        credentials,
+        room: normalizedRoom,
+        connected: transport.connectionState(),
+        error: null
+      });
+    },
+    [deploymentUrl, refreshRoomHistory, transport]
+  );
+
+  // The host's phone link: join once, in the host's seat. The link works only
+  // once, so a second run of this effect (a remount) must not send it again.
+  const pairedLinks = useRef(new Set<string>());
+  const pairingRoute = session.mode === "pairing_phone" ? session.route : null;
+  useEffect(() => {
+    if (!pairingRoute || pairedLinks.current.has(pairingRoute.linkSecret)) return;
+    const join = transport.joinHostPhone;
+    if (!transport.configured || !join) {
+      setSession((current) =>
+        current.mode === "pairing_phone" ? { ...current, error: SHARING_UNAVAILABLE_MESSAGE } : current
+      );
+      return;
+    }
+    pairedLinks.current.add(pairingRoute.linkSecret);
+    const { publicId, linkSecret } = pairingRoute;
+    const guestSecret = createCapability();
+    void join({ publicId, linkSecret, guestSecret })
+      .then((room) => enterGuestRoom(publicId, guestSecret, room))
+      .catch((error: unknown) => {
+        setSession((current) =>
+          current.mode === "pairing_phone" ? { ...current, error: roomErrorMessage(error) } : current
+        );
+      });
+  }, [pairingRoute?.publicId, pairingRoute?.linkSecret, enterGuestRoom, transport]);
+
   /** Joins on a seat (taking its player's name), or under a typed name when no seat is free. */
   const joinGame = useCallback(
     async (choice: { playerId: string } | { displayName: string }) => {
@@ -180,38 +244,7 @@ export function useGuestSession({
           guestSecret,
           ...choice
         });
-        const normalizedState = normalizeRoomState(room.state);
-        if (!normalizedState) {
-          throw new Error("The room returned an invalid game snapshot.");
-        }
-        const normalizedRoom = { ...room, state: normalizedState };
-        const credentials: GuestSession = {
-          schemaVersion: 1,
-          publicId: current.route.publicId,
-          guestSecret,
-          presenceSessionId: createCapability(18),
-          displayName: normalizedRoom.displayName
-        };
-        saveGuestSession(credentials);
-        saveRoomHistoryCredential({
-          schemaVersion: 1,
-          publicId: credentials.publicId,
-          role: "guest",
-          secret: credentials.guestSecret,
-          roomName: normalizedRoom.name,
-          joinedAt: Date.now(),
-          displayName: credentials.displayName,
-          ...(deploymentUrl ? { deploymentUrl } : {})
-        });
-        void refreshRoomHistory();
-        window.history.replaceState(null, "", guestRoomHash(credentials.publicId));
-        setSession({
-          mode: "guest",
-          credentials,
-          room: normalizedRoom,
-          connected: transport.connectionState(),
-          error: null
-        });
+        enterGuestRoom(current.route.publicId, guestSecret, room);
       } catch (error) {
         setSession((next) =>
           next.mode === "joining" ? { ...next, joining: false, error: roomErrorMessage(error) } : next
@@ -230,7 +263,7 @@ export function useGuestSession({
         }
       }
     },
-    [refreshRoomHistory, transport]
+    [enterGuestRoom, transport]
   );
 
   /** Takes an open seat for a guest already in the room; resolves to whether it worked. */

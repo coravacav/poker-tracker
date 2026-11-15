@@ -67,6 +67,21 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
     );
   }
 
+  if (session.mode === "pairing_phone") {
+    return (
+      <GuestJoinScreen
+        error={session.error}
+        hasLocalGame={hasSavedLocalGame()}
+        joining={false}
+        onCancel={gameSession.dismissInvite}
+        onJoin={() => undefined}
+        status={session.error ? "invalid" : "loading"}
+        loadingTitle="Connecting your phone…"
+        invalidTitle="Phone link unavailable"
+      />
+    );
+  }
+
   if (session.mode === "spectating") {
     return (
       <LazyBoundary fallback={<p className="muted" role="status">Opening the game…</p>}>
@@ -209,6 +224,8 @@ export function App({ roomTransport }: { roomTransport?: RoomTransport } = {}) {
         onReleaseSeat={(guestId, playerId) => void gameSession.releaseSeat(guestId, playerId)}
         onAssignSeat={(guestId, playerId) => void gameSession.assignSeat(guestId, playerId)}
         onSetHostPlayer={(playerId) => void gameSession.setHostPlayer(playerId)}
+        onCreatePhoneLink={gameSession.createHostPhoneLink}
+        onCancelPhoneLink={() => void gameSession.cancelHostPhoneLink()}
         onSetPeerConfirm={(on) => void gameSession.setPeerConfirm(on)}
         onHostAnswerAgreement={gameSession.hostAnswerAgreement}
         onResolveBouncedAgreement={gameSession.resolveBouncedAgreement}

@@ -122,6 +122,18 @@ export const convexRoomTransport: RoomTransport = {
     const { client: convex, api } = await loadClient();
     return await convex.mutation(api.rooms.join, request);
   },
+  async joinHostPhone(args) {
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.joinHostPhone, args);
+  },
+  async createHostPhoneLink(args) {
+    const { client: convex, api } = await loadClient();
+    return await convex.mutation(api.rooms.createHostPhoneLink, args);
+  },
+  async cancelHostPhoneLink(args) {
+    const { client: convex, api } = await loadClient();
+    await convex.mutation(api.rooms.cancelHostPhoneLink, args);
+  },
   async claimSeat(args) {
     const { client: convex, api } = await loadClient();
     await convex.mutation(api.rooms.claimSeat, args);

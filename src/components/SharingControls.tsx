@@ -41,6 +41,10 @@ type HostSharingControlsProps = {
   onReleaseSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
   onAssignSeat: (guestId: Id<"roomGuests">, playerId: string) => void;
   onSetHostPlayer: (playerId: string | null) => void;
+  /** Makes a one-time link that puts the host's own phone in the host's seat. */
+  onCreatePhoneLink?: () => Promise<{ url: string; expiresAt: number } | null>;
+  /** Voids an unused phone link. */
+  onCancelPhoneLink?: () => void;
   /** Turns "Players confirm each other" on or off. */
   onSetPeerConfirm?: (on: boolean) => void;
   onHostAnswerAgreement?: (
@@ -193,6 +197,8 @@ export function HostSharingControls({
   onReleaseSeat,
   onAssignSeat,
   onSetHostPlayer,
+  onCreatePhoneLink,
+  onCancelPhoneLink,
   onSetPeerConfirm,
   onHostAnswerAgreement,
   onResolveBouncedAgreement
@@ -390,6 +396,8 @@ export function HostSharingControls({
                             onReleaseSeat={onReleaseSeat}
                             onAssignSeat={onAssignSeat}
                             onSetHostPlayer={onSetHostPlayer}
+                            onCreatePhoneLink={onCreatePhoneLink}
+                            onCancelPhoneLink={onCancelPhoneLink}
                           />
                         ) : null}
                         {(room.guests?.length ?? 0) > 0 ? (

@@ -29,12 +29,14 @@ export function agreementPlayerName(state: GameState, playerId: string | undefin
  * own seat (the counterparty, or for bank the host's seat as witness), "seat"
  * for a counterparty seat that had no phone when it was proposed (even if a
  * phone has claimed it since), or "bank" for any bank buy-in when the host
- * has no seat of their own.
+ * has no seat of their own. The host's own buy-in (sent from the host's
+ * phone) is for another player to see, like anyone's.
  */
 export function hostAnswerRole(room: Doc<"rooms">, agreement: Agreement): "self" | "seat" | "bank" | null {
   const hostSeat = liveHostPlayerId(room);
   if (agreement.kind === "bank") {
-    return hostSeat !== null && hostSeat !== agreement.proposerPlayerId ? "self" : "bank";
+    if (hostSeat === null) return "bank";
+    return hostSeat === agreement.proposerPlayerId ? null : "self";
   }
   if (!isActiveSeat(room, agreement.counterpartyPlayerId)) return null;
   if (agreement.counterpartyPlayerId === hostSeat) return "self";
@@ -62,6 +64,7 @@ export type GuestAnswerBlock =
  * named witness's phone on the same terms, or with no named witness any
  * other seated phone whose claim predates the proposal. The proposer's own
  * phone never can, and a seat that had no phone at proposal is the host's.
+ * The host's own phone answers for the host's seat whenever the host could.
  */
 export function guestAnswerBlock(
   agreement: Agreement,
@@ -70,10 +73,14 @@ export function guestAnswerBlock(
 ): GuestAnswerBlock | null {
   if (agreement.proposerGuestId === guest._id) return "own";
   if (seat === null) return "no_seat";
+  // A seated host phone's seat is the host's seat (see liveSeatOf).
+  const hostPhone = guest.hostPhone === true;
   if (agreement.kind !== "bank") {
     if (agreement.counterpartyPlayerId !== seat) return "not_counterparty";
+    if (hostPhone) return null;
   } else {
     if (seat === agreement.proposerPlayerId) return "own_buy_in";
+    if (hostPhone && (agreement.witnessPlayerId === undefined || agreement.witnessPlayerId === seat)) return null;
     if (agreement.witnessPlayerId === undefined) {
       return guest.claimedAt !== undefined && guest.claimedAt <= agreement.createdAt
         ? null
@@ -85,7 +92,7 @@ export function guestAnswerBlock(
   return heldSinceProposal(agreement, guest) ? null : "claimed_later";
 }
 
-export function agreementView(state: GameState, agreement: Agreement) {
+export function agreementView(state: GameState, agreement: Agreement, hostSeat: string | null = null) {
   const name = (playerId: string | undefined) =>
     playerId === undefined ? null : agreementPlayerName(state, playerId);
   const transaction = agreement.appliedTransactionId === undefined
@@ -102,8 +109,12 @@ export function agreementView(state: GameState, agreement: Agreement) {
     counterpartyName: name(agreement.counterpartyPlayerId),
     witnessPlayerId: agreement.witnessPlayerId ?? null,
     witnessName: name(agreement.witnessPlayerId),
-    // The other seat had no phone when it was sent (or is the host's), so the host answers.
-    hostAnswers: agreement.kind !== "bank" && agreement.seatGuestId === undefined,
+    // The other seat had no phone when it was sent, so the host answers. (The
+    // host's own seat is answered by the host, as that player.)
+    hostAnswers:
+      agreement.kind !== "bank" &&
+      agreement.seatGuestId === undefined &&
+      agreement.counterpartyPlayerId !== hostSeat,
     // Returned entries read as bounced: back with the proposer either way.
     status: agreement.status === "returned" ? ("bounced" as const) : agreement.status,
     closedReason: agreement.closedReason ?? null,
@@ -191,7 +202,8 @@ export async function guestAgreements(ctx: Ctx, room: Doc<"rooms">, guest: Doc<"
           .take(RECENT_DONE_AGREEMENTS)
   ];
   for (const agreement of recordedSources.flat()) done.set(String(agreement._id), agreement);
-  const view = (agreement: Agreement) => agreementView(state, agreement);
+  const hostSeat = liveHostPlayerId(room);
+  const view = (agreement: Agreement) => agreementView(state, agreement, hostSeat);
   return {
     needsMe: needsMe.sort(oldestFirst).map(view),
     mine: open.map(view),
@@ -221,7 +233,7 @@ export async function hostAgreements(ctx: Ctx, room: Doc<"rooms">) {
     })
     .sort((left, right) => oldestFirst(left.agreement, right.agreement))
     .slice(0, HOST_NEEDS_LIMIT)
-    .map(({ agreement, answerAs }) => ({ ...agreementView(state, agreement), answerAs }));
+    .map(({ agreement, answerAs }) => ({ ...agreementView(state, agreement, liveHostPlayerId(room)), answerAs }));
   const bounced = (await ctx.db
     .query("roomAgreements")
     .withIndex("by_room_id_and_status_and_decided_at", (index) =>
@@ -229,6 +241,6 @@ export async function hostAgreements(ctx: Ctx, room: Doc<"rooms">) {
     )
     .order("desc")
     .take(HOST_NEEDS_LIMIT))
-    .map((agreement) => agreementView(state, agreement));
+    .map((agreement) => agreementView(state, agreement, liveHostPlayerId(room)));
   return { answer, bounced };
 }

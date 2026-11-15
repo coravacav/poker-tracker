@@ -420,6 +420,24 @@ select.host-seat-move {
   font-size: 0.82rem;
 }
 
+.host-seat-action svg {
+  vertical-align: -3px;
+}
+.host-phone-link {
+  display: grid;
+  flex-basis: 100%;
+  gap: 8px;
+  justify-items: center;
+  padding: 4px 8px 10px 0;
+}
+.host-phone-link p {
+  margin: 0;
+  font-size: 0.82rem;
+  text-align: center;
+}
+.host-phone-link .invite-link-field {
+  width: 100%;
+}
 .host-seat-prompt {
   display: flex;
   gap: 8px;

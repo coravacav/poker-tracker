@@ -243,3 +243,63 @@ test("players record chips between themselves when the other player confirms", a
   await blair.context().close();
   await casey.context().close();
 });
+
+test("the host plays on their phone too, through a one-time link that opens their own seat", async ({ browser, page: host }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "the test opens its own phones");
+  test.setTimeout(150_000);
+
+  await startGame(host, ["Alex", "Blair"]);
+  await host.getByRole("button", { name: "Share game" }).click();
+  const share = host.getByRole("dialog", { name: "Share game" });
+  const invite = await share.getByRole("textbox", { name: "Invite link" }).inputValue();
+  const seats = share.getByRole("region", { name: "Seats" });
+  await seats.getByRole("combobox", { name: "Your seat" }).selectOption({ label: "Alex" });
+  await expect(seats.getByText("You (host)")).toBeVisible();
+  await seats.getByRole("button", { name: "Use on my phone" }).click();
+  const phoneLink = await seats.getByRole("textbox", { name: "Your phone link" }).inputValue();
+  expect(phoneLink).toMatch(/#\/phone\//);
+
+  // The host's phone opens straight into the host's seat: no seat picker.
+  const context = await browser.newContext({ ...devices["Pixel 7"], viewport: { width: 390, height: 844 } });
+  const phone = await context.newPage();
+  await phone.goto(phoneLink);
+  await expect(phone.getByText("Playing as Alex")).toBeVisible({ timeout: 30_000 });
+  await expect(seats.getByText("Your phone · online")).toBeVisible({ timeout: 30_000 });
+  await expect(seats.getByRole("textbox", { name: "Your phone link" })).toHaveCount(0);
+  await share.getByRole("button", { name: "Close" }).click();
+
+  // The link works once.
+  const again = await browser.newContext({ ...devices["Pixel 7"] });
+  const second = await again.newPage();
+  await second.goto(phoneLink);
+  await expect(second.getByRole("heading", { name: "Phone link unavailable" })).toBeVisible({ timeout: 30_000 });
+  await again.close();
+
+  // Blair gives Alex chips; Alex confirms on the phone.
+  const blair = await joinOnPhone(browser, invite, "Blair");
+  await openGuestTab(blair, "Chips");
+  await blair.getByRole("button", { name: "Give to" }).click();
+  await blair.getByRole("group", { name: "Player" }).getByRole("button", { name: /Alex/ }).click();
+  await blair.getByRole("button", { name: "1 buy-in $20" }).click();
+  await blair.getByRole("button", { name: "Send to Alex to confirm" }).click();
+  await openGuestTab(phone, "Inbox");
+  const card = phone.getByRole("article", { name: "Blair gave you $20 in chips" });
+  await card.getByRole("button", { name: "Confirm" }).click({ timeout: 30_000 });
+  await expect(phone.getByText("Nothing waiting on you.")).toBeVisible({ timeout: 30_000 });
+  expect(await scrollsSideways(phone)).toBe(false);
+
+  // Alex buys in from the phone; Blair saw it.
+  await openGuestTab(phone, "Chips");
+  await phone.getByRole("button", { name: "1 buy-in $20" }).click();
+  await phone.getByRole("button", { name: "Ask for a witness" }).click();
+  await expect(phone.getByText(/^Sent\./)).toBeVisible();
+  await openGuestTab(blair, "Inbox");
+  await blair.getByRole("article", { name: /Alex.*bank/i }).getByRole("button", { name: "I saw it" }).click({ timeout: 30_000 });
+
+  // Both show on the host screen.
+  await openMode(host, "Play");
+  await expect(chipPool(host).getByRole("definition").first()).toHaveText("$20.00", { timeout: 30_000 });
+
+  await blair.context().close();
+  await context.close();
+});

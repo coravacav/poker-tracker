@@ -14,6 +14,9 @@ type GuestJoinScreenProps = {
   onCancel: () => void;
   /** Whether turning back returns to this device's own game; without one it goes Home. */
   hasLocalGame?: boolean;
+  /** Headings for other links that open here (the host's phone link). */
+  loadingTitle?: string;
+  invalidTitle?: string;
 };
 
 export function GuestJoinScreen({
@@ -24,7 +27,9 @@ export function GuestJoinScreen({
   joining,
   onJoin,
   onCancel,
-  hasLocalGame = true
+  hasLocalGame = true,
+  loadingTitle = "Checking invitation…",
+  invalidTitle = "Invitation unavailable"
 }: GuestJoinScreenProps) {
   const [displayName, setDisplayName] = useState("");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
@@ -37,7 +42,7 @@ export function GuestJoinScreen({
     <main className="guest-join-page">
       <section className="panel guest-join-card">
         <p className="eyebrow">Poker Tracker invitation</p>
-        {status === "loading" ? <h1>Checking invitation…</h1> : null}
+        {status === "loading" ? <h1>{loadingTitle}</h1> : null}
         {status === "reconnecting" ? (
           <>
             <WifiOff size={30} />
@@ -100,7 +105,7 @@ export function GuestJoinScreen({
         {status === "invalid" || status === "ended" || status === "closed" ? (
           <>
             <WifiOff size={30} />
-            <h1>{status === "ended" ? "This game has ended" : status === "closed" ? "Joining is closed" : "Invitation unavailable"}</h1>
+            <h1>{status === "ended" ? "This game has ended" : status === "closed" ? "Joining is closed" : invalidTitle}</h1>
             <p>{error ?? "Ask the host for a current invitation link."}</p>
           </>
         ) : null}

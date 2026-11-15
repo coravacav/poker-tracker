@@ -33,6 +33,10 @@ export default defineSchema({
     // own (whatever guest record it uses); the host's assign/Move fills it
     // and lifts the block.
     releasedSeatPlayerIds: v.optional(v.array(v.string())),
+    // A one-time link (verifier and expiry) the host opens on their own phone
+    // to seat it on the host's seat. Cleared once used.
+    hostPhoneLinkHash: v.optional(v.string()),
+    hostPhoneLinkExpiresAt: v.optional(v.number()),
     // "Players confirm each other": seated guests record give/buy/bank entries
     // by agreeing between themselves (roomAgreements). Rooms the current
     // client creates start with it on; absent means off (host approves).
@@ -119,6 +123,9 @@ export default defineSchema({
     claimedPersonId: v.optional(v.string()),
     // Why this phone last lost its seat, shown on its "Pick your seat" prompt.
     seatLost: v.optional(v.union(v.literal("released"), v.literal("changed"))),
+    // The host's own phone, seated on the host's seat through the host's
+    // one-time phone link. Only such a phone ever holds the host's seat.
+    hostPhone: v.optional(v.boolean()),
     // Deprecated: per-phone release blocks, superseded by
     // rooms.releasedSeatPlayerIds. No longer written or read.
     hostReleasedPlayerIds: v.optional(v.array(v.string()))

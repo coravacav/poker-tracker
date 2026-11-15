@@ -17,7 +17,14 @@ import { isDiscoverable, profileByFriendCode, publicHostProfile } from "./friend
 import { requireGuest, requireHost, roomByPublicId } from "./roomAccess";
 import { fail } from "./roomErrors";
 import { GUEST_PRESENCE_INTERVAL_MS, presence } from "./roomPresence";
-import { claimSeatForGuest, guestShownName, liveSeatOf, seatOptions } from "./roomSeats";
+import {
+  claimHostSeatForPhone,
+  claimSeatForGuest,
+  guestShownName,
+  liveHostPlayerId,
+  liveSeatOf,
+  seatOptions
+} from "./roomSeats";
 import { publicRoomWithActivity } from "./roomViews";
 
 /** Requests one guest may have waiting for the host at a time. */
@@ -59,16 +66,21 @@ export async function joinRoomAsGuest(
   ctx: MutationCtx,
   room: Doc<"rooms">,
   guestSecret: string,
-  choice: { displayName?: string; playerId?: string }
+  choice: { displayName?: string; playerId?: string; hostPhone?: true }
 ) {
   if (!validSecret(guestSecret)) {
     fail("INVALID_CAPABILITY", "Guest capability is invalid.");
   }
   if (room.status !== "active") fail("ROOM_ENDED", "This shared room has ended.");
-  if (room.joiningOpen === false) fail("ROOM_NOT_ACTIVE", "This room is not accepting new guests.");
+  // The host's own phone link works even while new guests are turned away.
+  if (room.joiningOpen === false && choice.hostPhone !== true) {
+    fail("ROOM_NOT_ACTIVE", "This room is not accepting new guests.");
+  }
   const rawDisplayName = choice.displayName ?? "";
   let displayName = rawDisplayName.trim();
-  if (choice.playerId === undefined) {
+  if (choice.hostPhone === true) {
+    displayName = "";
+  } else if (choice.playerId === undefined) {
     if (rawDisplayName.length > 200 || displayName.length < 1 || displayName.length > 40) {
       fail("INVALID_ARGUMENT", "Display name must be between 1 and 40 characters.");
     }
@@ -80,7 +92,8 @@ export async function joinRoomAsGuest(
   // A guest secret must not double as the room's invitation or watch link.
   if (
     sameHash(room.inviteSecretHash, guestSecretHash) ||
-    (room.spectatorSecretHash !== undefined && sameHash(room.spectatorSecretHash, guestSecretHash))
+    (room.spectatorSecretHash !== undefined && sameHash(room.spectatorSecretHash, guestSecretHash)) ||
+    (room.hostPhoneLinkHash !== undefined && sameHash(room.hostPhoneLinkHash, guestSecretHash))
   ) {
     fail("INVALID_CAPABILITY", "Guest capability is invalid.");
   }
@@ -99,7 +112,7 @@ export async function joinRoomAsGuest(
   let guestId = existingGuest?._id;
   if (existingGuest) {
     // A seated guest stays labeled by their seat, whatever name a rejoin sends.
-    if (choice.playerId === undefined && liveSeatOf(room, existingGuest) === null) {
+    if (choice.playerId === undefined && choice.hostPhone !== true && liveSeatOf(room, existingGuest) === null) {
       await ctx.db.patch(existingGuest._id, { displayName });
     }
   } else {
@@ -128,7 +141,10 @@ export async function joinRoomAsGuest(
   }
   let guest = await ctx.db.get("roomGuests", guestId);
   if (!guest) fail("INVALID_CAPABILITY", "Guest session could not be created.");
-  if (choice.playerId !== undefined) {
+  if (choice.hostPhone === true) {
+    await claimHostSeatForPhone(ctx, room, guest);
+    guest = (await ctx.db.get("roomGuests", guestId))!;
+  } else if (choice.playerId !== undefined) {
     // A taken seat fails the whole join, so no seatless guest is left behind.
     await claimSeatForGuest(ctx, room, guest, choice.playerId);
     guest = (await ctx.db.get("roomGuests", guestId))!;
@@ -207,6 +223,33 @@ export async function joinWithInvite(
     displayName: args.displayName,
     playerId: args.playerId
   });
+}
+
+/**
+ * The host's phone joins through the host's one-time phone link and sits in
+ * the host's seat. The link works once, and only until it expires.
+ */
+export async function joinWithHostPhoneLink(
+  ctx: MutationCtx,
+  args: { publicId: string; linkSecret: string; guestSecret: string }
+) {
+  if (!validSecret(args.linkSecret) || !validSecret(args.guestSecret)) {
+    fail("INVALID_CAPABILITY", "This phone link is invalid.");
+  }
+  const room = await roomByPublicId(ctx, args.publicId);
+  if (!room) fail("ROOM_NOT_FOUND", "Shared room was not found.");
+  const linkHash = await hashSecret(args.linkSecret);
+  if (room.hostPhoneLinkHash === undefined || !sameHash(room.hostPhoneLinkHash, linkHash)) {
+    fail("INVALID_CAPABILITY", "This phone link was already used or replaced. Make a new one on the host screen.");
+  }
+  if (room.hostPhoneLinkExpiresAt === undefined || Date.now() >= room.hostPhoneLinkExpiresAt) {
+    fail("INVALID_CAPABILITY", "This phone link has expired. Make a new one on the host screen.");
+  }
+  if (room.status !== "active") fail("ROOM_ENDED", "This shared room has ended.");
+  if (liveHostPlayerId(room) === null) fail("INVALID_ARGUMENT", "The host isn't in a seat any more.");
+  // Used up by this join (a join that fails rolls this back too).
+  await ctx.db.patch(room._id, { hostPhoneLinkHash: undefined, hostPhoneLinkExpiresAt: undefined });
+  return await joinRoomAsGuest(ctx, room, args.guestSecret, { hostPhone: true });
 }
 
 export async function joinWithFriendCode(
