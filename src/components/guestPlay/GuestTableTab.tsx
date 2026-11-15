@@ -92,11 +92,11 @@ function YouCard({
         </button>
       ) : null}
       <div className="guest-you-actions">
+        <button className="text-button" type="button" onClick={() => onOpenChips("bank")}>
+          <Landmark size={16} aria-hidden="true" /> Buy in
+        </button>
         <button className="text-button" type="button" onClick={() => onOpenChips("give")}>
           <ArrowUpRight size={16} aria-hidden="true" /> Give / buy chips
-        </button>
-        <button className="text-button" type="button" onClick={() => onOpenChips("bank")}>
-          <Landmark size={16} aria-hidden="true" /> Buy from bank
         </button>
       </div>
     </section>

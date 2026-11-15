@@ -252,17 +252,44 @@
 
 .guest-quick-amounts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
 .guest-quick-amounts button {
-  min-height: 44px;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px 4px;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: 8px;
   color: var(--ink);
   background: var(--surface);
   font-weight: 700;
+}
+
+.guest-quick-amounts button span {
+  font-size: 0.8rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.guest-quick-amounts button small {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.guest-quick-amounts button[aria-pressed="true"] small {
+  color: inherit;
+}
+
+@media (max-width: 340px) {
+  .guest-quick-amounts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .guest-quick-amounts button[aria-pressed="true"] {

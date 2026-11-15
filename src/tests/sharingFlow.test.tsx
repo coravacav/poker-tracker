@@ -1229,8 +1229,9 @@ describe("realtime sharing UI", () => {
       openAsGuest(fake);
       act(() => fake.emitGuest(guestRoom(remote)));
       fireEvent.click(await within(guestModes()).findByRole("button", { name: "Chips" }));
+      fireEvent.click(screen.getByRole("button", { name: "Give to" }));
       fireEvent.click(within(screen.getByRole("group", { name: "Player" })).getByRole("button", { name: new RegExp(other.name) }));
-      fireEvent.click(screen.getByRole("button", { name: "$20" }));
+      fireEvent.click(screen.getByRole("button", { name: /\$20$/ }));
       await act(async () => {
         fireEvent.click(screen.getByRole("button", { name: `Send to ${other.name} to confirm` }));
       });
@@ -1289,6 +1290,7 @@ describe("realtime sharing UI", () => {
       openAsGuest(fake);
       act(() => fake.emitGuest(guestRoom(remote)));
       fireEvent.click(await within(guestModes()).findByRole("button", { name: "Chips" }));
+      fireEvent.click(screen.getByRole("button", { name: "Give to" }));
       fireEvent.click(within(screen.getByRole("group", { name: "Player" })).getByRole("button", { name: new RegExp(other.name) }));
       fireEvent.change(screen.getByRole("textbox", { name: "Amount" }), { target: { value: "15" } });
       await act(async () => {

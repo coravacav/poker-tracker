@@ -87,20 +87,38 @@ function renderInbox(agreements: Partial<GuestAgreements>, result: AgreementResu
 }
 
 describe("Chips", () => {
-  it("offers half, one, and two buy-ins, or fixed amounts without a default buy-in", () => {
-    expect(chipsQuickAmounts(2000)).toEqual([1000, 2000, 4000]);
-    expect(chipsQuickAmounts(0)).toEqual([500, 1000, 2000, 5000]);
+  it("offers 1/4, 1/2, 1, and 2 buy-ins, or fixed amounts without a default buy-in", () => {
+    expect(chipsQuickAmounts(2000)).toEqual([
+      { cents: 500, label: "1/4 buy-in" },
+      { cents: 1000, label: "1/2 buy-in" },
+      { cents: 2000, label: "1 buy-in" },
+      { cents: 4000, label: "2 buy-ins" }
+    ]);
+    expect(chipsQuickAmounts(0).map(({ cents }) => cents)).toEqual([500, 1000, 2000, 5000]);
+    // Tiny buy-ins don't repeat an amount.
+    expect(chipsQuickAmounts(2).map(({ cents }) => cents)).toEqual([1, 2, 4]);
+  });
+
+  it("starts on Buy in, first, with the amount before the witness", () => {
+    renderChips();
+    const kinds = within(screen.getByRole("group", { name: "Entry type" })).getAllByRole("button");
+    expect(kinds.map((button) => button.textContent)).toEqual(["Buy in", "Give to", "Buy from"]);
+    expect(kinds[0]).toHaveAttribute("aria-pressed", "true");
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+    expect(headings).toEqual(["How much?", "Who saw it?"]);
+    expect(screen.getByRole("button", { name: "1/4 buy-in $5" })).toBeInTheDocument();
   });
 
   it("lists the other players, not you, and sends a give for the other player to confirm", async () => {
     const onSend = renderChips();
+    fireEvent.click(screen.getByRole("button", { name: "Give to" }));
     const picker = screen.getByRole("group", { name: "Player" });
     expect(within(picker).queryByRole("button", { name: /Maya/ })).not.toBeInTheDocument();
     expect(screen.getByText("Pick who and how much.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send to confirm" })).toBeDisabled();
 
     fireEvent.click(within(picker).getByRole("button", { name: /Jon/ }));
-    fireEvent.click(screen.getByRole("button", { name: "$20" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 buy-in $20" }));
     expect(screen.getByText("You give Jon $20 in chips. You'll get that back at settle-up.")).toBeInTheDocument();
     expect(screen.getByText("Nothing is recorded until Jon confirms.")).toBeInTheDocument();
     await act(async () => {
@@ -130,8 +148,7 @@ describe("Chips", () => {
 
   it("sends a bank buy-in with or without a witness", async () => {
     const onSend = renderChips();
-    fireEvent.click(screen.getByRole("button", { name: "From bank" }));
-    fireEvent.click(screen.getByRole("button", { name: "$40" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 buy-ins $40" }));
     expect(screen.getByText("You buy $40 in chips from the bank.")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Ask for a witness" }));
@@ -149,8 +166,9 @@ describe("Chips", () => {
 
   it("retries a failed send with the same request id, and a changed entry with a new one", async () => {
     const onSend = renderChips(sendMock(false));
+    fireEvent.click(screen.getByRole("button", { name: "Give to" }));
     fireEvent.click(screen.getByRole("button", { name: /Jon/ }));
-    fireEvent.click(screen.getByRole("button", { name: "$20" }));
+    fireEvent.click(screen.getByRole("button", { name: "1 buy-in $20" }));
     const send = screen.getByRole("button", { name: "Send to Jon to confirm" });
     await act(async () => {
       fireEvent.click(send);
@@ -158,7 +176,7 @@ describe("Chips", () => {
     await act(async () => {
       fireEvent.click(send);
     });
-    fireEvent.click(screen.getByRole("button", { name: "$40" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 buy-ins $40" }));
     await act(async () => {
       fireEvent.click(send);
     });

@@ -10,18 +10,33 @@ import type { ChipsDraft } from "./types";
 /** The most one entry may be; the server refuses more. */
 const MAX_ENTRY_CENTS = 1_000_000;
 const FALLBACK_AMOUNTS = [500, 1000, 2000, 5000];
+const BUY_IN_FRACTIONS = [
+  { label: "1/4 buy-in", numerator: 1, denominator: 4 },
+  { label: "1/2 buy-in", numerator: 1, denominator: 2 },
+  { label: "1 buy-in", numerator: 1, denominator: 1 },
+  { label: "2 buy-ins", numerator: 2, denominator: 1 }
+] as const;
 
+/** Buy in comes first: it's what players record most. */
+const kindOrder = ["bank", "give", "buy"] as const satisfies readonly AgreementKind[];
 const kindLabels: Record<AgreementKind, string> = {
+  bank: "Buy in",
   give: "Give to",
-  buy: "Buy from",
-  bank: "From bank"
+  buy: "Buy from"
 };
 
-/** Half, one, and two default buy-ins, or $5 / $10 / $20 / $50 without one. */
-export function chipsQuickAmounts(defaultBuyInCents: number): number[] {
-  if (defaultBuyInCents <= 0) return FALLBACK_AMOUNTS;
-  const amounts = [Math.round(defaultBuyInCents / 2), defaultBuyInCents, defaultBuyInCents * 2];
-  return [...new Set(amounts.filter((cents) => cents > 0 && cents <= MAX_ENTRY_CENTS))];
+export type ChipsQuickAmount = { cents: number; label: string | null };
+
+/** 1/4, 1/2, 1, and 2 default buy-ins, or $5 / $10 / $20 / $50 without one. */
+export function chipsQuickAmounts(defaultBuyInCents: number): ChipsQuickAmount[] {
+  if (defaultBuyInCents <= 0) return FALLBACK_AMOUNTS.map((cents) => ({ cents, label: null }));
+  const seen = new Set<number>();
+  return BUY_IN_FRACTIONS.flatMap(({ label, numerator, denominator }) => {
+    const cents = Math.round((defaultBuyInCents * numerator) / denominator);
+    if (cents <= 0 || cents > MAX_ENTRY_CENTS || seen.has(cents)) return [];
+    seen.add(cents);
+    return [{ cents, label }];
+  });
 }
 
 /**
@@ -92,7 +107,7 @@ export function ChipsTab({
 }: ChipsTabProps) {
   const formatCurrency = useFormatCurrency();
   const others = players.filter((player) => player.id !== me.id);
-  const [kind, setKind] = useState<AgreementKind>(initialDraft?.kind ?? "give");
+  const [kind, setKind] = useState<AgreementKind>(initialDraft?.kind ?? "bank");
   const [counterpartyId, setCounterpartyId] = useState<string | null>(initialDraft?.counterpartyPlayerId ?? null);
   const [witnessId, setWitnessId] = useState<string | null>(initialDraft?.witnessPlayerId ?? null);
   const [amountInput, setAmountInput] = useState(() => amountInputFor(initialDraft));
@@ -189,6 +204,95 @@ export function ChipsTab({
     return netCents < 0 ? `In ${formatCurrency(-netCents, { trimWholeCents: true })}` : " ";
   }
 
+  const whoSection = (
+    <section className="panel guest-chips-section" aria-labelledby="chips-who">
+      {kind === "bank" ? (
+        <>
+          <div>
+            <h2 id="chips-who">Who saw it?</h2>
+            <p className="muted">Another player confirms they saw the buy-in.</p>
+          </div>
+          <div className="guest-player-grid" role="group" aria-label="Witness">
+            <button
+              type="button"
+              className="guest-player-option is-wide"
+              aria-pressed={witnessId === null}
+              onClick={() => setWitnessId(null)}
+            >
+              <span>Anyone at the table</span>
+            </button>
+            {others.map((player) => (
+              <button
+                key={player.id}
+                type="button"
+                className="guest-player-option"
+                aria-pressed={witness?.id === player.id}
+                onClick={() => setWitnessId(witness?.id === player.id ? null : player.id)}
+              >
+                <span>{player.name}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <h2 id="chips-who" ref={headingRef} tabIndex={-1}>{kind === "give" ? "Give to who?" : "Buy from who?"}</h2>
+          {others.length === 0 ? (
+            <p className="muted">Nobody else is at the table yet.</p>
+          ) : (
+            <div className="guest-player-grid" role="group" aria-label="Player">
+              {others.map((player) => (
+                <button
+                  key={player.id}
+                  type="button"
+                  className="guest-player-option"
+                  aria-pressed={counterparty?.id === player.id}
+                  onClick={() => setCounterpartyId(player.id)}
+                >
+                  <span>{player.name}</span>
+                  <small>{playerSub(player)}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+  // Buying in is mostly about how much, so the amount leads there.
+  const amountSection = (
+    <section className="panel guest-chips-section" aria-labelledby="chips-amount">
+      <h2 id="chips-amount" ref={kind === "bank" ? headingRef : undefined} tabIndex={-1}>How much?</h2>
+      <label className="guest-amount-field">
+        <span>Amount</span>
+        <input
+          aria-label="Amount"
+          inputMode="decimal"
+          placeholder="0"
+          value={amountInput}
+          onChange={(event) => setAmountInput(event.currentTarget.value)}
+        />
+      </label>
+      {amountCents !== null && amountCents > MAX_ENTRY_CENTS ? (
+        <span className="inline-error">Enter up to {formatCurrency(MAX_ENTRY_CENTS, { trimWholeCents: true })}; ask the host for more.</span>
+      ) : null}
+      <div className="guest-quick-amounts" role="group" aria-label="Quick amounts">
+        {quickAmounts.map(({ cents, label }) => (
+          <button
+            key={cents}
+            type="button"
+            aria-pressed={amountCents === cents}
+            onClick={() => setAmountInput(centsToInputValue(cents).replace(/\.00$/, ""))}
+          >
+            {label ? <span>{label}</span> : null}
+            {label ? " " : null}
+            <small>{formatCurrency(cents, { trimWholeCents: true })}</small>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+
   return (
     <div className="guest-tab guest-chips-tab">
       <div className="guest-tab-column">
@@ -202,95 +306,15 @@ export function ChipsTab({
           </div>
         ) : null}
         <div className="shape-segments guest-kind-segments" role="group" aria-label="Entry type">
-          {(["give", "buy", "bank"] as const).map((option) => (
+          {kindOrder.map((option) => (
             <button key={option} type="button" aria-pressed={kind === option} onClick={() => setKind(option)}>
               {kindLabels[option]}
             </button>
           ))}
         </div>
 
-        <section className="panel guest-chips-section" aria-labelledby="chips-who">
-          {kind === "bank" ? (
-            <>
-              <div>
-                <h2 id="chips-who" ref={headingRef} tabIndex={-1}>Who saw it?</h2>
-                <p className="muted">Another player confirms they saw the buy-in.</p>
-              </div>
-              <div className="guest-player-grid" role="group" aria-label="Witness">
-                <button
-                  type="button"
-                  className="guest-player-option is-wide"
-                  aria-pressed={witnessId === null}
-                  onClick={() => setWitnessId(null)}
-                >
-                  <span>Anyone at the table</span>
-                </button>
-                {others.map((player) => (
-                  <button
-                    key={player.id}
-                    type="button"
-                    className="guest-player-option"
-                    aria-pressed={witness?.id === player.id}
-                    onClick={() => setWitnessId(witness?.id === player.id ? null : player.id)}
-                  >
-                    <span>{player.name}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <>
-              <h2 id="chips-who" ref={headingRef} tabIndex={-1}>{kind === "give" ? "Give to who?" : "Buy from who?"}</h2>
-              {others.length === 0 ? (
-                <p className="muted">Nobody else is at the table yet.</p>
-              ) : (
-                <div className="guest-player-grid" role="group" aria-label="Player">
-                  {others.map((player) => (
-                    <button
-                      key={player.id}
-                      type="button"
-                      className="guest-player-option"
-                      aria-pressed={counterparty?.id === player.id}
-                      onClick={() => setCounterpartyId(player.id)}
-                    >
-                      <span>{player.name}</span>
-                      <small>{playerSub(player)}</small>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </section>
-
-        <section className="panel guest-chips-section" aria-labelledby="chips-amount">
-          <h2 id="chips-amount">How much?</h2>
-          <label className="guest-amount-field">
-            <span>Amount</span>
-            <input
-              aria-label="Amount"
-              inputMode="decimal"
-              placeholder="0"
-              value={amountInput}
-              onChange={(event) => setAmountInput(event.currentTarget.value)}
-            />
-          </label>
-          {amountCents !== null && amountCents > MAX_ENTRY_CENTS ? (
-            <span className="inline-error">Enter up to {formatCurrency(MAX_ENTRY_CENTS, { trimWholeCents: true })}; ask the host for more.</span>
-          ) : null}
-          <div className="guest-quick-amounts" role="group" aria-label="Quick amounts">
-            {quickAmounts.map((cents) => (
-              <button
-                key={cents}
-                type="button"
-                aria-pressed={amountCents === cents}
-                onClick={() => setAmountInput(centsToInputValue(cents).replace(/\.00$/, ""))}
-              >
-                {formatCurrency(cents, { trimWholeCents: true })}
-              </button>
-            ))}
-          </div>
-        </section>
+        {kind === "bank" ? amountSection : whoSection}
+        {kind === "bank" ? whoSection : amountSection}
 
         <p className="guest-chips-summary" aria-live="polite">{summary}</p>
 

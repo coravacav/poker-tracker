@@ -187,8 +187,9 @@ test("players record chips between themselves when the other player confirms", a
   // Blair gives Casey $20 in chips; nothing is recorded until Casey confirms.
   await openGuestTab(blair, "Chips");
   expect(await scrollsSideways(blair)).toBe(false);
+  await blair.getByRole("button", { name: "Give to" }).click();
   await blair.getByRole("group", { name: "Player" }).getByRole("button", { name: /Casey/ }).click();
-  await blair.getByRole("button", { name: "$20" }).click();
+  await blair.getByRole("button", { name: "1 buy-in $20" }).click();
   await expect(blair.getByText("You give Casey $20 in chips. You'll get that back at settle-up.")).toBeVisible();
   await blair.getByRole("button", { name: "Send to Casey to confirm" }).click();
   await expect(blair.getByText("Sent. Waiting on Casey to confirm.")).toBeVisible();
@@ -219,7 +220,7 @@ test("players record chips between themselves when the other player confirms", a
   await openGuestTab(casey, "Chips");
   await casey.getByRole("button", { name: "Buy from" }).click();
   await casey.getByRole("group", { name: "Player" }).getByRole("button", { name: /Blair/ }).click();
-  await casey.getByRole("button", { name: "$10" }).click();
+  await casey.getByRole("button", { name: "1/2 buy-in $10" }).click();
   await expect(casey.getByText("You get $10 in chips from Blair. You'll pay for them at settle-up.")).toBeVisible();
   await casey.getByRole("button", { name: "Send to Blair to confirm" }).click();
   await expect(casey.getByText("Sent. Waiting on Blair to confirm.")).toBeVisible();
