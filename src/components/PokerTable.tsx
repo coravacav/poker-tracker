@@ -10,6 +10,7 @@ import type {
   TableShape,
   Transaction
 } from "../domain/pokerTypes";
+import { shuffleSeatOrder } from "../domain/seatShuffle";
 import { getSeatSlots, getTableLayoutMetrics } from "../domain/tableLayout";
 import type { GameAction } from "../state/gameReducer";
 import { createId } from "../state/seedGame";
@@ -109,7 +110,9 @@ export function PokerTable({
         ? [...currentPlayers.slice(1), currentPlayers[0]]
         : arrangement === "rotate_right"
           ? [currentPlayers[currentPlayers.length - 1], ...currentPlayers.slice(0, -1)]
-          : [...currentPlayers].reverse();
+          : arrangement === "shuffle"
+            ? shuffleSeatOrder(currentPlayers)
+            : [...currentPlayers].reverse();
     const playerIdBySeatIndex = new Map(
       seatSlots.map((slot, index) => [slot.seatIndex, arrangedPlayers[index].id])
     );

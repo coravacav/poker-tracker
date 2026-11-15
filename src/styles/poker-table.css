@@ -47,7 +47,7 @@
 }
 
 .player-arrangement-controls {
-  grid-template-columns: repeat(3, 38px);
+  grid-template-columns: repeat(4, 38px);
 }
 
 .shape-segments button,
@@ -79,7 +79,7 @@
 }
 
 .poker-table-panel.is-player-list-view .player-arrangement-controls {
-  grid-template-columns: repeat(3, 44px);
+  grid-template-columns: repeat(4, 44px);
 }
 
 .poker-table-panel.is-player-list-view .player-arrangement-controls button {

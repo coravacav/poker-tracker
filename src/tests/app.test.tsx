@@ -53,6 +53,7 @@ describe("App", () => {
       .not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Rotate players right" }))
       .not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Shuffle seats" })).not.toBeInTheDocument();
     expect(screen.queryByTitle("Drag to move physical seat")).not.toBeInTheDocument();
     expect(screen.queryByTitle("Drag to move player")).not.toBeInTheDocument();
     expect(screen.queryByText("Seat 1")).not.toBeInTheDocument();
@@ -233,6 +234,12 @@ describe("App", () => {
       "Player 2",
       "Player 1"
     ]);
+
+    const beforeShuffle = playerNamesInTableOrder();
+    fireEvent.click(screen.getByRole("button", { name: "Shuffle seats" }));
+    const afterShuffle = playerNamesInTableOrder();
+    expect(afterShuffle).not.toEqual(beforeShuffle);
+    expect([...afterShuffle].sort()).toEqual([...beforeShuffle].sort());
   });
 
   it("uses list-oriented arrangement controls in the mobile player list", () => {
@@ -250,6 +257,7 @@ describe("App", () => {
         .toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Shift player order down" }))
         .toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Shuffle seats" })).toBeInTheDocument();
 
       const playerNames = () =>
         screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);

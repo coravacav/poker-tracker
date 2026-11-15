@@ -4,14 +4,15 @@ import {
   FlipHorizontal2,
   FlipVertical2,
   RotateCcw,
-  RotateCw
+  RotateCw,
+  Shuffle
 } from "lucide-react";
 import type { Dispatch } from "react";
 import type { TableShape } from "../../domain/pokerTypes";
 import type { GameAction } from "../../state/gameReducer";
 import { useFormatCurrency } from "../CurrencyContext";
 
-export type PlayerArrangement = "rotate_left" | "rotate_right" | "reverse";
+export type PlayerArrangement = "rotate_left" | "rotate_right" | "reverse" | "shuffle";
 
 const SHAPES: Array<{ shape: TableShape; label: string }> = [
   { shape: "rectangle", label: "Rectangle" },
@@ -103,6 +104,15 @@ export function TableToolbar({
               onClick={() => onArrange("rotate_right")}
             >
               {compactView ? <ArrowDown size={18} /> : <RotateCw size={17} />}
+            </button>
+            <button
+              type="button"
+              aria-label="Shuffle seats"
+              title="Shuffle seats"
+              disabled={readOnly || playerCount < 2}
+              onClick={() => onArrange("shuffle")}
+            >
+              <Shuffle size={compactView ? 18 : 17} />
             </button>
           </div>
         ) : null}
